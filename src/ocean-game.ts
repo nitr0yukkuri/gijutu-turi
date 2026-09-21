@@ -61,7 +61,7 @@ export class OceanFishingGame {
       const surge=s.mode==='surge'||s.mode==='split';
       const pressure=surge?.28:.035;
       s.tension=clamp(s.tension+((reeling?.14:-.24)+pressure)*dt,0,1);
-      s.distance=clamp(s.distance+((surge?1.3:.22)-(reeling?(surge?1.55:3.5):0))*dt,1.7,s.initialDistance+12);
+      s.distance=clamp(s.distance+((surge?1.3:.22)-(reeling?(surge?1.55:3.5):0))*dt,1.7,s.initialDistance+24);
       this.overload=s.tension>=.97?this.overload+dt:Math.max(0,this.overload-dt*2);
       this.slack=s.tension<.06?this.slack+dt:0;
       const lateral=Math.sin(t*(surge?2.8:.8))*(surge?2.6:.65);
