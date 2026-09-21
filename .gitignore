@@ -1,0 +1,7 @@
+node_modules/
+.npm-cache/
+dist/
+.previewlogs/
+.env
+.env.*
+!.env.example
