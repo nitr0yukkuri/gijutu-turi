@@ -8,6 +8,11 @@ const backendWs = `ws://127.0.0.1:${backendPort}`;
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      three: resolve(process.cwd(), "vendor/three.module.js"),
+    },
+  },
   base: "./",
   publicDir: false,
   server: {
