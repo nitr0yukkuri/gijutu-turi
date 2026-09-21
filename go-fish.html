@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07151d">
+  <title>Go魚 — 技術釣り・モデルプレビュー</title>
+  <link rel="stylesheet" href="./go-fish-viewer.css">
+</head>
+<body>
+  <main>
+    <div id="fish-model" role="img" aria-label="青く発光するGo魚の3Dモデル。ドラッグで回転できます。" tabindex="0"></div>
+    <header><a href="./">技術釣り</a><a href="./docker-whale.html">Dockerクジラ ↗</a><span>MODEL STUDY / 001</span></header>
+    <section class="identity"><p>CONCURRENCY SPECIES</p><h1>Go<span>魚</span></h1><p class="caption">ひとつの光が、群れになる。</p></section>
+    <div id="viewer-status" role="status">モデルを読み込んでいます</div>
+    <aside><p>ドラッグで回転 / スクロールで拡大</p><p class="scope">造形確認用 · ゲームの捕獲とは連動していません</p></aside>
+    <footer>
+      <div class="views" role="group" aria-label="見る角度"><button data-view="hero" aria-pressed="true">全身</button><button data-view="side" aria-pressed="false">真横</button><button data-view="front" aria-pressed="false">正面</button><button data-view="detail" aria-pressed="false">ディテール</button></div>
+      <div class="actions"><button id="swarm" aria-pressed="false">並列化を見る <span>1 → 7</span></button><button id="pause" aria-pressed="false">動きを止める</button></div>
+    </footer>
+  </main>
+  <script type="module" src="./src/viewers/go-fish-viewer.ts"></script>
+</body>
+</html>

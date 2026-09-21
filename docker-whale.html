@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#030c16">
+  <title>Dockerクジラ — 技術釣り</title>
+  <link rel="stylesheet" href="./docker-whale-viewer.css">
+</head>
+<body>
+  <main>
+    <div id="whale-model" role="img" aria-label="巨大なDockerクジラの3Dモデル。ドラッグと矢印キーで回転、スクロールで拡大。" tabindex="0"></div>
+    <header><a href="./">技術釣り<span>GIJUTU TURI</span></a><nav aria-label="魚のプレビュー"><a href="./go-fish.html">Go魚 ↗</a><span>SPECIMEN / 002</span></nav></header>
+    <section class="identity"><p class="eyebrow"><i></i> CONTAINER CARRIER</p><h1>Docker<span>クジラ</span></h1><p class="caption">小さな世界を載せて、<br>大きな海をゆく。</p><div class="species-tag">深海の運び手 <span>LEVIATHAN CLASS</span></div></section>
+    <div id="viewer-status" role="status">海の奥から、やってくる。</div>
+    <aside><p id="comparison-note">厚い胴体。ゆっくり打つ、水平の尾。</p><p>ドラッグで回転 · スクロールで拡大</p><p class="scope">造形プレビュー · 釣りへの登場は準備中</p></aside>
+    <footer>
+      <div class="views" role="group" aria-label="見る角度"><button data-view="hero" aria-pressed="true">全身</button><button data-view="side" aria-pressed="false">真横</button><button data-view="front" aria-pressed="false">正面</button><button data-view="cargo" aria-pressed="false">背中</button></div>
+      <div class="actions"><button id="compare" aria-pressed="false">Go魚と比べる <span>↔</span></button><button id="pause" aria-pressed="false">泳ぎを止める</button></div>
+    </footer>
+  </main>
+  <script type="module" src="./src/viewers/docker-whale-viewer.ts"></script>
+</body>
+</html>

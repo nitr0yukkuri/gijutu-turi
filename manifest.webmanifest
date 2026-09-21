@@ -1,0 +1,19 @@
+{
+  "name": "GIJUTU TURI — 技術を釣る",
+  "short_name": "GIJUTU TURI",
+  "description": "技術の性質を魚の挙動として体験するWeb釣りシミュレーター",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#172d3c",
+  "theme_color": "#172d3c",
+  "icons": [
+    {
+      "src": "./assets/gijutu-turi-logo.png",
+      "sizes": "1536x1024",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,45 +1,93 @@
-# GIJUTU TURI
+# 技術釣り / GIJUTU TURI
 
-技術の性質を、魚の生態・挙動・釣り上げるときの抵抗として体験するWeb釣りシミュレーター。
+![技術釣りのロゴ](./assets/gijutu-turi-logo.png)
 
-## Concept
+技術の性質を、魚の生態と釣り上げるときの抵抗として体験するWeb釣りゲーム。
 
-技術名を魚に貼って解説を読むのではなく、
+## 今回のプレビュー
 
-1. 魚を観察する
-2. 挙動を予測する
-3. スマートフォンを釣り竿として操作する
-4. 魚を釣り上げる
-5. その性質のモデルになった技術を知る
+まずは「魚や説明がなくても眺めていたい海」と「目の前の海へ投げた感覚」を作る段階です。
 
-という順番で、遊びながら技術の特徴に触れる。
+- 画面いっぱいの3D海面、空の反射、緩やかな波。カメラは水中に入りません。
+- 押してためる → ルアーの飛行 → 着水・波紋 → 巻き戻し。
+- PC画面とコントローラー画面をWebSocketで同期。実際の接続に合わせて状態を表示します。
+- スマホのモーション入力と、センサーを使えない場合のタッチ操作。
+- あそびかた・図鑑は必要なときだけ開くダイアログ。「景色だけを見る」で操作表示を隠せます。
+- 音は明示的にオンにした場合だけ再生。PWA用manifestと静的アセットキャッシュを用意しています。
 
-## Target event
+画面UIはReact + Viteで管理し、既存のHTML/CSSの見た目・ID・クラスを維持しています。
+Three.jsの海面描画と独自シェーダーは直接制御のまま残し、WebSocketのOcean状態機械と分離しています。
+Go魚は釣り上げたときに全身と「Go魚」の名前を見せ、図鑑はSQLiteのプレイヤー別記録を表示します。
+旧試作の画面は整理し、現行の海UIとOcean用バックエンドを本体として扱います。
 
-[JOGI HACK 2026](https://jogiken.connpass.com/event/401694/)
+## 起動
 
-JOGI HACK向けに、Webアプリとしてのリアルタイム入力、魚の状態シミュレーション、Procedural Animation、技術特性とゲーム挙動の対応を検証する。
+### Go魚のモデル確認
 
-## Planned stack
+サーバー起動後、[Go魚の3Dプレビュー](http://127.0.0.1:8787/go-fish.html)で形状を確認できます。
+ドラッグで回転、スクロールで拡大。全身・真横・正面・ディテールの切り替え、一時停止、1→7匹の分岐表示に対応しています。
+本編の海には未獲得の魚を表示しません。造形の参照先と実装範囲は [docs/go-fish-design.md](./docs/go-fish-design.md) に記録しています。
 
-- React + TypeScript + Vite
-- Three.js + React Three Fiber
-- Hono + Node.js
-- WebSocket
-- Zod
-- pnpm
-- Biome
+### 海とサーバー
 
-スマートフォンからキャスト・フック・リールなどの入力を送り、PC・大画面側で海と魚を描画する。魚の状態はサーバーを正として管理する。
+Node.jsとnpmが必要です。
 
-## Design principles
+```powershell
+npm install
+npm run dev
+```
 
-- 技術要素を外しても、釣り自体が遊びたくなること
-- 魚を平面のアイコンではなく、泳ぐ身体として表現すること
-- 技術の性質を説明文ではなく、魚の挙動と攻略方法に落とすこと
-- まず魚1種類・技術1種類を深く作ること
-- Honoやライブラリ名を売りにせず、体験と設計を見せること
+[http://127.0.0.1:8788/](http://127.0.0.1:8788/) を開きます。8788はViteのHMR付き開発サーバー、8787はAPI・WebSocket・SQLiteを担当するバックエンドです。開発サーバーは同じWi-Fi内からも開けるように待ち受けます。
+本番相当の配信を確認する場合は `npm run build` 後に `$env:PORT='8787'; npm start` を使います。
 
-## Analysis
+Cloud Runへ安価に公開する手順と、WebSocket・SQLite・料金のトレードオフは [docs/cloud-run-cheap.md](./docs/cloud-run-cheap.md) にまとめています。Cloud RunではHTTPSのURLが発行されるため、PCに表示したQRをスマホで読み取る運用に向いています。
 
-企画、UX、Fish Engine、通信設計、MVP、JOGI HACK向けの評価方針は [Issue #1](https://github.com/nitr0yukkuri/gijutu-turi/issues/1) にまとめている。
+## 操作
+
+- PC: 「ここで投げてみる」またはSpaceを押してため、離して投げます。マウスの位置で左右の狙いを変えます。
+- 着水後: 「巻き戻す」またはSpaceでもう一度投げられる状態に戻します。
+- 「スマホで釣る」: QRコードをスマホのカメラで読み取ると、同じ海を操作する釣り竿画面が開きます。ローカルではPCとスマホを同じWi-Fiに接続してください。
+- 右上: 音の切り替え / 景色だけを見る。景色のみの表示からは画面の復帰ボタンかEscapeで戻せます。
+
+QRコードにはPCのLAN内IPアドレスを自動的に埋め込みます。ファイアウォールで8788番ポート（本番相当の8787番ポート）への接続がブロックされている場合は許可してください。
+実機のモーション入力には、両端末からアクセスできるHTTPS環境とセンサー許可が必要です。
+HTTPのローカル接続ではタッチ操作を利用できます。モーションセンサーを使う場合は、両端末からアクセスできるHTTPS環境が必要です。
+オフラインでは海の表示用アセットを利用できますが、キャスト同期にはサーバー接続が必要です。
+
+## 検証
+
+```powershell
+npm run typecheck
+npm test
+# サーバー起動中に別のターミナルから実行
+npm run test:ocean
+npm run test:fish
+npm run test:whale
+```
+
+`test:ocean` は公開アセット、非公開パス、コントローラー接続、キャスト・着水・巻き戻し、連打・不正入力、切断時の状態を検証します。
+
+## 主な構成
+
+- `src/client/App.tsx`: Reactで構成した海・コントローラー・図鑑UI
+- `src/client/useOceanRuntime.ts`: WebSocket、入力、音、図鑑APIを束ねるランタイム
+- `src/rendering/*.ts`: Three.jsの海面・魚・クジラ・図鑑プレビュー
+- `src/viewers/*.ts`: Go魚 / Dockerクジラの単体モデルビューワー
+- `scripts/*.ts`: 開発サーバー起動と統合・形状検証スクリプト
+- `vite.config.ts`: Reactクライアントを `dist/client` に出力する設定
+- `index.html` / `ocean.css`: 海とコントローラーのUIシェルと既存ビジュアル
+- `src/rendering/ocean-scene.ts`: Three.jsの海面・ルアー・糸・着水表現（Reactから命令的に利用）
+- `ocean-app.js`: Viteが生成する本番クライアントバンドル
+- `src/ocean-room.ts`: キャスト体験専用のサーバー状態管理
+- `src/ocean-game.ts` / `src/ocean-room.ts`: 海の釣り状態機械とWebSocketルーム
+- `src/collection-db.ts`: SQLiteの魚種マスタ・捕獲記録・重複防止イベント
+- `vendor/`: Three.js配布ファイルとライセンス（外部配布物なのでJSのまま固定）
+
+## 図鑑DB
+
+図鑑はSQLiteを使います。初回起動時に `data/gijutu-turi.sqlite` を作成し、魚種マスタをシードします。
+プレイヤーIDはブラウザごとに生成し、捕獲イベントはイベントキーで重複登録を防ぎます。
+保存先を変える場合は `.env` の `GIJUTU_DB_PATH` を指定してください。
+
+キャスト用ルームは最大128個、1ルーム8接続、無人になって30分後に回収されます。
+ルームのURLは、その海を操作できる共有リンクです。第三者へ公開しないでください。
