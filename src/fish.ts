@@ -128,6 +128,17 @@ export class FishLocomotion {
     this.velocity = add(this.velocity, scale(direction, 1.6));
   }
 
+  /**
+   * Keep the procedural body wave while letting an authoritative game loop
+   * own the fish's root motion. This prevents a renderer from inventing a
+   * second position or heading for the same fish.
+   */
+  setRootMotion(position: Vec3, velocity: Vec3): void {
+    this.position = { ...position };
+    this.velocity = { ...velocity };
+    if (magnitude(velocity) > 0.01) this.heading = normalise(velocity);
+  }
+
   setGait(gait: FishGait): void {
     this.gait = gait;
   }

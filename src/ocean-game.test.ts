@@ -41,3 +41,15 @@ test('responding to tension lands one Go fish, including parallel surge',()=>{
     game.action({action:'reset'},now());assert.equal(game.state.phase,'idle');assert.equal(game.state.catches,1);
   }
 });
+
+test('publishes authoritative fish pose and body-wave timing during a fight',()=>{
+  const {game,step,now}=setup();game.action({action:'hook'},now());
+  step(false);
+  const snapshot=game.snapshot();
+  assert.equal(snapshot.fish.position.x,snapshot.fishX);
+  assert.equal(snapshot.fish.position.z,-snapshot.distance);
+  assert.ok(Number.isFinite(snapshot.fish.position.y));
+  assert.ok(Number.isFinite(snapshot.fish.heading.x));
+  assert.ok(snapshot.fish.bodyWave.frequency>0);
+  assert.ok(snapshot.fish.bodyWave.phase!==0);
+});
