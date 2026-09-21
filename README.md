@@ -40,6 +40,8 @@ npm run dev
 [http://127.0.0.1:8788/](http://127.0.0.1:8788/) を開きます。8788はViteのHMR付き開発サーバー、8787はAPI・WebSocket・SQLiteを担当するバックエンドです。開発サーバーは同じWi-Fi内からも開けるように待ち受けます。
 本番相当の配信を確認する場合は `npm run build` 後に `$env:PORT='8787'; npm start` を使います。
 
+Cloud Runへ安価に公開する手順と、WebSocket・SQLite・料金のトレードオフは [docs/cloud-run-cheap.md](./docs/cloud-run-cheap.md) にまとめています。Cloud RunではHTTPSのURLが発行されるため、PCに表示したQRをスマホで読み取る運用に向いています。
+
 ## 操作
 
 - PC: 「ここで投げてみる」またはSpaceを押してため、離して投げます。マウスの位置で左右の狙いを変えます。
@@ -60,6 +62,7 @@ npm test
 # サーバー起動中に別のターミナルから実行
 npm run test:ocean
 npm run test:fish
+npm run test:whale
 ```
 
 `test:ocean` は公開アセット、非公開パス、コントローラー接続、キャスト・着水・巻き戻し、連打・不正入力、切断時の状態を検証します。
