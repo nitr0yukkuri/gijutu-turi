@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { networkInterfaces } from 'node:os';
 import type { Hono } from 'hono';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
@@ -12,6 +13,26 @@ const actionSchema=z.discriminatedUnion('action',[
   z.object({action:z.literal('retrieve')}),z.object({action:z.literal('hook')}),
   z.object({action:z.literal('reset')}),z.object({action:z.literal('reel'),held:z.boolean()}),
 ]);
+
+const isLoopbackHost=(host:string)=>host==='localhost'||host==='127.0.0.1'||host==='[::1]';
+const isPrivateIPv4=(address:string)=>{
+  const [a,b]=address.split('.').map(Number);
+  if (a===undefined||b===undefined) return false;
+  return a===10||a===192&&b===168||a===172&&b>=16&&b<=31;
+};
+const localNetworkHost=()=>{
+  const candidates=Object.entries(networkInterfaces()).flatMap(([name,entries])=>(entries??[])
+    .filter(info=>!info.internal&&['4','IPv4'].includes(String(info.family)))
+    .map(info=>({name,address:info.address})));
+  const score=(name:string)=>/wi[- ]?fi|wireless|wlan/i.test(name)?0:/virtual|vethernet|vmware|loopback|docker/i.test(name)?2:1;
+  candidates.sort((left,right)=>score(left.name)-score(right.name));
+  return candidates.find(candidate=>isPrivateIPv4(candidate.address))?.address??candidates[0]?.address;
+};
+const accessHost=(requestUrl:string)=>{
+  const url=new URL(requestUrl);
+  return isLoopbackHost(url.hostname)?localNetworkHost()??url.hostname:url.hostname;
+};
+
 export function createOceanRooms(app:Hono){
   type Client={role:'display'|'controller';reelUntil:number;windowAt:number;messages:number};
   type Room={game:OceanFishingGame;clients:Map<WebSocket,Client>;lastActive:number};
@@ -26,7 +47,7 @@ export function createOceanRooms(app:Hono){
     if(rooms.size>=128)return c.json({error:'rooms_full'},503);
     const id=`sea_${randomBytes(16).toString('hex')}`;
     rooms.set(id,{game:new OceanFishingGame(),clients:new Map(),lastActive:Date.now()});
-    c.header('Cache-Control','no-store');return c.json({id},201);
+    c.header('Cache-Control','no-store');return c.json({id,host:accessHost(c.req.url)},201);
   });
   const upgrade=(request:IncomingMessage,socket:Duplex,head:Buffer):boolean=>{
     const url=new URL(request.url??'/','http://localhost');if(url.pathname!=='/ocean-ws')return false;
