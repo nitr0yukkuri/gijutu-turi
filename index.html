@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#172d3c" />
+  <meta name="description" content="静かな海に、ひと振り。スマホが釣り竿になる、技術釣り。" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23172d3c'/%3E%3Cpath d='M20 5v16a6 6 0 0 1-12 0v-4l4 4' fill='none' stroke='%23d7e6e7' stroke-width='1.5'/%3E%3C/svg%3E" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="stylesheet" href="./ocean.css" />
+  <title>技術釣り — 静かな海に、ひと振り。</title>
+</head>
+<body>
+  <main id="sea" aria-label="技術釣りの海">
+    <div id="ocean" role="img" aria-label="空の光が映る、穏やかな夕暮れの海"></div>
+    <div class="edge-shade" aria-hidden="true"></div>
+    <header class="masthead chrome">
+      <a class="wordmark" href="./" aria-label="技術釣りの海へ"><svg viewBox="0 0 32 42" aria-hidden="true"><circle cx="21" cy="6" r="3.5"/><path d="M21 10v18a9 9 0 0 1-18 0v-7l5 5"/></svg><span>技術釣り<small>GIJUTU TURI</small></span></a>
+      <div class="top-actions">
+        <span id="connection-status" class="connection-status" hidden><i></i><span>スマホ接続中</span></span>
+        <button id="sound-toggle" class="quiet-button" aria-pressed="false" aria-label="音をオンにする"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h4l5-4v12l-5-4H4z"/><path id="sound-wave" d="m17 9 5 6m0-6-5 6"/></svg></button>
+        <button id="view-toggle" class="quiet-button" aria-label="景色だけを見る" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-6 10-6 10 6-4 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg></button>
+      </div>
+    </header>
+    <div class="cast-feedback" aria-live="polite" aria-atomic="true"><span id="cast-status"></span><small id="cast-detail"></small></div>
+    <div id="cast-reticle" aria-hidden="true"></div>
+    <section id="fight-ui" class="fight-ui" hidden aria-label="魚との駆け引き">
+      <p id="fight-cue" role="status">いま、合わせる</p>
+      <div class="tension-track" role="meter" aria-label="糸の張り" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="tension-fill"></span><i></i></div>
+      <p id="fight-distance" class="fight-distance"></p>
+      <button id="fight-button" class="fight-button">合わせる</button><small id="fight-guide">SPACE / 小さく引く</small>
+    </section>
+    <section id="catch-ui" class="catch-ui" hidden aria-live="polite"><p>NEW ENCOUNTER</p><h1>Go<span>魚</span></h1><p>ひとつの光が、群れになる。</p><button id="catch-again" class="primary-button">もう一度、海へ</button></section>
+    <section id="escape-ui" class="escape-ui" hidden aria-live="polite"><h2 id="escape-title">逃げられた。</h2><p id="escape-hint"></p><button id="escape-again" class="primary-button">もう一度、投げる</button></section>
+    <div class="bottom-shade" aria-hidden="true"></div>
+    <footer class="shore-controls chrome">
+      <button class="shore-link" data-dialog="help"><span class="help-mark">?</span> あそびかた</button>
+      <div class="entry-actions">
+        <button id="connect-button" class="connect-button"><svg viewBox="0 0 20 24" aria-hidden="true"><rect x="4" y="2" width="12" height="20" rx="2"/><path d="M8 18h4"/></svg><span>スマホで釣る</span><span class="entry-arrow" aria-hidden="true">↗</span></button>
+        <button id="cast-button" class="cast-button" aria-label="押してためて、離して投げる"><span id="cast-button-label">ここで投げてみる</span><span class="key-hint" aria-hidden="true">SPACE</span></button>
+        <span class="cast-charge" aria-hidden="true"><span id="charge-fill"></span></span>
+      </div>
+      <button class="shore-link" data-dialog="collection"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v15M3 4c4-1 7 0 9 2 2-2 5-3 9-2v14c-4-1-7 0-9 2-2-2-5-3-9-2Z"/></svg> 図鑑</button>
+    </footer>
+    <button id="restore-ui" hidden>操作を表示</button>
+    <p id="render-notice" class="render-notice" role="status" hidden></p>
+  </main>
+  <section id="phone" class="phone" hidden aria-label="釣り竿コントローラー">
+    <a class="phone-brand" href="./">技術釣り</a><span id="phone-connection" class="phone-connection">海に接続しています</span>
+    <div class="phone-instruction"><p id="phone-kicker">YOUR FISHING ROD</p><h1 id="phone-title">海に向けて、<br>ひと振り。</h1><p id="phone-hint">スマホをしっかり持ってください。</p></div>
+    <div class="rod-symbol" aria-hidden="true"><svg viewBox="0 0 160 230"><path d="M48 220 93 32 Q101 14 113 18"/><path class="rod-thread" d="M113 18q22 112-12 164"/><circle cx="101" cy="185" r="4"/><path d="m85 51 15 4m-19 11 16 4m-30 53 16 4"/></svg></div>
+    <div id="phone-tension" class="phone-tension" hidden><div class="tension-track" role="meter" aria-label="糸の張り" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="phone-tension-fill"></span><i></i></div><p id="phone-fight-cue"></p></div>
+    <button id="sensor-button" class="primary-button">釣り竿を有効にする</button><button id="phone-cast" class="phone-cast">タッチで投げる</button><p id="sensor-status" class="sensor-status" role="status">小さな動きで大丈夫です。</p>
+  </section>
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <button class="close-dialog quiet-button" aria-label="閉じる">×</button><p class="eyebrow">HOW TO FISH</p><h2 id="help-title">静かな海に、ひと振り。</h2>
+    <ol class="instructions"><li><span>01</span><div><strong>海へ、投げる。</strong><p>スマホを小さく振るか、Spaceを押して離します。PCだけでも遊べます。</p></div></li><li><span>02</span><div><strong>アタリが来たら、合わせる。</strong><p>ウキが沈んだら、ボタン・Space、またはスマホを小さく引きます。</p></div></li><li><span>03</span><div><strong>巻く、緩める。</strong><p>ボタンかRを押している間、巻きます。赤くなる前に離して緩め、青い間に巻きましょう。緩めすぎても逃げます。</p></div></li></ol>
+    <p class="fine-print">スマホはしっかり持って、小さい動きで。リールはタッチ操作です。キーボードではSpaceで合わせ、Rで巻きます。</p>
+  </dialog>
+  <dialog id="connect-dialog" aria-labelledby="connect-title">
+    <button class="close-dialog quiet-button" aria-label="閉じる">×</button><p class="eyebrow">CONNECT YOUR PHONE</p><h2 id="connect-title">手の中に、釣り竿を。</h2><p id="pairing-description">同じ海をスマホから操作できます。</p>
+    <label class="link-label" for="controller-url">コントローラーのURL</label><div class="copy-link"><input id="controller-url" readonly aria-label="コントローラーのURL"/><button id="copy-link" aria-label="URLをコピー">コピー</button></div>
+    <a id="controller-link" class="primary-button" target="_blank" rel="noopener">コントローラーを開く ↗</a><p id="pairing-note" class="fine-print"></p><p id="pairing-status" class="pairing-status" role="status">接続を待っています</p>
+  </dialog>
+  <dialog id="collection-dialog" aria-labelledby="collection-title">
+    <button class="close-dialog quiet-button" aria-label="閉じる">×</button><p class="eyebrow" id="collection-count">COLLECTION · 00</p><h2 id="collection-title">まだ、出会っていない。</h2><div id="collection-symbol" class="unknown-species" aria-hidden="true"><span>?</span></div><p id="collection-description">この海にいるものの名前は、<br>釣り上げたときにわかります。</p><a id="collection-view" href="./go-fish.html" class="primary-button" hidden>Go魚を眺める</a>
+  </dialog>
+  <div id="toast" class="toast" role="status"></div><noscript><p class="render-notice">この海を動かすにはJavaScriptを有効にしてください。</p></noscript>
+  <script type="module" src="./ocean-app.js"></script>
+</body>
+</html>
