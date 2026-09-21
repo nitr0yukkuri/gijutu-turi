@@ -1,7 +1,8 @@
+// @ts-nocheck -- executable geometry probe; runtime assertions remain the contract.
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three.module.js';
-import { createDockerWhale, whaleSection } from '../docker-whale.js';
-import { createGoFish } from '../go-fish.js';
+import { createDockerWhale, whaleSection } from '../src/rendering/docker-whale.ts';
+import { createGoFish } from '../src/rendering/go-fish.ts';
 
 const go=createGoFish({detail:'low'}),goSize=new THREE.Box3().setFromObject(go.group).getSize(new THREE.Vector3());go.dispose();
 for(const detail of ['high','low']){

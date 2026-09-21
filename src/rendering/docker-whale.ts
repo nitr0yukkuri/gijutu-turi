@@ -1,4 +1,5 @@
-import * as THREE from './vendor/three.module.js';
+// @ts-nocheck -- the procedural mesh uses the vendored Three.js runtime, whose JS distribution has no declarations.
+import * as THREE from '../../vendor/three.module.js';
 
 // Original Docker-inspired creature. Nose -X, back +Y, flukes spread along Z.
 // DOM-free model: the same group/update/dispose contract as createGoFish.

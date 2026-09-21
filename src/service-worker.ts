@@ -1,12 +1,13 @@
-const CACHE_NAME = "gijutu-turi-ocean-v4-fishing";
+// @ts-nocheck -- service-worker globals require a dedicated worker tsconfig; runtime code remains TypeScript.
+const CACHE_NAME = "gijutu-turi-ocean-v6-typescript";
 const BASE_URL = new URL("./", self.registration.scope);
 const PRECACHE_PATHS = [
   "",
   "index.html",
   "ocean-app.js",
   "ocean.css",
-  "ocean-scene.js",
-  "go-fish.js",
+  "go-fish.html",
+  "docker-whale.html",
   "vendor/three.module.js",
   "vendor/three.core.js",
   "manifest.webmanifest",

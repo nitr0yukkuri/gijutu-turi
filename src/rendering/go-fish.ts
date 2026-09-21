@@ -1,4 +1,5 @@
-import * as THREE from './vendor/three.module.js';
+// @ts-nocheck -- the procedural mesh uses the vendored Three.js runtime, whose JS distribution has no declarations.
+import * as THREE from '../../vendor/three.module.js';
 
 // Original procedural model. See docs/go-fish-design.md for study references.
 // Local axes: nose = -X, dorsal = +Y, left flank = +Z. No browser dependency.
@@ -60,20 +61,22 @@ function makeBodyGeometry(detail) {
 // membranes add a small delayed flutter instead of rotating rigid triangles.
 const deformation = `
 uniform float uSwimTime;
+uniform float uSwimFrequency;
 uniform float uSwimPower;
 uniform float uGlow;
+float swimPhase() { return uSwimTime * uSwimFrequency; }
 float bendZ(float x) {
   float s = clamp((x + 1.45) / 4.8, 0.0, 1.0);
-  return sin(s * 6.6 - uSwimTime * 3.5) * s * s * (0.18 + uSwimPower * 0.43);
+  return sin(s * 6.6 - swimPhase()) * s * s * (0.18 + uSwimPower * 0.43);
 }
 vec3 swimPosition(vec3 p, float fin) {
   p.z += bendZ(p.x);
-  p.z += sin(p.x * 3.0 + p.y * 2.1 - uSwimTime * 3.5) * fin * 0.07;
+  p.z += sin(p.x * 3.0 + p.y * 2.1 - swimPhase()) * fin * 0.07;
   return p;
 }
 vec3 swimNormal(vec3 p, vec3 n, float fin) {
   float slope = (bendZ(p.x + .003) - bendZ(p.x - .003)) / .006;
-  slope += cos(p.x * 3.0 + p.y * 2.1 - uSwimTime * 3.5) * fin * .21;
+  slope += cos(p.x * 3.0 + p.y * 2.1 - swimPhase()) * fin * .21;
   vec3 deformed = vec3(n.x - slope * n.z, n.y, n.z);
   return deformed / max(length(deformed), .00001);
 }`;
@@ -84,7 +87,7 @@ function animateMaterial(material, uniforms, mode = 'plain') {
     shader.vertexShader = deformation + '\nattribute float aFin; varying vec2 vFishUv; varying vec3 vFishLocal;\n' + shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nobjectNormal = swimNormal(position, objectNormal, aFin);');
     shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFishUv = uv; vFishLocal = position; transformed = swimPosition(position, aFin);');
-    shader.fragmentShader = 'uniform float uSwimTime; uniform float uGlow; varying vec2 vFishUv; varying vec3 vFishLocal;\n' + shader.fragmentShader;
+    shader.fragmentShader = 'uniform float uSwimTime; uniform float uSwimFrequency; uniform float uGlow; float swimPhase() { return uSwimTime * uSwimFrequency; } varying vec2 vFishUv; varying vec3 vFishLocal;\n' + shader.fragmentShader;
     if (mode === 'body') {
       shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `
         #include <color_fragment>
@@ -126,7 +129,7 @@ function animateMaterial(material, uniforms, mode = 'plain') {
         normal = normalize(normal + (sx*dFdx(scaleDistance) + sy*dFdy(scaleDistance)) * scaleMask * .18);
       `);
     }
-    if (mode === 'light') shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= uGlow * (.8 + .2 * sin(uSwimTime * 3.2 - vFishLocal.x * 7.0));');
+    if (mode === 'light') shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= uGlow * (.8 + .2 * sin(swimPhase() * .91 - vFishLocal.x * 7.0));');
   };
   material.customProgramCacheKey = () => 'go-fish-v1-' + mode;
   return material;
@@ -194,7 +197,7 @@ function finMaterial(uniforms, rays) {
 
 export function createGoFish({ detail = 'high', phase = 0 } = {}) {
   const group = new THREE.Group(); group.name = 'Go魚';
-  const uniforms = { uSwimTime: { value: phase }, uSwimPower: { value: .48 }, uGlow: { value: 1 } };
+  const uniforms = { uSwimTime: { value: phase }, uSwimFrequency: { value: 3.5 }, uSwimPower: { value: .48 }, uGlow: { value: 1 } };
   const low = detail === 'low', geometries = new Set(), materials = new Set();
   function add(geometry, material, name, fin = 0) {
     if (!geometry.attributes.aFin) geometry.setAttribute('aFin', new THREE.Float32BufferAttribute(new Float32Array(geometry.attributes.position.count).fill(fin), 1));
@@ -284,7 +287,13 @@ export function createGoFish({ detail = 'high', phase = 0 } = {}) {
   let disposed = false;
   return {
     group, body, fins,
-    update(time, {power=.48, glow=1}={}) { uniforms.uSwimTime.value=time+phase; uniforms.uSwimPower.value=clamp(power,0,1); uniforms.uGlow.value=glow*(.96+.04*Math.sin(time*1.7+phase)); },
+    update(time, {power=.48, glow=1, bodyPhase, bodyFrequency}={}) {
+      const synced=Number.isFinite(bodyPhase)&&Number.isFinite(bodyFrequency)&&bodyFrequency>0;
+      uniforms.uSwimTime.value=synced?bodyPhase/(bodyFrequency*TAU):time+phase;
+      uniforms.uSwimFrequency.value=synced?bodyFrequency*TAU:3.5;
+      uniforms.uSwimPower.value=clamp(power,0,1);
+      uniforms.uGlow.value=glow*(.96+.04*Math.sin((synced?bodyPhase:time*3.5+phase)*.49));
+    },
     get stats() { return { meshes:group.children.length, triangles:[...geometries].reduce((n,g)=>n+(g.index?g.index.count:g.attributes.position.count)/3,0), materials:materials.size }; },
     dispose() { if(disposed)return;disposed=true;for(const g of geometries)g.dispose();for(const m of materials)m.dispose();group.clear(); },
   };
