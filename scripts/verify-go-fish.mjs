@@ -1,6 +1,5 @@
-// @ts-nocheck -- executable geometry probe; runtime assertions remain the contract.
 import assert from 'node:assert/strict';
-import { createGoFish, bodySection } from '../src/rendering/go-fish.ts';
+import { createGoFish, bodySection } from '../go-fish.js';
 
 for (const detail of ['high', 'low']) {
   const fish=createGoFish({detail});
