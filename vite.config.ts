@@ -1,49 +1,28 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
-import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 
-const backendPort = process.env.BACKEND_PORT ?? (process.env.PORT === "8788" ? "8787" : process.env.PORT ?? "8787");
-const backendHttp = `http://127.0.0.1:${backendPort}`;
-const backendWs = `ws://127.0.0.1:${backendPort}`;
+const root = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  root: path.resolve(root, "client"),
   plugins: [react()],
   resolve: {
-    alias: {
-      three: resolve(process.cwd(), "vendor/three.module.js"),
-    },
+    // R3F, the procedural fish, and the model preview must share one Three.js
+    // module or Object3D/material identity checks become needlessly fragile.
+    alias: { three: path.resolve(root, "vendor/three.module.js") },
   },
-  base: "./",
-  publicDir: false,
   server: {
-    host: "0.0.0.0",
-    port: Number(process.env.VITE_PORT ?? 8788),
-    strictPort: true,
+    host: "127.0.0.1",
+    port: 5173,
     proxy: {
-      "/api": { target: backendHttp, changeOrigin: true },
-      "/health": { target: backendHttp, changeOrigin: true },
-      "/ocean-ws": { target: backendWs, ws: true },
-      "/ws": { target: backendWs, ws: true },
-      "/manifest.webmanifest": { target: backendHttp },
-      "/service-worker.js": { target: backendHttp },
-      "/assets/gijutu-turi-logo.png": { target: backendHttp },
+      "/api": "http://127.0.0.1:8787",
+      "/ocean-ws": { target: "ws://127.0.0.1:8787", ws: true },
     },
   },
   build: {
-    outDir: "dist/client",
+    outDir: path.resolve(root, "dist/client"),
     emptyOutDir: true,
-    rollupOptions: {
-      input: {
-        main: resolve(process.cwd(), "index.html"),
-        goFish: resolve(process.cwd(), "go-fish.html"),
-        dockerWhale: resolve(process.cwd(), "docker-whale.html"),
-        serviceWorker: resolve(process.cwd(), "src/service-worker.ts"),
-      },
-      output: {
-        entryFileNames: chunk => chunk.name === "main" ? "ocean-app.js" : chunk.name === "serviceWorker" ? "service-worker.js" : "assets/[name]-[hash].js",
-        chunkFileNames: "chunks/[name]-[hash].js",
-        assetFileNames: asset => asset.name?.endsWith(".css") ? "ocean.css" : asset.name?.endsWith(".webmanifest") ? "manifest.webmanifest" : "assets/[name]-[hash][extname]",
-      },
-    },
   },
 });

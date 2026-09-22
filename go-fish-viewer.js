@@ -1,12 +1,11 @@
-// @ts-nocheck -- standalone model viewer DOM and vendored Three.js boundary.
-import * as THREE from '../../vendor/three.module.js';
-import { OrbitControls } from '../../vendor/addons/controls/OrbitControls.js';
-import { EffectComposer } from '../../vendor/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from '../../vendor/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from '../../vendor/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from '../../vendor/addons/postprocessing/OutputPass.js';
-import { RoomEnvironment } from '../../vendor/addons/environments/RoomEnvironment.js';
-import { createGoFish } from '../rendering/go-fish.js';
+import * as THREE from './vendor/three.module.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createGoFish } from './go-fish.js';
 
 const mount = document.querySelector('#fish-model');
 const status = document.querySelector('#viewer-status');

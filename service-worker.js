@@ -1,13 +1,9 @@
-// @ts-nocheck -- service-worker globals require a dedicated worker tsconfig; runtime code remains TypeScript.
-const CACHE_NAME = "gijutu-turi-ocean-v6-typescript";
+const CACHE_NAME = "gijutu-turi-ocean-v7-qr-connect";
 const BASE_URL = new URL("./", self.registration.scope);
 const PRECACHE_PATHS = [
   "",
   "index.html",
-  "ocean-app.js",
-  "ocean.css",
-  "go-fish.html",
-  "docker-whale.html",
+  "go-fish.js",
   "vendor/three.module.js",
   "vendor/three.core.js",
   "manifest.webmanifest",
@@ -39,6 +35,13 @@ self.addEventListener("fetch", (event) => {
   const requestUrl = new URL(event.request.url);
   if (requestUrl.origin !== self.location.origin) return;
   if (requestUrl.pathname.startsWith("/api/") || requestUrl.pathname.endsWith("/ocean-ws")) return;
+  if (requestUrl.pathname.startsWith("/assets/")) {
+    event.respondWith(fetch(event.request).then(response => {
+      if (response.status === 200) event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.put(requestUrl.toString(), response.clone())));
+      return response;
+    }).catch(() => caches.match(requestUrl)));
+    return;
+  }
   const cleanUrl = new URL(requestUrl.pathname, self.location.origin).toString();
   if (!PRECACHE_URLS.includes(cleanUrl)) return;
 
