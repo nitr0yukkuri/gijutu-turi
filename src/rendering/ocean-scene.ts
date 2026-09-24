@@ -323,9 +323,9 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{} }={}) {
     cameraProgress=THREE.MathUtils.damp(cameraProgress,active||escaping?1:0,2,dt);
     const drift=reduced?0:Math.sin(time*.19)*.024;
     camera.position.set(Math.sin(time*.13)*.016,3.35-cameraProgress*.18+drift-portraitBlend*1.6,7-cameraProgress*.6);
-    const followsFish=(state.phase==='fighting'||escaping)&&visibleFish;
-    const focusX=followsFish?THREE.MathUtils.lerp(state.aim*.18,visibleFish.position.x,state.phase==='fighting'?.48:.28):state.aim*.18;
-    const focusZ=followsFish?THREE.MathUtils.lerp(-35,visibleFish.position.z,state.phase==='fighting'?.48:.28):-35;
+    const followsFight=state.phase==='fighting'&&visibleFish;
+    const focusX=followsFight?THREE.MathUtils.lerp(state.aim*.18,visibleFish.position.x,.48):state.aim*.18;
+    const focusZ=(state.phase==='fighting'||escaping)&&visibleFish?THREE.MathUtils.lerp(-35,visibleFish.position.z,state.phase==='fighting'?.48:.28):-35;
     camera.lookAt(focusX, -3.8-cameraProgress*.8, focusZ);
     camera.updateMatrixWorld();
     if(state.phase==='fighting'&&visibleFish)target.set(visibleFish.position.x,0,visibleFish.position.z);
@@ -443,7 +443,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{} }={}) {
         const urgent=state.mode==='surge'||state.mode==='split';
         fightFish.group.position.copy(fishWorldPosition(fish));
         fightFish.group.quaternion.slerp(swimQuaternion,1-Math.exp(-dt*12));
-        fightFish.group.scale.setScalar(.84);
+        fightFish.group.scale.setScalar(state.phase==='fighting'?.84:.66);
         const approaching=state.phase==='waiting'||state.phase==='biting';
         const biteReveal=THREE.MathUtils.clamp(((state.approach||0)-WAIT_APPROACH_FRACTION)/(1-WAIT_APPROACH_FRACTION),0,1);
         displayedWave={...fish.bodyWave};displayedGlow=approaching?THREE.MathUtils.lerp(.04,.65,state.phase==='waiting'?0:biteReveal):escaping?.8:urgent?.8:.65;displayedSwim=fish.swim?{...fish.swim}:null;displayedLoad=cues.load;
