@@ -57,6 +57,7 @@ export type OceanSceneController = {
   setState: (state: OceanState, serverNow?: number) => void;
   setCharge: (amount: number, aim?: number) => void;
   aimScreen: (aim?: number, strength?: number) => { x: number; y: number };
+  setOverlayOpen?: (open: boolean) => void;
   diagnostics?: unknown;
   dispose: () => void;
 };

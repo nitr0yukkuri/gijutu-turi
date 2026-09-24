@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { toDataURL } from "qrcode";
-import { mountCollectionFish } from "../rendering/collection-preview.js";
 import { useOceanRuntime } from "./useOceanRuntime.js";
 import type { Collection, CollectionEntry, OceanPhase } from "./types.js";
 
@@ -13,7 +12,7 @@ const phaseLabels: Record<OceanPhase, string> = {
 const phoneTitles: Record<OceanPhase, ReactNode> = {
   idle: <>海に向けて、<br />ひと振り。</>, casting: <>そのまま、<br />海を見て。</>, waiting: <>静かに、<br />アタリを待つ。</>,
   retrieving: <>もう一度、<br />好きな場所へ。</>, biting: <>いま、<br />合わせる！</>, fighting: <>巻く、<br />緩める。</>,
-  caught: <>釣れた！<br />Go魚</>, escaped: <>また、<br />挑もう。</>,
+  caught: <>釣れた！<br />go fish</>, escaped: <>また、<br />挑もう。</>,
 };
 
 const failureHints: Record<string, [string, string]> = {
@@ -24,7 +23,7 @@ const failureHints: Record<string, [string, string]> = {
 };
 
 const phoneHints: Record<OceanPhase, string> = {
-  idle: "スマホをしっかり持ってください。", casting: "ルアーが飛んでいます。", waiting: "ウキが沈んだら、小さく引くかボタンをタッチ。",
+  idle: "速く振るほど遠くへ。スマホをしっかり持ってください。", casting: "ルアーが飛んでいます。", waiting: "ウキが沈んだら、小さく引くかボタンをタッチ。",
   retrieving: "ルアーを巻き戻しています。", biting: "小さく引く、または下のボタンをタッチ。", fighting: "押して巻く。赤くなる前に離す。",
   caught: "一匹が群れになる、並行処理の魚。", escaped: "もう一度、海に投げてみよう。",
 };
@@ -44,111 +43,83 @@ const dialogClick = (dialog: HTMLDialogElement, event: MouseEvent<HTMLDialogElem
   if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) dialog.close();
 };
 
+const collectionName = (entry: CollectionEntry): string => entry.id === "fish-001" ? "go fish" : entry.name ?? "名前のない魚";
+
 function CollectionModel({ entry }: { entry: CollectionEntry }) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const visible = entry.status === "caught" && entry.modelKey === "go-fish";
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
-    if (!visible || !mountRef.current) return;
-    try {
-      const preview = mountCollectionFish(mountRef.current);
-      return () => preview.dispose?.();
-    } catch {
-      return undefined;
-    }
-  }, [entry.id, entry.modelKey, visible]);
-  return <div id="collection-model" ref={mountRef} hidden={!visible} />;
+    if (!mountRef.current) return;
+    let disposed = false;
+    let preview: { dispose: () => void } | undefined;
+    setFailed(false);
+    void import("../rendering/collection-preview.js").then(({ mountCollectionFish }) => {
+      if (disposed || !mountRef.current) return;
+      try { preview = mountCollectionFish(mountRef.current); }
+      catch { setFailed(true); }
+    }).catch(() => setFailed(true));
+    return () => { disposed = true; preview?.dispose(); };
+  }, [entry.id, entry.modelKey]);
+  return <>
+    <div id="collection-model" ref={mountRef} hidden={failed} role="img" aria-label={`${collectionName(entry)}の3Dモデル。ドラッグまたは左右の矢印キーで回転。`} tabIndex={failed ? -1 : 0} />
+    {failed && <p className="collection-model-error" role="status">魚の表示を読み込めませんでした。図鑑を開き直してください。</p>}
+  </>;
 }
 
 function CollectionDialog({
-  dialogRef, collection, selectedId, onSelect, onClose,
+  dialogRef, collection, selectedId, isOpen, onSelect, onClose, onClosed,
 }: {
   dialogRef: RefObject<HTMLDialogElement | null>;
   collection: Collection;
   selectedId: string;
+  isOpen: boolean;
   onSelect: (id: string) => void;
   onClose: () => void;
+  onClosed: () => void;
 }) {
   const entries = collection.entries ?? [];
   const selected = entries.find(entry => entry.id === selectedId) ?? entries[0];
-  if (!selected) return null;
-  const caught = selected.status === "caught";
-  const preview = selected.status === "preview";
-  const activeTotal = Math.max(1, collection.activeTotal || entries.filter(entry => entry.catalogStatus === "active").length);
-  const registered = collection.registered ?? entries.filter(entry => entry.status === "caught").length;
-  const detailName = caught || (preview && selected.name) ? selected.name : "まだ、出会っていない。";
-  const detailClassification = caught || (preview && selected.classification) ? selected.classification : "この海の記録は、釣り上げたときに開きます。";
-  const detailDescription = caught || (preview && selected.description) ? selected.description : "知らない光が、まだ沖にいる。";
+  const caught = selected?.status === "caught";
+  const preview = selected?.status === "preview";
+  const hasModel = caught && selected?.modelKey === "go-fish";
 
   return (
-    <dialog ref={dialogRef} id="collection-dialog" className="collection-dialog" aria-labelledby="collection-title" onClick={event => dialogClick(event.currentTarget, event)}>
+    <dialog ref={dialogRef} id="collection-dialog" className="collection-dialog" aria-labelledby="collection-title" onClose={onClosed} onClick={event => dialogClick(event.currentTarget, event)}>
       <div className="collection-shell">
         <header className="collection-header">
-          <div>
+          <div className="collection-heading">
             <h2 id="collection-title">図鑑</h2>
-            <p id="collection-description">この海で出会ったものを、記録しています。</p>
+            {collection.activeTotal > 0 && <span id="collection-count" className="collection-count">発見済み {collection.registered} / {collection.activeTotal}</span>}
           </div>
-          <div className="collection-progress" aria-label="図鑑の進捗">
-            <span id="collection-count">登録 {String(registered).padStart(2, "0")} / {String(activeTotal).padStart(2, "0")}</span>
-            <small id="collection-progress-note">{registered >= activeTotal ? "調査完了" : registered ? "次の標本を探す" : "最初の標本を探す"}</small>
-            <span className="collection-progress-bar"><i id="collection-progress-fill" style={{ width: `${Math.min(100, registered / activeTotal * 100)}%` }} /></span>
-          </div>
-          <button className="close-dialog quiet-button" aria-label="閉じる" onClick={onClose}>×</button>
+          <button className="collection-close" aria-label="図鑑を閉じる" title="海へ戻る" onClick={onClose}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2 14 14M14 2 2 14" /></svg></button>
         </header>
-        <div className="collection-layout">
-          <section className="collection-index" aria-label="標本一覧">
-            <div className="collection-index-heading"><span>SPECIMENS</span><small id="collection-index-note">{String(entries.length).padStart(2, "0")} 標本を収録</small></div>
-            <div id="collection-grid" className="collection-grid">
-              {entries.map(entry => {
-                const entryCaught = entry.status === "caught";
-                const entryPreview = entry.status === "preview";
-                const name = entryCaught || (entryPreview && entry.name) ? entry.name : "???";
-                const caption = entryCaught ? entry.classification || "REGISTERED" : entryPreview ? "調査予定" : "未発見";
-                const selectedCard = entry.id === selectedId;
-                return (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    className="collection-card"
-                    data-state={entry.status}
-                    data-selected={String(selectedCard)}
-                    aria-label={`${name}、${caption}`}
-                    aria-pressed={selectedCard}
-                    onClick={() => onSelect(entry.id)}
-                  >
-                    <span className="collection-card-top"><b>#{String(entry.number).padStart(2, "0")}</b><small>{entryCaught ? "REGISTERED" : entryPreview ? "PENDING" : "UNKNOWN"}</small></span>
-                    <span className={`collection-card-art ${entryCaught ? "is-caught" : entryPreview ? "is-preview" : "is-unknown"}`}><i>{entryCaught ? "Go" : entryPreview ? "…" : "?"}</i></span>
-                    <strong>{name}</strong><small>{caption}</small>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-          <section className="collection-detail" aria-live="polite">
-            <div id="collection-detail-status" className="collection-detail-status" data-state={selected.status}>{caught ? "REGISTERED SPECIMEN" : preview ? "RESEARCH PENDING" : "UNKNOWN SPECIES"}</div>
-            <div id="collection-preview" className={`collection-preview ${caught ? "has-model" : preview ? "is-preview" : "is-unknown"}`}>
-              <CollectionModel entry={selected} />
-              <div className="collection-silhouette" hidden={caught}><span>?</span></div>
-            </div>
-            <div className="collection-detail-copy">
-              <p id="collection-detail-number" className="eyebrow">SPECIMEN {String(selected.number).padStart(2, "0")}</p>
-              <h3 id="collection-detail-name">{detailName}</h3>
-              <p id="collection-detail-classification" className="collection-classification">{detailClassification}</p>
-              <p id="collection-detail-description" className="collection-detail-description">{detailDescription}</p>
-              <dl className="collection-facts">
-                <div><dt>生息域</dt><dd id="collection-detail-habitat">{caught || (preview && selected.habitat) ? selected.habitat : "—"}</dd></div>
-                <div><dt>レア度</dt><dd id="collection-detail-rarity">{caught || (preview && selected.rarity) ? selected.rarity : "—"}</dd></div>
-                <div><dt>釣果</dt><dd id="collection-detail-catches">{caught ? `${selected.catches} 回` : "—"}</dd></div>
-              </dl>
-            </div>
-            <p id="collection-detail-hint" className="collection-detail-hint">{caught ? "ドラッグで回転 · 釣り上げた記録がここに残ります。" : preview ? "この標本は、次の調査で開く予定です。" : "海へ投げて、最初の標本を見つけよう。"}</p>
-          </section>
-        </div>
-        <footer className="collection-footer"><span>SPECIMEN LOG · 技術釣り</span></footer>
+        {entries.length > 1 && (
+          <nav className="collection-picker" aria-label="魚を選ぶ">
+            {entries.map(entry => (
+              <button key={entry.id} type="button" aria-current={entry.id === selected?.id ? "true" : undefined} onClick={() => onSelect(entry.id)}>
+                <span aria-hidden="true">{String(entry.number).padStart(2, "0")}</span>
+                {entry.status === "caught" ? collectionName(entry) : entry.status === "preview" ? "調査予定" : "未発見"}
+              </button>
+            ))}
+          </nav>
+        )}
+        <section className="collection-detail" aria-labelledby="collection-detail-name">
+          <div id="collection-preview" className="collection-preview">
+            {hasModel && isOpen && selected && <CollectionModel key={selected.id} entry={selected} />}
+            {!hasModel && <div className="collection-silhouette" aria-hidden="true">?</div>}
+          </div>
+          <div className="collection-detail-copy" aria-live="polite">
+            <h3 id="collection-detail-name">{caught && selected ? collectionName(selected) : preview ? "これから出会う魚" : "まだ見ぬ魚"}</h3>
+            <p id="collection-detail-description" className="collection-detail-description">
+              {caught && selected ? selected.id === "fish-001" ? "群れに分かれ、同時に糸を引く魚。Goの並行処理を表しています。" : selected.description : preview ? "この魚は、まだ釣ることができません。" : "釣り上げた魚が、ここに残ります。"}
+            </p>
+            {caught && selected && <p className="collection-catches">{selected.catches} 回釣り上げた</p>}
+          </div>
+        </section>
       </div>
     </dialog>
   );
 }
-
 export function App() {
   const params = new URLSearchParams(window.location.search);
   const controllerId = params.get("controller");
@@ -161,23 +132,20 @@ export function App() {
   const helpDialogRef = useRef<HTMLDialogElement>(null);
   const connectDialogRef = useRef<HTMLDialogElement>(null);
   const collectionDialogRef = useRef<HTMLDialogElement>(null);
+  const [collectionOpen, setCollectionOpen] = useState(false);
   const [sceneryOnly, setSceneryOnly] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
-  const runtime = useOceanRuntime({ isPhone, controllerId, oceanMountRef });
-  const { state, online, controllers, displayConnected, renderFailed, reelHeld, feedback, toast, chargeProgress, reticle, soundEnabled, collection, selectedCollectionId, controllerUrl, controllerHost, pairingStatus, sensorStatus, sensorButtonLabel, sensorsOn } = runtime;
+  const runtime = useOceanRuntime({ isPhone, controllerId, oceanMountRef, collectionOpen });
+  const { state, online, controllers, displayConnected, renderFailed, reelHeld, feedback, toast, chargeProgress, reticle, soundEnabled, collection, selectedCollectionId, controllerUrl, sensorStatus, sensorButtonLabel, sensorsOn } = runtime;
   const { activate, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, startReel, stopReel, toggleSensor, toggleSound, showToast } = runtime.actions;
   const fighting = state.phase === "fighting";
   const biting = state.phase === "biting";
+  const distanceVisible = ["casting", "waiting", "biting", "fighting"].includes(state.phase);
+  const distanceMeters = Math.max(0, state.distance || 0).toFixed(1);
   const tension = Math.round((state.tension || 0) * 100);
   const tensionColor = tension > 80 ? "#ef9c80" : tension < 12 ? "#a9bfcb" : "#a6e4e7";
   const phoneCastLabel = state.phase === "idle" ? "タッチで投げる" : fighting ? (reelHeld ? "巻いている — 離すと緩む" : "押して巻く / 離して緩める") : phaseLabels[state.phase];
-  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
-  const pairingNote = loopback
-    ? controllerHost && controllerHost !== window.location.hostname
-      ? `同じWi-FiのスマホでQRを読み取ってください（${controllerHost}）。タッチ操作はHTTPでも使えます。`
-      : "同じWi-Fiのスマホで読み取ってください。読み取れない場合は、PCとスマホを同じネットワークに接続してください。"
-    : "このURLをスマホで開いて、釣り竿を有効にしてください。";
+  const isLocalDevelopment = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
 
   useEffect(() => { document.title = isPhone ? "釣り竿 — 技術釣り" : "技術釣り — 静かな海に、ひと振り。"; }, [isPhone]);
   useEffect(() => { document.body.dataset.phase = state.phase; }, [state.phase]);
@@ -193,22 +161,19 @@ export function App() {
     for (const dialog of [helpDialogRef.current, connectDialogRef.current, collectionDialogRef.current]) if (dialog?.open) dialog.close();
   }, [sceneryOnly, state.phase]);
 
-  const openDialog = (dialog: RefObject<HTMLDialogElement | null>) => { cancelCharge(); if (dialog.current && !dialog.current.open) dialog.current.showModal(); };
+  const openDialog = (dialog: RefObject<HTMLDialogElement | null>) => {
+    cancelCharge();
+    if (dialog.current && !dialog.current.open) {
+      dialog.current.showModal();
+      if (dialog === collectionDialogRef) setCollectionOpen(true);
+    }
+  };
   const closeDialog = (dialog: RefObject<HTMLDialogElement | null>) => { if (dialog.current?.open) dialog.current.close(); };
   const showScenery = (hide: boolean) => {
     setSceneryOnly(hide);
     if (hide) window.setTimeout(() => restoreRef.current?.focus(), 0);
     else window.setTimeout(() => viewToggleRef.current?.focus(), 0);
   };
-  const copyLink = async () => {
-    try { await navigator.clipboard.writeText(controllerUrl); setCopied(true); window.setTimeout(() => setCopied(false), 1800); }
-    catch {
-      const input = document.getElementById("controller-url") as HTMLInputElement | null;
-      input?.select();
-      showToast("URLを選択しました。コピーして開いてください。");
-    }
-  };
-
   useEffect(() => {
     let active = true;
     if (!controllerUrl) { setQrDataUrl(""); return () => { active = false; }; }
@@ -234,14 +199,14 @@ export function App() {
           </div>
         </header>
         <div className={`cast-feedback${feedback.faded ? " is-faded" : ""}`} aria-live="polite" aria-atomic="true"><span id="cast-status">{feedback.text}</span><small id="cast-detail">{feedback.detail}</small></div>
+        <output id="distance-meter" className="distance-meter" hidden={!distanceVisible} aria-label={fighting ? "魚までの距離" : "距離"}>{distanceMeters}m</output>
         <div id="cast-reticle" aria-hidden="true" style={reticle ? { left: reticle.x, top: reticle.y } : undefined} />
         <section id="fight-ui" className="fight-ui" hidden={!fighting && !biting} aria-label="魚との駆け引き" data-tension={tension} data-mode={state.mode}>
           <p id="fight-cue" role="status">{cueFor(state.phase, tension, state.mode)}</p>
           <div className="tension-track" role="meter" aria-label="糸の張り" aria-valuemin={0} aria-valuemax={100} aria-valuenow={tension} aria-valuetext={`${tension}%`} style={{ "--tension-color": tensionColor } as CSSProperties}><span id="tension-fill" style={{ width: `${tension}%` }} /><i /></div>
-          <p id="fight-distance" className="fight-distance">{(state.distance || 0) < 6 ? "もうすぐ、手前へ" : (state.distance || 0) < 14 ? "近づいてきた" : "まだ、沖にいる"}</p>
           <button id="fight-button" className={`fight-button${reelHeld ? " is-held" : ""}`} disabled={!online || renderFailed} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>{biting ? "合わせる" : reelHeld ? "巻いている — 離すと緩む" : "押して巻く"}</button><small id="fight-guide">{biting ? "SPACE / スマホを小さく引く" : "R 長押しで巻く / 離すと緩む"}</small>
         </section>
-        <section id="catch-ui" className="catch-ui" hidden={state.phase !== "caught"} aria-live="polite"><p>NEW ENCOUNTER</p><h1>Go<span>魚</span></h1><p>ひとつの光が、群れになる。</p><button id="catch-again" className="primary-button" disabled={!online} onClick={() => activate()}>もう一度、海へ</button></section>
+        <section id="catch-ui" className="catch-ui" hidden={state.phase !== "caught"} aria-live="polite"><p>NEW ENCOUNTER</p><h1>go fish</h1><p>ひとつの光が、群れになる。</p><button id="catch-again" className="primary-button" disabled={!online} onClick={() => activate()}>もう一度、海へ</button></section>
         <section id="escape-ui" className="escape-ui" hidden={state.phase !== "escaped"} aria-live="polite"><h2>{runtime.state.reason ? (failureHints[runtime.state.reason]?.[0] ?? "逃げられた。") : "逃げられた。"}</h2><p>{runtime.state.reason ? (failureHints[runtime.state.reason]?.[1] ?? "") : ""}</p><button id="escape-again" className="primary-button" disabled={!online} onClick={() => activate()}>もう一度、投げる</button></section>
         <div className="bottom-shade" aria-hidden="true" />
         <footer ref={shoreControlsRef} className="shore-controls chrome">
@@ -260,22 +225,20 @@ export function App() {
         <a className="phone-brand" href="./">技術釣り</a><span id="phone-connection" className="phone-connection">{displayConnected ? "海につながっています" : online ? "海の画面が閉じています" : "海との接続が切れています"}</span>
         <div className="phone-instruction"><p id="phone-kicker">YOUR FISHING ROD</p><h1 id="phone-title">{phoneTitles[state.phase]}</h1><p id="phone-hint">{phoneHints[state.phase]}</p></div>
         <div className="rod-symbol" aria-hidden="true"><svg viewBox="0 0 160 230"><path d="M48 220 93 32 Q101 14 113 18" /><path className="rod-thread" d="M113 18q22 112-12 164" /><circle cx="101" cy="185" r="4" /><path d="m85 51 15 4m-19 11 16 4m-30 53 16 4" /></svg></div>
-        <div id="phone-tension" className="phone-tension" hidden={!fighting}><div className="tension-track" role="meter" aria-label="糸の張り" aria-valuemin={0} aria-valuemax={100} aria-valuenow={tension} aria-valuetext={`${tension}%`} style={{ "--tension-color": tensionColor } as CSSProperties}><span id="phone-tension-fill" style={{ width: `${tension}%` }} /><i /></div><p id="phone-fight-cue">{cueFor(state.phase, tension, state.mode)}</p></div>
+        <div id="phone-tension" className="phone-tension" hidden={!fighting}><output id="phone-distance" className="phone-distance" aria-label="魚までの距離">{distanceMeters}m</output><div className="tension-track" role="meter" aria-label="糸の張り" aria-valuemin={0} aria-valuemax={100} aria-valuenow={tension} aria-valuetext={`${tension}%`} style={{ "--tension-color": tensionColor } as CSSProperties}><span id="phone-tension-fill" style={{ width: `${tension}%` }} /><i /></div><p id="phone-fight-cue">{cueFor(state.phase, tension, state.mode)}</p></div>
         <button id="sensor-button" className="primary-button" onClick={() => void toggleSensor()}>{sensorButtonLabel}</button><button id="phone-cast" className={`phone-cast${reelHeld ? " is-held" : ""}`} disabled={!online || !displayConnected || ["casting", "retrieving"].includes(state.phase)} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>{phoneCastLabel}</button><p id="sensor-status" className="sensor-status" role="status">{sensorStatus}</p>
       </section>
       <dialog ref={helpDialogRef} id="help-dialog" aria-labelledby="help-title" onClick={event => dialogClick(event.currentTarget, event)}>
         <button className="close-dialog quiet-button" aria-label="閉じる" onClick={() => closeDialog(helpDialogRef)}>×</button><p className="eyebrow">HOW TO FISH</p><h2 id="help-title">静かな海に、ひと振り。</h2>
-        <ol className="instructions"><li><span>01</span><div><strong>海へ、投げる。</strong><p>スマホを小さく振るか、Spaceを押して離します。PCだけでも遊べます。</p></div></li><li><span>02</span><div><strong>アタリが来たら、合わせる。</strong><p>ウキが沈んだら、ボタン・Space、またはスマホを小さく引きます。</p></div></li><li><span>03</span><div><strong>巻く、緩める。</strong><p>ボタンかRを押している間、巻きます。赤くなる前に離して緩め、青い間に巻きましょう。緩めすぎても逃げます。</p></div></li></ol>
-        <p className="fine-print">スマホはしっかり持って、小さい動きで。リールはタッチ操作です。キーボードではSpaceで合わせ、Rで巻きます。</p>
+        <ol className="instructions"><li><span>01</span><div><strong>海へ、投げる。</strong><p>スマホは速く振るほど遠くへ飛びます。タッチやSpaceでも投げられます。</p></div></li><li><span>02</span><div><strong>アタリが来たら、合わせる。</strong><p>ウキが沈んだら、ボタン・Space、またはスマホを小さく引きます。</p></div></li><li><span>03</span><div><strong>巻く、緩める。</strong><p>ボタンかRを押している間、巻きます。赤くなる前に離して緩め、青い間に巻きましょう。緩めすぎても逃げます。</p></div></li></ol>
+        <p className="fine-print">スマホはしっかり持ち、手首の小さな動きで。リールはタッチ操作です。キーボードではSpaceで合わせ、Rで巻きます。</p>
       </dialog>
-      <dialog ref={connectDialogRef} id="connect-dialog" aria-labelledby="connect-title" onClick={event => dialogClick(event.currentTarget, event)}>
-        <button className="close-dialog quiet-button" aria-label="閉じる" onClick={() => closeDialog(connectDialogRef)}>×</button><p className="eyebrow">CONNECT YOUR PHONE</p><h2 id="connect-title">手の中に、釣り竿を。</h2><p id="pairing-description">スマホのカメラでQRコードを読み取ってください。</p>
+      <dialog ref={connectDialogRef} id="connect-dialog" aria-label="スマホを接続" aria-describedby="pairing-description" onClick={event => dialogClick(event.currentTarget, event)}>
+        <button className="close-dialog quiet-button" aria-label="閉じる" onClick={() => closeDialog(connectDialogRef)}>×</button><p id="pairing-description">QRコードを読み取ってください。</p>
         <div className={`pairing-qr${qrDataUrl ? "" : " is-loading"}`} aria-live="polite">{qrDataUrl ? <img id="controller-qr" src={qrDataUrl} alt="スマホ接続用QRコード" /> : "QRコードを準備中…"}</div>
-        <p className="pairing-qr-hint">読み取り後、この海専用の釣り竿画面が開きます。</p>
-        <label className="link-label" htmlFor="controller-url">コントローラーのURL</label><div className="copy-link"><input id="controller-url" readOnly aria-label="コントローラーのURL" value={controllerUrl} /><button id="copy-link" aria-label="URLをコピー" onClick={() => void copyLink()}>{copied ? "コピー済み" : "コピー"}</button></div>
-        <a id="controller-link" className="primary-button" href={controllerUrl || undefined} target="_blank" rel="noopener">{loopback ? "別タブでコントローラーを試す ↗" : "コントローラーを開く ↗"}</a><p id="pairing-note" className="fine-print">{pairingNote}</p><p id="pairing-status" className="pairing-status" role="status">{pairingStatus}</p>
+        {isLocalDevelopment && <p id="pairing-note" className="fine-print">PCとスマホを同じWi-Fiに接続してください。</p>}
       </dialog>
-      <CollectionDialog dialogRef={collectionDialogRef} collection={collection} selectedId={selectedCollectionId} onSelect={runtime.setSelectedCollectionId} onClose={() => closeDialog(collectionDialogRef)} />
+      <CollectionDialog dialogRef={collectionDialogRef} collection={collection} selectedId={selectedCollectionId} isOpen={collectionOpen} onSelect={runtime.setSelectedCollectionId} onClose={() => closeDialog(collectionDialogRef)} onClosed={() => setCollectionOpen(false)} />
       <div id="toast" className={`toast${toast ? " visible" : ""}`} role="status">{toast}</div>
       <noscript><p className="render-notice">この海を動かすにはJavaScriptを有効にしてください。</p></noscript>
     </>

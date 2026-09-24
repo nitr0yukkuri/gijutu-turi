@@ -57,9 +57,10 @@ type UseOceanRuntimeOptions = {
   isPhone: boolean;
   controllerId: string | null;
   oceanMountRef: RefObject<HTMLDivElement | null>;
+  collectionOpen: boolean;
 };
 
-export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOceanRuntimeOptions) {
+export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collectionOpen }: UseOceanRuntimeOptions) {
   const [state, setState] = useState<OceanState>(initialState);
   const stateRef = useRef(state);
   const [online, setOnline] = useState(false);
@@ -403,7 +404,6 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
     try {
       const scene = createOcean(oceanMountRef.current, {
         onLand: () => {
-          if (["casting", "waiting"].includes(stateRef.current.phase)) showFeedback("着水", "アタリを待つ", 1900);
           playEffect("land");
         },
         onRenderError: () => setRenderFailed(true),
@@ -415,7 +415,9 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
       console.error("Ocean rendering unavailable", error);
       setRenderFailed(true);
     }
-  }, [isPhone, oceanMountRef, playEffect, showFeedback]);
+  }, [isPhone, oceanMountRef, playEffect]);
+
+  useEffect(() => { sceneRef.current?.setOverlayOpen?.(collectionOpen); }, [collectionOpen]);
 
   useEffect(() => {
     setConnected(false);
