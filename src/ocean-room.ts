@@ -16,8 +16,10 @@ const actionSchema=z.discriminatedUnion('action',[
 
 const isLoopbackHost=(host:string)=>host==='localhost'||host==='127.0.0.1'||host==='[::1]';
 const isPrivateIPv4=(address:string)=>{
-  const [a,b]=address.split('.').map(Number);
-  if (a===undefined||b===undefined) return false;
+  const parts=address.split('.').map(Number);
+  const a=parts[0]??Number.NaN;
+  const b=parts[1]??Number.NaN;
+  if (!Number.isFinite(a)||!Number.isFinite(b)) return false;
   return a===10||a===192&&b===168||a===172&&b>=16&&b<=31;
 };
 const localNetworkHost=()=>{
@@ -31,6 +33,11 @@ const localNetworkHost=()=>{
 const accessHost=(requestUrl:string)=>{
   const url=new URL(requestUrl);
   return isLoopbackHost(url.hostname)?localNetworkHost()??url.hostname:url.hostname;
+};
+const allowedOrigins=()=>new Set((process.env.FRONTEND_ORIGIN??"").split(",").map(origin=>origin.trim()).filter(Boolean));
+export const isAllowedWebSocketOrigin=(origin:string|undefined,requestHost:string|undefined,configured:Set<string>):boolean=>{
+  if(!origin)return true;
+  try{return new URL(origin).host===requestHost||configured.has("*")||configured.has(origin);}catch{return false;}
 };
 
 export function createOceanRooms(app:Hono){
@@ -52,7 +59,7 @@ export function createOceanRooms(app:Hono){
   const upgrade=(request:IncomingMessage,socket:Duplex,head:Buffer):boolean=>{
     const url=new URL(request.url??'/','http://localhost');if(url.pathname!=='/ocean-ws')return false;
     const room=rooms.get(url.searchParams.get('room')??''),role=url.searchParams.get('role');
-    let validOrigin=true;try{validOrigin=!request.headers.origin||new URL(request.headers.origin).host===request.headers.host;}catch{validOrigin=false;}
+    const validOrigin=isAllowedWebSocketOrigin(request.headers.origin,request.headers.host,allowedOrigins());
     if(!room||(role!=='display'&&role!=='controller')||!validOrigin||room.clients.size>=8){socket.destroy();return true;}
     sockets.handleUpgrade(request,socket,head,client=>{
       const entry:Client={role,reelUntil:0,windowAt:Date.now(),messages:0};
