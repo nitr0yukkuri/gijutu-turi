@@ -90,6 +90,8 @@ const publicAssets = new Map([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/index.html", ["index.html", "text/html; charset=utf-8"]],
   ["/ocean.css", ["ocean.css", "text/css"]],
+  ["/ocean2.css", ["ocean2.css", "text/css"]],
+  ["/ocean3.css", ["ocean3.css", "text/css"]],
   ["/ocean-app.js", ["ocean-app.js", "text/javascript"]],
   ["/collection-preview.js", ["src/rendering/collection-preview.ts", "text/javascript"]],
   ["/ocean-scene.js", ["src/rendering/ocean-scene.ts", "text/javascript"]],
@@ -118,7 +120,7 @@ for (const addon of fishAddons) publicAssets.set(`/vendor/addons/${addon}`, [`ve
 for (const [route, asset] of publicAssets) {
   app.get(route, async c => {
     try {
-      const preferred = new Set(["/", "/index.html", "/ocean.css", "/ocean-app.js", "/go-fish.html", "/docker-whale.html", "/service-worker.js"]);
+      const preferred = new Set(["/", "/index.html", "/ocean.css", "/ocean2.css", "/ocean3.css", "/ocean-app.js", "/go-fish.html", "/docker-whale.html", "/service-worker.js", "/manifest.webmanifest"]);
       const candidates = preferred.has(route) ? [`dist/client/${asset[0]}`, asset[0]] : [asset[0]];
       let bytes: Buffer | undefined;
       for (const candidate of candidates) {
@@ -240,15 +242,47 @@ const tickTimer = setInterval(() => {
   }
 }, tickIntervalMs);
 
-const shutdown = (): void => {
-  clearInterval(tickTimer);
-  oceanRooms.close();
-  collectionStore.close();
-  wsServer.close();
-  httpServer.close();
+let shutdownPromise: Promise<void> | null = null;
+
+const closeHttpServer = (): Promise<void> => {
+  if (!httpServer.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const forceClose = setTimeout(() => {
+      (httpServer as typeof httpServer & { closeAllConnections?: () => void }).closeAllConnections?.();
+    }, 8_000);
+    forceClose.unref();
+    httpServer.close(error => {
+      clearTimeout(forceClose);
+      if (error) reject(error);
+      else resolve();
+    });
+  });
 };
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+const shutdown = (): Promise<void> => {
+  if (shutdownPromise) return shutdownPromise;
+  shutdownPromise = (async () => {
+    clearInterval(tickTimer);
+    oceanRooms.close();
+    for (const client of wsServer.clients) client.terminate();
+    await new Promise<void>(resolve => wsServer.close(() => resolve()));
+    await closeHttpServer();
+    collectionStore.close();
+  })();
+  return shutdownPromise;
+};
+
+const handleShutdown = (): void => {
+  void shutdown().then(
+    () => process.exit(0),
+    error => {
+      console.error("Unable to shut down backend cleanly", error);
+      process.exit(1);
+    },
+  );
+};
+
+process.once("SIGINT", handleShutdown);
+process.once("SIGTERM", handleShutdown);
 
 console.log(`技術釣り backend listening on http://${host}:${port}`);

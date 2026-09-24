@@ -1,0 +1,13 @@
+.git
+.gitignore
+.npm-cache
+node_modules
+dist
+data
+.env
+.env.*
+!.env.example
+*.log
+docs
+README.md
+.previewlogs
