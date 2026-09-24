@@ -504,7 +504,14 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
     const pagehide = () => { closingRef.current = true; stopReel(); cancelCharge(); socketRef.current?.close(); sceneRef.current?.dispose(); };
     const pageshow = (event: PageTransitionEvent) => { if (event.persisted) window.location.reload(); };
     window.addEventListener("pagehide", pagehide); window.addEventListener("pageshow", pageshow);
-    if ("serviceWorker" in navigator) void navigator.serviceWorker.register("./service-worker.js").catch(error => console.warn("Offline cache unavailable", error));
+    if ("serviceWorker" in navigator) {
+      const viteMeta = import.meta as ImportMeta & { env?: { DEV?: boolean } };
+      if (viteMeta.env?.DEV) {
+        void navigator.serviceWorker.getRegistrations().then(registrations => Promise.all(registrations.map(registration => registration.unregister())));
+      } else {
+        void navigator.serviceWorker.register("./service-worker.js").catch(error => console.warn("Offline cache unavailable", error));
+      }
+    }
     return () => { window.removeEventListener("pagehide", pagehide); window.removeEventListener("pageshow", pageshow); };
   }, [cancelCharge, stopReel]);
 

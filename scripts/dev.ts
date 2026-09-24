@@ -27,8 +27,15 @@ const stop = (code = 0) => {
 };
 
 for (const child of children) {
+  child.on("error", (error) => {
+    console.error("[dev] child process error", error);
+    if (!stopping) stop(1);
+  });
   child.on("exit", (code) => {
-    if (!stopping && code !== 0) stop(code ?? 1);
+    if (!stopping) {
+      console.error(`[dev] child process exited (code=${code ?? "null"})`);
+      stop(code ?? 1);
+    }
   });
 }
 process.on("SIGINT", () => stop());
