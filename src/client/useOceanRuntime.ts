@@ -3,6 +3,9 @@ import { createOcean } from "../rendering/ocean-scene.js";
 import { castStrengthFromMotion, isCastMotionReleased, isCastMotionStart } from "./cast-motion.js";
 import type { Collection, CollectionEntry, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
 
+const configuredBackendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim().replace(/\/+$/, "");
+const backendUrl = (path: string): string => configuredBackendUrl ? `${configuredBackendUrl}${path}` : path;
+
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
 const failureHints: Record<string, [string, string]> = {
@@ -227,7 +230,7 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
 
   const loadCollection = useCallback(async () => {
     try {
-      const response = await fetch(`./api/collection?playerId=${encodeURIComponent(playerIdRef.current)}`, { cache: "no-store" });
+      const response = await fetch(`${backendUrl("/api/collection")}?playerId=${encodeURIComponent(playerIdRef.current)}`, { cache: "no-store" });
       if (!response.ok) throw new Error("collection");
       setCollection(await response.json() as Collection);
     } catch {
@@ -237,7 +240,7 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
 
   const recordCollectionCatch = useCallback(async (eventKey: string) => {
     try {
-      const response = await fetch("./api/collection/catches", {
+      const response = await fetch(backendUrl("/api/collection/catches"), {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ playerId: playerIdRef.current, fishId: "fish-001", eventKey }),
       });
@@ -346,7 +349,7 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
     const storedHost = sessionStorage.getItem("gijutu.ocean-host-v2") ?? undefined;
     if (stored && storedHost) return { id: stored, host: storedHost };
     if (stored) sessionStorage.removeItem("gijutu.ocean-room");
-    const response = await fetch("./api/ocean-sessions", { method: "POST" });
+    const response = await fetch(backendUrl("/api/ocean-sessions"), { method: "POST" });
     if (!response.ok) throw new Error("room");
     const result = await response.json() as { id: string; host?: string };
     sessionStorage.setItem("gijutu.ocean-room", result.id);
@@ -368,7 +371,9 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
         setControllerHost(room.host ?? phoneUrl.hostname);
         setControllerUrl(phoneUrl.href);
       }
-      const url = new URL("./ocean-ws", window.location.href);
+      const url = configuredBackendUrl
+        ? new URL(`${configuredBackendUrl}/ocean-ws`)
+        : new URL("./ocean-ws", window.location.href);
       url.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       url.searchParams.set("room", nextRoomId);
       url.searchParams.set("role", isPhone ? "controller" : "display");
