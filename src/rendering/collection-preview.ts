@@ -9,7 +9,7 @@ import { createGoFish } from './go-fish.js';
 
 export function mountCollectionFish(mount) {
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.25));
   renderer.setClearColor(0x000000, 0);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
@@ -23,6 +23,10 @@ export function mountCollectionFish(mount) {
   scene.add(rig);
   const fish = createGoFish({ detail: 'high' });
   rig.add(fish.group);
+  const bounds = new THREE.Box3().setFromObject(fish.group);
+  const size = bounds.getSize(new THREE.Vector3());
+  const center = bounds.getCenter(new THREE.Vector3());
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const pmrem = new THREE.PMREMGenerator(renderer);
   const studio = new RoomEnvironment();
@@ -62,31 +66,46 @@ export function mountCollectionFish(mount) {
     renderer.setSize(width, height, false);
     composer.setSize(width, height);
     camera.aspect = width / height;
+    const halfFov = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const distance = Math.max(size.y / 2 / halfFov, size.x / 2 / (halfFov * camera.aspect)) * 1.3 + size.z / 2;
+    camera.position.set(center.x, center.y + .1, Math.max(distance, 4));
+    camera.lookAt(center);
     camera.updateProjectionMatrix();
   };
   const observer = new ResizeObserver(resize);
   observer.observe(mount);
   resize();
 
-  mount.addEventListener('pointerdown', event => {
+  const pointerDown = event => {
+    if (event.button !== 0) return;
     dragging = true;
     previousX = event.clientX;
     mount.setPointerCapture(event.pointerId);
-  });
-  mount.addEventListener('pointermove', event => {
+  };
+  const pointerMove = event => {
     if (!dragging) return;
     yaw += (event.clientX - previousX) * .008;
     previousX = event.clientX;
-  });
-  mount.addEventListener('pointerup', () => { dragging = false; });
-  mount.addEventListener('pointercancel', () => { dragging = false; });
+  };
+  const stopDragging = () => { dragging = false; };
+  const keyDown = event => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    yaw += event.key === 'ArrowLeft' ? -.15 : .15;
+  };
+  mount.addEventListener('pointerdown', pointerDown);
+  mount.addEventListener('pointermove', pointerMove);
+  mount.addEventListener('pointerup', stopDragging);
+  mount.addEventListener('pointercancel', stopDragging);
+  mount.addEventListener('lostpointercapture', stopDragging);
+  mount.addEventListener('keydown', keyDown);
 
   const render = now => {
     if (disposed) return;
     frame = requestAnimationFrame(render);
     const delta = Math.min(.05, (now - (last || now)) / 1000);
     last = now;
-    time += delta;
+    if (!reducedMotion) time += delta;
     rig.rotation.y = yaw + Math.sin(time * .35) * .035;
     fish.group.position.y = Math.sin(time * .7) * .035;
     fish.update(time, { power: .42, glow: 1 });
@@ -96,14 +115,22 @@ export function mountCollectionFish(mount) {
 
   return {
     dispose() {
+      if (disposed) return;
       disposed = true;
       cancelAnimationFrame(frame);
       observer.disconnect();
+      mount.removeEventListener('pointerdown', pointerDown);
+      mount.removeEventListener('pointermove', pointerMove);
+      mount.removeEventListener('pointerup', stopDragging);
+      mount.removeEventListener('pointercancel', stopDragging);
+      mount.removeEventListener('lostpointercapture', stopDragging);
+      mount.removeEventListener('keydown', keyDown);
       fish.dispose();
       for (const pass of composer.passes) pass.dispose?.();
       composer.dispose();
       environment.dispose();
       renderer.dispose();
+      renderer.domElement.remove();
     },
   };
 }
