@@ -97,6 +97,8 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
   const closingRef = useRef(false);
   const retriesRef = useRef(0);
   const retryTimerRef = useRef<number | null>(null);
+  const hiddenCloseTimerRef = useRef<number | null>(null);
+  const pausedForVisibilityRef = useRef(false);
   const chargeAtRef = useRef<number | null>(null);
   const chargeFrameRef = useRef<number | null>(null);
   const reelTimerRef = useRef<number | null>(null);
@@ -360,6 +362,7 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
   const connect = useCallback(async () => {
     try {
       const room = await getRoom();
+      if (closingRef.current || pausedForVisibilityRef.current) return;
       const nextRoomId = room.id;
       if (!/^sea_[a-f0-9]{32}$/.test(nextRoomId)) throw new Error("link");
       roomIdRef.current = nextRoomId;
@@ -388,14 +391,20 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
         } catch { showToast("海の状態を読み込めませんでした。"); }
       });
       socket.addEventListener("close", () => {
-        if (socketRef.current === socket) socketRef.current = null;
+        // A visibility resume may open a replacement before the old close
+        // event arrives. Stale sockets must not flip the new connection offline
+        // or schedule another reconnect loop.
+        if (socketRef.current !== socket) return;
+        socketRef.current = null;
         setConnected(false);
+        if (pausedForVisibilityRef.current) return;
         if (closingRef.current) return;
         if (!opened && !isPhone) {
           sessionStorage.removeItem("gijutu.ocean-room");
           sessionStorage.removeItem("gijutu.ocean-host-v2");
         }
-        if (retriesRef.current++ < 4) retryTimerRef.current = window.setTimeout(() => void connect(), 1000 + retriesRef.current * 500);
+        if (retryTimerRef.current !== null) window.clearTimeout(retryTimerRef.current);
+        if (retriesRef.current++ < 4) retryTimerRef.current = window.setTimeout(() => { retryTimerRef.current = null; void connect(); }, 1000 + retriesRef.current * 500);
         else showToast(isPhone ? "接続できません。海の画面から新しいURLを開いてください。" : "海に接続できません。ページを再読み込みしてください。");
       });
       socket.addEventListener("error", () => setConnected(false));
@@ -460,12 +469,36 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
 
   useEffect(() => {
     const visibility = () => {
-      if (document.hidden) { cancelCharge(); stopReel(); void audioContextRef.current?.suspend(); }
-      else if (soundEnabledRef.current) void audioContextRef.current?.resume();
+      if (document.hidden) {
+        cancelCharge();
+        stopReel();
+        void audioContextRef.current?.suspend();
+        if (hiddenCloseTimerRef.current !== null) window.clearTimeout(hiddenCloseTimerRef.current);
+        hiddenCloseTimerRef.current = window.setTimeout(() => {
+          hiddenCloseTimerRef.current = null;
+          if (!document.hidden || closingRef.current) return;
+          pausedForVisibilityRef.current = true;
+          if (retryTimerRef.current !== null) window.clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+          socketRef.current?.close();
+          setConnected(false);
+        }, 60_000);
+      } else {
+        if (hiddenCloseTimerRef.current !== null) window.clearTimeout(hiddenCloseTimerRef.current);
+        hiddenCloseTimerRef.current = null;
+        if (pausedForVisibilityRef.current && !closingRef.current) {
+          pausedForVisibilityRef.current = false;
+          retriesRef.current = 0;
+          void connect();
+        } else if (soundEnabledRef.current) void audioContextRef.current?.resume();
+      }
     };
     document.addEventListener("visibilitychange", visibility);
-    return () => document.removeEventListener("visibilitychange", visibility);
-  }, [cancelCharge, stopReel]);
+    return () => {
+      document.removeEventListener("visibilitychange", visibility);
+      if (hiddenCloseTimerRef.current !== null) window.clearTimeout(hiddenCloseTimerRef.current);
+    };
+  }, [cancelCharge, connect, setConnected, stopReel]);
 
   useEffect(() => {
     const pagehide = () => { closingRef.current = true; stopReel(); cancelCharge(); socketRef.current?.close(); sceneRef.current?.dispose(); };
