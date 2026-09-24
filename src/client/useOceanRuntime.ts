@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { createOcean } from "../rendering/ocean-scene.js";
+import { castStrengthFromMotion, isCastMotionReleased, isCastMotionStart } from "./cast-motion.js";
 import type { Collection, CollectionEntry, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
@@ -106,7 +107,7 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
   const seaGainRef = useRef<GainNode | null>(null);
   const sensorTimerRef = useRef<number | null>(null);
   const sensorSamplesRef = useRef(0);
-  const sensorPeakRef = useRef(0);
+  const sensorPeakRef = useRef({ acceleration: 0, angularSpeed: 0 });
   const sensorPeakAtRef = useRef(0);
   const lastGestureRef = useRef(0);
   const gravityRef = useRef({ x: 0, y: 0, z: 0 });
@@ -507,15 +508,34 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
           x -= gravity.x; y -= gravity.y; z -= gravity.z;
         }
         if (warmupRef.current++ < 15) return;
-        const force = Math.hypot(x, y, z); const now = performance.now();
-        if (!(stateRef.current.phase === "idle" || stateRef.current.phase === "biting") || !onlineRef.current || now - lastGestureRef.current < 700) { sensorPeakRef.current = 0; return; }
-        if (force > 10 && sensorPeakRef.current === 0) { sensorPeakRef.current = force; sensorPeakAtRef.current = now; }
-        if (sensorPeakRef.current) {
-          sensorPeakRef.current = Math.max(force, sensorPeakRef.current);
-          if (now - sensorPeakAtRef.current > 650) { sensorPeakRef.current = 0; return; }
-          if (force < 4 && now - sensorPeakAtRef.current > 60) {
-            if (stateRef.current.phase === "biting") send({ action: "hook" }); else cast(clamp(sensorPeakRef.current / 28, .45, 1), 0);
-            lastGestureRef.current = now; sensorPeakRef.current = 0;
+        const acceleration = Math.hypot(x, y, z);
+        const rate = event.rotationRate;
+        const angularSpeed = rate && [rate.alpha, rate.beta, rate.gamma].every(Number.isFinite)
+          ? Math.hypot(rate.alpha ?? 0, rate.beta ?? 0, rate.gamma ?? 0)
+          : 0;
+        const now = performance.now();
+        if (!(stateRef.current.phase === "idle" || stateRef.current.phase === "biting") || !onlineRef.current || now - lastGestureRef.current < 700) {
+          sensorPeakRef.current = { acceleration: 0, angularSpeed: 0 };
+          return;
+        }
+        const peak = sensorPeakRef.current;
+        if (isCastMotionStart(acceleration, angularSpeed) && peak.acceleration === 0 && peak.angularSpeed === 0) {
+          peak.acceleration = acceleration;
+          peak.angularSpeed = angularSpeed;
+          sensorPeakAtRef.current = now;
+        }
+        if (peak.acceleration || peak.angularSpeed) {
+          peak.acceleration = Math.max(acceleration, peak.acceleration);
+          peak.angularSpeed = Math.max(angularSpeed, peak.angularSpeed);
+          if (now - sensorPeakAtRef.current > 650) {
+            sensorPeakRef.current = { acceleration: 0, angularSpeed: 0 };
+            return;
+          }
+          if (isCastMotionReleased(acceleration, angularSpeed) && now - sensorPeakAtRef.current > 60) {
+            if (stateRef.current.phase === "biting") send({ action: "hook" });
+            else cast(castStrengthFromMotion(peak.acceleration, peak.angularSpeed), 0);
+            lastGestureRef.current = now;
+            sensorPeakRef.current = { acceleration: 0, angularSpeed: 0 };
           }
         }
       };
