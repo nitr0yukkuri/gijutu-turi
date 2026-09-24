@@ -81,11 +81,11 @@ export function createOceanRooms(app:Hono){
         room.game.step(.05,reeling,now);
       }
       const phase=room.game.state.phase;
-      if(previous!==phase||(phase!=='idle'&&phase!=='caught'&&phase!=='escaped')){room.lastActive=now;broadcast(room);}
+      if(previous!==phase||(phase!=='idle'&&phase!=='caught'&&phase!=='escaped')||room.game.isEscapeAnimating()){room.lastActive=now;broadcast(room);}
       else if(room.game.state.resultAt&&now-room.game.state.resultAt<150)broadcast(room);
     }
   },50);
   tick.unref();
   const cleanup=setInterval(()=>{for(const[id,room]of rooms)if(!room.clients.size&&Date.now()-room.lastActive>30*60*1000)rooms.delete(id);},60_000);cleanup.unref();
-  return{upgrade,close(){clearInterval(tick);clearInterval(cleanup);for(const room of rooms.values())for(const client of room.clients.keys())client.close();sockets.close();}};
+  return{upgrade,close(){clearInterval(tick);clearInterval(cleanup);for(const room of rooms.values())for(const client of room.clients.keys())client.terminate();sockets.close();}};
 }

@@ -42,6 +42,21 @@ test('responding to tension lands one Go fish, including parallel surge',()=>{
   }
 });
 
+test('a surge takes line while reeling, then the lull lets the player recover it',()=>{
+  const {game,step,now}=setup(.5);game.action({action:'hook'},now());
+  const startDistance=game.state.distance;
+  for(let i=0;i<8;i++)step(true);
+  assert.ok(game.state.distance>startDistance+.3,'the burst should visibly move the fish away');
+  assert.equal(game.state.fish.position.z,-game.state.distance,'rendered root follows authoritative distance');
+
+  for(let i=0;i<40&&game.state.mode==='surge';i++)step(true);
+  assert.equal(game.state.mode,'rest');
+  const lullDistance=game.state.distance;
+  step(true);
+  assert.ok(game.state.distance<lullDistance,'the lull should let reeling recover line');
+  assert.equal(game.state.fish.position.z,-game.state.distance);
+});
+
 test('publishes authoritative fish pose and body-wave timing during a fight',()=>{
   const {game,step,now}=setup();game.action({action:'hook'},now());
   step(false);
@@ -52,4 +67,42 @@ test('publishes authoritative fish pose and body-wave timing during a fight',()=
   assert.ok(Number.isFinite(snapshot.fish.heading.x));
   assert.ok(snapshot.fish.bodyWave.frequency>0);
   assert.ok(snapshot.fish.bodyWave.phase!==0);
+});
+
+test('fish approaches the lure only shortly before the bite and keeps its pose when hooked',()=>{
+  const game=new OceanFishingGame(()=>.5);let now=1000;
+  const step=()=>{now+=50;game.step(.05,false,now);};
+  game.action({action:'cast',strength:.5,aim:0},now);
+  while(game.state.phase==='casting')step();
+  const hiddenStart={...game.state.fish.position};
+  while(game.state.phase==='waiting'&&game.state.approach===0){
+    step();
+    if(game.state.approach===0)assert.deepEqual(game.state.fish.position,hiddenStart,'no fish movement is revealed during the quiet wait');
+  }
+  assert.equal(game.state.phase,'waiting');
+  assert.ok(game.state.approach>0&&game.state.approach<.1,'the first cue is only a faint, distant shadow');
+  assert.ok(Math.abs(game.state.fish.position.x-hiddenStart.x)<.1,'the first shadow begins far from the bait');
+
+  let previousDistance=Math.abs(game.state.fish.position.x);
+  while(game.state.phase==='waiting'){
+    step();
+    const distance=Math.abs(game.state.fish.position.x);
+    assert.ok(distance<=previousDistance+1e-8,'the approaching fish steadily closes on the bait');
+    assert.ok(game.state.approach>=0&&game.state.approach<=.46);
+    previousDistance=distance;
+  }
+  assert.equal(game.state.phase,'biting');
+  const biteEntryDistance=Math.abs(game.state.fish.position.x);
+  assert.ok(game.state.approach>.4&&game.state.approach<=.46);
+  step();
+  assert.ok(game.state.approach>.46);
+  assert.ok(Math.abs(game.state.fish.position.x)<biteEntryDistance,'the fish continues toward the lure after the float dips');
+
+  const beforeHook={...game.state.fish.position};
+  assert.equal(game.action({action:'hook'},now),true);
+  assert.deepEqual(game.state.fish.position,beforeHook,'hooking does not teleport the fish into its fight position');
+  assert.equal(game.state.fishX,beforeHook.x);
+  assert.equal(game.state.distance,-beforeHook.z);
+  step();
+  assert.ok(Math.hypot(game.state.fish.position.x-beforeHook.x,game.state.fish.position.z-beforeHook.z)<.5,'the fight begins from the approach pose');
 });

@@ -11,6 +11,7 @@ export type OceanState = {
   tension: number;
   distance: number;
   mode: OceanMode;
+  approach: number;
   catches: number;
   reason: "" | "missed" | "line" | "slack" | "distance";
   resultAt: number;

@@ -15,6 +15,8 @@ export interface FishMotionSnapshot {
   speed: number;
   gait: FishGait;
   bodyWave: BodyWaveSnapshot;
+  /** Self-propulsion, separate from translation imposed by a fishing line. */
+  swim?: { velocity: Vec3; effort: number; turn: number };
 }
 
 type GaitProfile = {
@@ -85,6 +87,7 @@ export class FishLocomotion {
   private wavePhase = 0;
   private stamina = 100;
   private cStartRemaining = 0;
+  private swim: FishMotionSnapshot['swim'];
 
   constructor(position: Vec3, velocity: Vec3) {
     this.position = { ...position };
@@ -133,10 +136,12 @@ export class FishLocomotion {
    * own the fish's root motion. This prevents a renderer from inventing a
    * second position or heading for the same fish.
    */
-  setRootMotion(position: Vec3, velocity: Vec3): void {
+  setRootMotion(position: Vec3, velocity: Vec3, swim?: FishMotionSnapshot['swim']): void {
     this.position = { ...position };
     this.velocity = { ...velocity };
-    if (magnitude(velocity) > 0.01) this.heading = normalise(velocity);
+    this.swim = swim ? { ...swim, velocity: { ...swim.velocity } } : undefined;
+    const facingVelocity = swim?.velocity ?? velocity;
+    if (magnitude(facingVelocity) > 0.01) this.heading = normalise(facingVelocity);
   }
 
   setGait(gait: FishGait): void {
@@ -159,18 +164,20 @@ export class FishLocomotion {
     this.wavePhase = 0;
     this.stamina = 100;
     this.cStartRemaining = 0;
+    this.swim = undefined;
   }
 
   snapshot(): FishMotionSnapshot {
     const profile = GAIT_PROFILES[this.gait];
     const speed = magnitude(this.velocity);
-    const speedFactor = clamp(speed / 2.8, 0.35, 1.35);
+    const speedFactor = clamp((this.swim ? magnitude(this.swim.velocity) : speed) / 2.8, 0.35, 1.35);
     return {
       position: { ...this.position },
       velocity: { ...this.velocity },
       heading: { ...this.heading },
       speed,
       gait: this.gait,
+      ...(this.swim ? { swim: { ...this.swim, velocity: { ...this.swim.velocity } } } : {}),
       bodyWave: {
         phase: this.wavePhase,
         amplitude: profile.amplitude * speedFactor,
