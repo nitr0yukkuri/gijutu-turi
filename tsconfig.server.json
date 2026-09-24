@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "noEmit": false
+  },
+  "include": [
+    "src/index.ts",
+    "src/server.ts",
+    "src/game.ts",
+    "src/protocol.ts",
+    "src/ocean-room.ts",
+    "src/ocean-game.ts",
+    "src/collection-db.ts"
+  ]
+}
