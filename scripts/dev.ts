@@ -20,7 +20,7 @@ const children = [];
 if (await isPortInUse(backendPort)) {
   console.warn(`[dev] backend port ${backendPort} is already in use; reusing the existing backend.`);
 } else {
-  children.push(spawn(process.execPath, [tsxCli, "watch", "src/index.ts"], {
+  children.push(spawn(process.execPath, [tsxCli, "src/index.ts"], {
     env: { ...process.env, HOST: process.env.HOST ?? "0.0.0.0", PORT: backendPort },
     stdio: "inherit",
   }));

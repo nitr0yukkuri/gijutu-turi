@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "node --import tsx scripts/dev.ts",
-    "dev:server": "tsx watch src/index.ts",
+    "dev:server": "node --import tsx src/index.ts",
+    "dev:server:watch": "tsx watch src/index.ts",
     "dev:client": "vite --host 0.0.0.0 --port 8788",
     "build": "vite build && npm run build:server",
     "build:server": "tsc -p tsconfig.server.json",

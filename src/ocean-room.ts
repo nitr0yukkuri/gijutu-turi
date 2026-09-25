@@ -65,7 +65,11 @@ export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eve
       {key:'global',limit:30,windowMs:10*60_000},
       {key:`source:${source}`,limit:10,windowMs:10*60_000},
     ]);
-    if(retryAfter){c.header('Retry-After',String(retryAfter));return c.json({error:'rate_limited'},429);}
+    if(retryAfter){
+      console.warn(`[ocean] session creation rate limited; retryAfter=${retryAfter}s`);
+      c.header('Retry-After',String(retryAfter));
+      return c.json({error:'rate_limited'},429);
+    }
     const parsed=z.object({playerId:z.string().refine(isPlayerId),fishId:z.string().optional()}).safeParse(await c.req.json().catch(()=>null));
     if(!parsed.success)return c.json({error:'invalid_player_id'},400);
     if(parsed.data.fishId&&!isFishSpeciesId(parsed.data.fishId))return c.json({error:'invalid_fish_id'},400);
@@ -119,6 +123,7 @@ export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eve
         room.game.step(.05,reeling,now);
       }
       const phase=room.game.state.phase;
+      if(previous!==phase) console.log(`[ocean] room=${id} phase=${previous}->${phase}`);
       if(previous!=='caught'&&phase==='caught'){
         try{onCatch(room.playerId,`${id}:${room.game.state.revision}`,room.game.state.fishId);}
         catch(error){console.error('Unable to record fish catch',error);}

@@ -7,6 +7,14 @@ import type { Collection, CollectionEntry, Feedback, OceanMessage, OceanSceneCon
 const configuredBackendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim().replace(/\/+$/, "");
 const backendUrl = (path: string): string => configuredBackendUrl ? `${configuredBackendUrl}${path}` : path;
 const demoFishId = new URLSearchParams(window.location.search).get("fish") === "docker" ? "whale-001" : new URLSearchParams(window.location.search).get("fish") === "go" ? "fish-001" : undefined;
+const roomFishStorageKey = "gijutu.ocean-room-fish";
+const roomFishKey = demoFishId ?? "default";
+
+class OceanRoomRateLimitError extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super("ocean_room_rate_limited");
+  }
+}
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
@@ -327,17 +335,24 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
     if (isPhone) return { id: controllerId ?? "" };
     const stored = sessionStorage.getItem("gijutu.ocean-room");
     const storedHost = sessionStorage.getItem("gijutu.ocean-host-v2") ?? undefined;
-    if (!demoFishId && stored && storedHost) return { id: stored, host: storedHost };
-    if (demoFishId) sessionStorage.removeItem("gijutu.ocean-room");
+    const storedFish = sessionStorage.getItem(roomFishStorageKey);
+    if (stored && storedHost && storedFish === roomFishKey) return { id: stored, host: storedHost };
     if (stored) sessionStorage.removeItem("gijutu.ocean-room");
+    if (storedHost) sessionStorage.removeItem("gijutu.ocean-host-v2");
+    if (storedFish) sessionStorage.removeItem(roomFishStorageKey);
     const response = await fetch(backendUrl("/api/ocean-sessions"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ playerId: playerIdRef.current, ...(demoFishId ? { fishId: demoFishId } : {}) }),
     });
+    if (response.status === 429) {
+      const retryAfter = Number(response.headers.get("Retry-After"));
+      throw new OceanRoomRateLimitError(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 60);
+    }
     if (!response.ok) throw new Error("room");
     const result = await response.json() as { id: string; host?: string };
     sessionStorage.setItem("gijutu.ocean-room", result.id);
+    sessionStorage.setItem(roomFishStorageKey, roomFishKey);
     if (result.host) sessionStorage.setItem("gijutu.ocean-host-v2", result.host);
     return result;
   }, [controllerId, isPhone]);
@@ -393,12 +408,18 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
         if (!opened && !isPhone) {
           sessionStorage.removeItem("gijutu.ocean-room");
           sessionStorage.removeItem("gijutu.ocean-host-v2");
+          sessionStorage.removeItem(roomFishStorageKey);
         }
         scheduleRetry(isPhone ? "接続できません。海の画面から新しいURLを開いてください。" : "海に接続できません。ページを再読み込みしてください。");
       });
       socket.addEventListener("error", () => setConnected(false));
-    } catch {
+    } catch (error) {
       setConnected(false);
+      if (error instanceof OceanRoomRateLimitError) {
+        const wait = Math.max(1, Math.ceil(error.retryAfterSeconds));
+        showToast(`接続が集中しています。${wait}秒後にもう一度試してください。`);
+        return;
+      }
       showToast("海に接続できません。再接続しています。");
       scheduleRetry("海に接続できません。ページを再読み込みしてください。");
     }
