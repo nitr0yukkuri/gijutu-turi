@@ -187,3 +187,4 @@ body:has(#collection-dialog[open]) #sea #escape-ui {
   .fight-button { min-width: 170px; min-height: 54px; }
   .help-header { padding: 27px 24px 20px; }
 }
+.result-connection{margin:14px 0 0!important;color:#b8d0d5!important;font-size:11px!important}.catch-ui .primary-button:disabled,.escape-ui .primary-button:disabled{opacity:.78;cursor:wait}

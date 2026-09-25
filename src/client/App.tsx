@@ -133,6 +133,8 @@ export function App() {
   const caughtEntry = collection.entries.find(entry => entry.id === state.fishId);
   const fightButtonLabel = biting ? "合わせる" : reelHeld ? "巻いています" : "巻く";
   const fightButtonHint = biting ? "ウキが沈んだら押す" : reelHeld ? "離して止める" : "押して巻く";
+  const resultActionLabel = online ? "もう一度、投げる" : "再接続中…";
+  const resultConnectionHint = online ? "" : "海との接続が戻ると、もう一度投げられます。";
   const distanceVisible = ["casting", "waiting", "biting", "fighting"].includes(state.phase);
   const distanceMeters = Math.max(0, state.distance || 0).toFixed(1);
   const tension = Math.round((state.tension || 0) * 100);
@@ -210,8 +212,8 @@ export function App() {
             <span className="fight-button-label">{fightButtonLabel}</span><small className="fight-button-help">{fightButtonHint}</small>
           </button>
         </section>
-        <section id="catch-ui" className="catch-ui" hidden={state.phase !== "caught"} aria-live="polite"><p>NEW ENCOUNTER</p><h1>{caughtEntry ? collectionName(caughtEntry) : "魚"}</h1><p>{caughtEntry?.tagline ?? "新しい魚を釣り上げました。"}</p><button id="catch-again" className="primary-button" disabled={!online} onClick={() => activate()}>もう一度、海へ</button></section>
-        <section id="escape-ui" className="escape-ui" hidden={state.phase !== "escaped"} aria-live="polite"><h2>{runtime.state.reason ? (failureHints[runtime.state.reason]?.[0] ?? "逃げられた。") : "逃げられた。"}</h2><p>{runtime.state.reason ? (failureHints[runtime.state.reason]?.[1] ?? "") : ""}</p><button id="escape-again" className="primary-button" disabled={!online} onClick={() => activate()}>もう一度、投げる</button></section>
+        <section id="catch-ui" className="catch-ui" hidden={state.phase !== "caught"} aria-live="polite"><p>NEW ENCOUNTER</p><h1>{caughtEntry ? collectionName(caughtEntry) : "魚"}</h1><p>{caughtEntry?.tagline ?? "新しい魚を釣り上げました。"}</p><button id="catch-again" className="primary-button" disabled={!online} onClick={() => activate()}>{online ? "もう一度、海へ" : "再接続中…"}</button>{!online && <p className="result-connection" role="status">{resultConnectionHint}</p>}</section>
+        <section id="escape-ui" className="escape-ui" hidden={state.phase !== "escaped"} aria-live="polite"><h2>{runtime.state.reason ? (failureHints[runtime.state.reason]?.[0] ?? "逃げられた。") : "逃げられた。"}</h2><p>{runtime.state.reason ? (failureHints[runtime.state.reason]?.[1] ?? "") : ""}</p><button id="escape-again" className="primary-button" disabled={!online} onClick={() => activate()}>{resultActionLabel}</button>{!online && <p className="result-connection" role="status">{resultConnectionHint}</p>}</section>
         <div className="bottom-shade" aria-hidden="true" />
         <footer ref={shoreControlsRef} className="shore-controls chrome">
           <button className="shore-link" onClick={() => openDialog(helpDialogRef)}><span className="help-mark">?</span> 操作方法</button>
