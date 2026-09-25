@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { createOcean } from "../rendering/ocean-scene.js";
 import { castStrengthFromMotion, isCastMotionReleased, isCastMotionStart } from "./cast-motion.js";
-import { FISH_SPECIES } from "../fish-species.js";
+import { FISH_SPECIES, type FishSpeciesId } from "../fish-species.js";
 import type { Collection, CollectionEntry, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
 
 const configuredBackendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim().replace(/\/+$/, "");
 const backendUrl = (path: string): string => configuredBackendUrl ? `${configuredBackendUrl}${path}` : path;
-const demoFishId = new URLSearchParams(window.location.search).get("fish") === "docker" ? "whale-001" : new URLSearchParams(window.location.search).get("fish") === "go" ? "fish-001" : undefined;
 const roomFishStorageKey = "gijutu.ocean-room-fish";
-const roomFishKey = demoFishId ?? "default";
 
 class OceanRoomRateLimitError extends Error {
   constructor(readonly retryAfterSeconds: number) {
@@ -65,11 +63,14 @@ const initialState = (): OceanState => ({
 type UseOceanRuntimeOptions = {
   isPhone: boolean;
   controllerId: string | null;
+  initialFishId?: FishSpeciesId;
+  routePath: string;
   oceanMountRef: RefObject<HTMLDivElement | null>;
   collectionOpen: boolean;
 };
 
-export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collectionOpen }: UseOceanRuntimeOptions) {
+export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePath, oceanMountRef, collectionOpen }: UseOceanRuntimeOptions) {
+  const roomFishKey = initialFishId ?? "default";
   const [state, setState] = useState<OceanState>(initialState);
   const stateRef = useRef(state);
   const [online, setOnline] = useState(false);
@@ -343,7 +344,7 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
     const response = await fetch(backendUrl("/api/ocean-sessions"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ playerId: playerIdRef.current, ...(demoFishId ? { fishId: demoFishId } : {}) }),
+      body: JSON.stringify({ playerId: playerIdRef.current, ...(initialFishId ? { fishId: initialFishId } : {}) }),
     });
     if (response.status === 429) {
       const retryAfter = Number(response.headers.get("Retry-After"));
@@ -355,7 +356,7 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
     sessionStorage.setItem(roomFishStorageKey, roomFishKey);
     if (result.host) sessionStorage.setItem("gijutu.ocean-host-v2", result.host);
     return result;
-  }, [controllerId, isPhone]);
+  }, [controllerId, initialFishId, isPhone, roomFishKey]);
 
   const connect = useCallback(async () => {
     const scheduleRetry = (finalMessage: string) => {
@@ -373,7 +374,7 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
       const nextRoomId = room.id;
       if (!/^sea_[a-f0-9]{32}$/.test(nextRoomId)) throw new Error("link");
       if (!isPhone) {
-        const phoneUrl = new URL("./", window.location.href);
+        const phoneUrl = new URL(routePath, window.location.origin);
         if (room.host && ["localhost", "127.0.0.1", "[::1]"].includes(phoneUrl.hostname)) phoneUrl.hostname = room.host;
         phoneUrl.searchParams.set("controller", nextRoomId);
         setControllerHost(room.host ?? phoneUrl.hostname);
@@ -423,7 +424,7 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collecti
       showToast("海に接続できません。再接続しています。");
       scheduleRetry("海に接続できません。ページを再読み込みしてください。");
     }
-  }, [applyState, getRoom, isPhone, setConnected, showToast]);
+  }, [applyState, getRoom, isPhone, routePath, setConnected, showToast]);
 
   useEffect(() => {
     if (isPhone || !oceanMountRef.current) return;

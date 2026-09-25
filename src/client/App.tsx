@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { toDataURL } from "qrcode";
+import { resolveFishingRoute } from "./fishing-route.js";
 import { useOceanRuntime } from "./useOceanRuntime.js";
 import type { Collection, CollectionEntry, OceanPhase } from "./types.js";
 
@@ -114,6 +115,7 @@ export function App() {
   const params = new URLSearchParams(window.location.search);
   const controllerId = params.get("controller");
   const isPhone = Boolean(controllerId);
+  const fishingRoute = resolveFishingRoute(window.location.pathname, params.get("fish"));
   const oceanMountRef = useRef<HTMLDivElement>(null);
   const mastheadRef = useRef<HTMLElement>(null);
   const shoreControlsRef = useRef<HTMLElement>(null);
@@ -125,7 +127,7 @@ export function App() {
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [sceneryOnly, setSceneryOnly] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
-  const runtime = useOceanRuntime({ isPhone, controllerId, oceanMountRef, collectionOpen });
+  const runtime = useOceanRuntime({ isPhone, controllerId, initialFishId: fishingRoute.initialFishId, routePath: fishingRoute.path, oceanMountRef, collectionOpen });
   const { state, online, controllers, displayConnected, renderFailed, reelHeld, feedback, toast, chargeProgress, reticle, soundEnabled, collection, selectedCollectionId, controllerUrl, sensorStatus, sensorButtonLabel, sensorsOn } = runtime;
   const { activate, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, startReel, stopReel, toggleSensor, toggleSound, showToast } = runtime.actions;
   const fighting = state.phase === "fighting";
@@ -142,7 +144,7 @@ export function App() {
   const phoneCastLabel = state.phase === "idle" ? "タッチで投げる" : fighting ? (reelHeld ? "巻いている — 離すと緩む" : "押して巻く / 離して緩める") : phaseLabels[state.phase];
   const isLocalDevelopment = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
 
-  useEffect(() => { document.title = isPhone ? "釣り竿 — 技術釣り" : "技術釣り — 静かな海に、ひと振り。"; }, [isPhone]);
+  useEffect(() => { document.title = isPhone ? "釣り竿 — 技術釣り" : fishingRoute.title; }, [fishingRoute.title, isPhone]);
   useEffect(() => { document.body.dataset.phase = state.phase; }, [state.phase]);
   useEffect(() => {
     document.body.classList.toggle("scenery-only", sceneryOnly);

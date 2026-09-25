@@ -1,5 +1,15 @@
 {
   "framework": "vite",
   "buildCommand": "npm run build",
-  "outputDirectory": "dist/client"
+  "outputDirectory": "dist/client",
+  "redirects": [
+    { "source": "/gofish/", "destination": "/gofish", "permanent": true },
+    { "source": "/dockerwhale/", "destination": "/dockerwhale", "permanent": true },
+    { "source": "/docker/", "destination": "/docker", "permanent": true }
+  ],
+  "rewrites": [
+    { "source": "/gofish", "destination": "/index.html" },
+    { "source": "/dockerwhale", "destination": "/index.html" },
+    { "source": "/docker", "destination": "/index.html" }
+  ]
 }

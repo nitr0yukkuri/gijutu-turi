@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 const base=process.env.OCEAN_URL??'http://127.0.0.1:8787';
-for(const path of ['/','/ocean-app.js','/ocean-scene.js','/ocean.css','/vendor/three.module.js','/vendor/three.core.js','/service-worker.js']){
+for(const path of ['/','/gofish','/dockerwhale','/docker','/ocean-app.js','/ocean-scene.js','/ocean.css','/vendor/three.module.js','/vendor/three.core.js','/service-worker.js']){
   const response=await fetch(base+path);assert.equal(response.status,200,`${path} must load`);
   assert.ok((await response.text()).length>100,`${path} must not be empty`);
 }
