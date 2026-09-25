@@ -34,6 +34,20 @@ jobs:
       - name: 自動テスト
         run: npm test
 
+      - name: 海釣り用サーバーを起動
+        shell: bash
+        run: |
+          npm run dev:server > "$RUNNER_TEMP/gijutu-turi-server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/gijutu-turi-server.pid"
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8787/health > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/gijutu-turi-server.log"
+          exit 1
+
       - name: 海釣り統合テスト
         run: npm run test:ocean
 
@@ -48,3 +62,11 @@ jobs:
 
       - name: Dockerイメージをビルド
         run: docker build --tag gijutu-turi:ci .
+
+      - name: 海釣り用サーバーを停止
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/gijutu-turi-server.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/gijutu-turi-server.pid")" || true
+          fi
