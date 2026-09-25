@@ -1,5 +1,6 @@
 // @ts-nocheck -- the procedural mesh uses the vendored Three.js runtime, whose JS distribution has no declarations.
 import * as THREE from '../../vendor/three.module.js';
+import { applyFishWater } from './fish-water.js';
 
 // Original Docker-inspired creature. Nose -X, back +Y, flukes spread along Z.
 // DOM-free model: the same group/update/dispose contract as createGoFish.
@@ -66,16 +67,16 @@ function makeFin(stations,sign,low) {
 }
 
 const deformation=`
-uniform float uTime;
+uniform float uWhaleTime;
 uniform float uPower;
 float lift(float x){
   float tail=smoothstep(-.5,6.9,x);
-  return sin(uTime*1.25-x*.42)*tail*tail*(.32+uPower*.55);
+  return sin(uWhaleTime*1.25-x*.42)*tail*tail*(.32+uPower*.55);
 }
 vec3 swim(vec3 p){
   p.y+=lift(p.x);
   float flipper=(1.0-smoothstep(-.1,2.0,p.x))*smoothstep(1.65,4.5,abs(p.z));
-  p.y+=sin(uTime*1.25-.8)*flipper*(.08+uPower*.24);
+  p.y+=sin(uWhaleTime*1.25-.8)*flipper*(.08+uPower*.24);
   return p;
 }
 vec3 swimNormal(vec3 p,vec3 n){
@@ -90,7 +91,7 @@ function animate(material,uniforms,mode='plain') {
     shader.vertexShader=deformation+'\nvarying vec3 vWhale;\n'+shader.vertexShader;
     shader.vertexShader=shader.vertexShader.replace('#include <beginnormal_vertex>','#include <beginnormal_vertex>\nobjectNormal=swimNormal(position,objectNormal);');
     shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvWhale=position;transformed=swim(position);');
-    shader.fragmentShader='uniform float uTime; uniform float uGlow; varying vec3 vWhale;\n'+shader.fragmentShader;
+    shader.fragmentShader='uniform float uWhaleTime; uniform float uGlow; varying vec3 vWhale;\n'+shader.fragmentShader;
     if(mode==='skin')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`
       #include <color_fragment>
       float belly=1.0-smoothstep(-1.65,-.42,vWhale.y);
@@ -100,15 +101,16 @@ function animate(material,uniforms,mode='plain') {
       diffuseColor.rgb=mix(ink,vec3(.20,.43,.47),belly*.75);
       diffuseColor.rgb*=.91+grain*.07+mottling*.055;
     `);
-    if(mode==='glow')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb*=uGlow*(.87+.13*sin(vWhale.x*1.7-uTime*1.2));');
+    if(mode==='glow')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb*=uGlow*(.87+.13*sin(vWhale.x*1.7-uWhaleTime*1.2));');
   };
   material.customProgramCacheKey=()=>`docker-whale-v1-${mode}`;
   return material;
 }
 
-export function createDockerWhale({detail='high',phase=0}={}) {
+export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   const low=detail==='low',group=new THREE.Group();group.name='Dockerクジラ';
-  const uniforms={uTime:{value:phase},uPower:{value:.45},uGlow:{value:1}};
+  const habitatUniforms=waterUniforms?{...waterUniforms,uFishCenter:{value:group.position},uFishVisibility:{value:1}}:null;
+  const uniforms={uWhaleTime:{value:phase},uPower:{value:.45},uGlow:{value:1}};
   const geometries=new Set(),materials=new Set(),parts=[];
   const skin=animate(new THREE.MeshPhysicalMaterial({color:0xffffff,roughness:.37,metalness:.18,clearcoat:.65,clearcoatRoughness:.24,envMapIntensity:.55}),uniforms,'skin');
   const glow=animate(new THREE.MeshBasicMaterial({color:new THREE.Color(.04,1.65,2.8),toneMapped:false}),uniforms,'glow');
@@ -207,10 +209,16 @@ export function createDockerWhale({detail='high',phase=0}={}) {
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
     add(g,m,'batched-'+(m===glow?'lights':m===cargo?'containers':m===ribs?'ribs':'details'));
   }
+  if(habitatUniforms){
+    for(const material of materials){
+      const part=material===skin?'body':material===glow?'light':'detail';
+      applyFishWater(material,habitatUniforms,part);
+    }
+  }
   let disposed=false;
   return {
-    group,body,flippers,flukes,containerCount:containers.length,
-    update(time,{power=.45,glow=1}={}){uniforms.uTime.value=time+phase;uniforms.uPower.value=clamp(power,0,1);uniforms.uGlow.value=clamp(glow,0,3);},
+    group,body,flippers,flukes,containerCount:containers.length,waterUniforms:habitatUniforms,
+    update(time,{power=.45,glow=1,visibility=1}={}){uniforms.uWhaleTime.value=time+phase;uniforms.uPower.value=clamp(power,0,1);uniforms.uGlow.value=clamp(glow,0,3);if(habitatUniforms)habitatUniforms.uFishVisibility.value=clamp(visibility,0,1);},
     get stats(){return {meshes:group.children.length,triangles:[...geometries].reduce((sum,g)=>sum+(g.index?g.index.count:g.attributes.position.count)/3,0)};},
     dispose(){if(disposed)return;disposed=true;for(const g of geometries)g.dispose();for(const m of materials)m.dispose();group.clear();},
   };

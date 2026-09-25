@@ -216,10 +216,19 @@ function finMaterial(uniforms, rays) {
   });
 }
 
-export function createGoFish({ detail = 'high', phase = 0, waterUniforms } = {}) {
+export function createGoFish({ detail = 'high', phase = 0, waterUniforms, naturalSwim = Boolean(waterUniforms), visualProfile = 'ocean' } = {}) {
   const group = new THREE.Group(); group.name = 'Go魚';
   const habitatUniforms=waterUniforms?{...waterUniforms,uFishCenter:{value:group.position},uFishVisibility:{value:1}}:null;
-  const uniforms = { uSwimTime: { value: phase }, uSwimFrequency: { value: 3.5 }, uSwimPower: { value: .48 }, uGlow: { value: 1 }, uSwimWavelength: { value: 6.6 }, uNaturalSwim: { value: waterUniforms?1:0 }, uTurn:{value:0}, uEffort:{value:0}, uTetherLoad:{value:0}, uImmersion:{value:0} };
+  const catalog = visualProfile === 'catalog';
+  const finHeightScale = catalog ? .82 : 1;
+  const finDepthScale = catalog ? .72 : 1;
+  // The ocean model is seen at a closer, more dynamic scale than the catalog
+  // card. Keep the tail expressive, but prevent the fork and streamers from
+  // becoming longer than the fish's readable silhouette.
+  const tailHeightScale = catalog ? .78 : .72;
+  const tailDepthScale = catalog ? .72 : .82;
+  const streamerScale = catalog ? .58 : .72;
+  const uniforms = { uSwimTime: { value: phase }, uSwimFrequency: { value: 3.5 }, uSwimPower: { value: .48 }, uGlow: { value: 1 }, uSwimWavelength: { value: 6.6 }, uNaturalSwim: { value: naturalSwim?1:0 }, uTurn:{value:0}, uEffort:{value:0}, uTetherLoad:{value:0}, uImmersion:{value:0} };
   const low = detail === 'low', geometries = new Set(), materials = new Set();
   function add(geometry, material, name, fin = 0) {
     if (!geometry.attributes.aFin) geometry.setAttribute('aFin', new THREE.Float32BufferAttribute(new Float32Array(geometry.attributes.position.count).fill(fin), 1));
@@ -236,7 +245,9 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms } = {})
     return add(new THREE.TubeGeometry(curve(points.map(p => p.isVector3 ? p.toArray() : p)), low ? 30 : 64, radius, 5, false), mat, name, fin);
   }
   const fins = [];
-  function fin(name, base, edge, rays = 22) { const mesh = add(makeFinGeometry(base, edge, low), finMaterial(uniforms, rays), name); fins.push(mesh); }
+  const finProfile = points => points.map(([x,y,z]) => [x,y*finHeightScale,z*finDepthScale]);
+  const tailFinProfile = points => points.map(([x,y,z]) => [x,y*tailHeightScale,z*tailDepthScale]);
+  function fin(name, base, edge, rays = 22, profile = finProfile) { const mesh = add(makeFinGeometry(profile(base), profile(edge), low), finMaterial(uniforms, rays), name); fins.push(mesh); }
   fin('dorsal-sail', [[-.85,.47,0],[-.3,.52,0],[.45,.36,0],[1.27,.11,0]], [[-.85,.47,0],[-.48,.95,0],[.58,1.51,-.025],[.33,.91,-.02],[.75,.56,0],[1.27,.11,0]], 22);
   fin('anal-sail', [[-.12,-.48,0],[.55,-.32,0],[1.35,-.1,0]], [[-.12,-.48,0],[.48,-.93,.025],[.94,-1.04,0],[.72,-.51,0],[1.35,-.1,0]], 16);
   for (const sign of [-1, 1]) {
@@ -244,10 +255,11 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms } = {})
     fin('pelvic-' + sign, [[.35,-.35,.15*sign],[.68,-.23,.14*sign],[.91,-.16,.12*sign]], [[.35,-.35,.15*sign],[.86,-.72,.35*sign],[1.4,-.78,.43*sign],[1.05,-.42,.22*sign],[.91,-.16,.12*sign]], 13);
   }
   for (const sign of [-1, 1]) {
-    fin('forked-tail-' + sign, [[1.7,0,0],[1.83,.035*sign,0],[1.94,.016*sign,0],[1.89,0,0]], [[1.7,0,0],[2.2,.48*sign,.012],[3.22,1.12*sign,.03],[2.8,.45*sign,.018],[2.32,.13*sign,0],[1.89,0,0]], 22);
+    fin('forked-tail-' + sign, [[1.7,0,0],[1.83,.035*sign,0],[1.94,.016*sign,0],[1.89,0,0]], [[1.7,0,0],[2.2,.48*sign,.012],[3.22,1.12*sign,.03],[2.8,.45*sign,.018],[2.32,.13*sign,0],[1.89,0,0]], 22, tailFinProfile);
     // Two terminal streamers per tail lobe, not disconnected trailing lines.
     for (let i = 0; i < 2; i++) {
-      const points = [[3.05-i*.33,(1.01-i*.43)*sign,.025],[3.42-i*.16,(1.17-i*.45)*sign,.04],[3.8-i*.16,(1.12-i*.42)*sign,.08],[4.06-i*.23,(.96-i*.36)*sign,.12]];
+      const streamerPoint = (x,y,z) => [1.9+(x-1.9)*streamerScale,y*streamerScale,z*streamerScale];
+      const points = [streamerPoint(3.05-i*.33,(1.01-i*.43)*sign,.025),streamerPoint(3.42-i*.16,(1.17-i*.45)*sign,.04),streamerPoint(3.8-i*.16,(1.12-i*.42)*sign,.08),streamerPoint(4.06-i*.23,(.96-i*.36)*sign,.12)];
       tube(points, .006, subtle, `tail-filament-${sign}-${i}`, .8);
       const tip = new THREE.SphereGeometry(.026, 10, 8); tip.translate(...points.at(-1)); add(tip, luminous, 'filament-light', .8);
     }

@@ -17,7 +17,7 @@
 
 画面UIはReact + Viteで管理し、既存のHTML/CSSの見た目・ID・クラスを維持しています。
 Three.jsの海面描画と独自シェーダーは直接制御のまま残し、WebSocketのOcean状態機械と分離しています。
-Go魚は釣り上げたときに全身と「Go魚」の名前を見せ、図鑑はSQLiteのプレイヤー別記録を表示します。
+Go魚を釣り上げた次の釣行ではDockerクジラが登場します。魚種ID・捕獲イベント・図鑑表示は共通の魚種マスタから連動し、SQLiteにプレイヤー別で記録します。
 旧試作の画面は整理し、現行の海UIとOcean用バックエンドを本体として扱います。
 
 ## 起動
@@ -27,6 +27,11 @@ Go魚は釣り上げたときに全身と「Go魚」の名前を見せ、図鑑�
 サーバー起動後、[Go魚の3Dプレビュー](http://127.0.0.1:8787/go-fish.html)で形状を確認できます。
 ドラッグで回転、スクロールで拡大。全身・真横・正面・ディテールの切り替え、一時停止、1→7匹の分岐表示に対応しています。
 本編の海には未獲得の魚を表示しません。造形の参照先と実装範囲は [docs/go-fish-design.md](./docs/go-fish-design.md) に記録しています。
+
+### Dockerクジラのモデル確認
+
+サーバー起動後、[Dockerクジラの3Dプレビュー](http://127.0.0.1:8787/docker-whale.html)で形状を確認できます。本編ではGo魚を捕獲して「もう一度、海へ」を押すと、次の釣行がDockerクジラになります。逃げた場合は同じ魚種に再挑戦します。
+発表や動作確認でDockerクジラから始める場合は、海のURLに `?fish=docker` を付けます（例: `http://127.0.0.1:8788/?fish=docker`）。これはルーム作成時に魚種を固定するデモ用入口です。
 
 ### 海とサーバー
 
@@ -65,7 +70,7 @@ npm run test:fish
 npm run test:whale
 ```
 
-`test:ocean` は公開アセット、非公開パス、コントローラー接続、キャスト・着水・巻き戻し、連打・不正入力、切断時の状態を検証します。
+`test:ocean` は公開アセット、非公開パス、魚種指定の検証、コントローラー接続、キャスト・着水・巻き戻し、連打・不正入力、切断時の状態を検証します。
 
 ## 主な構成
 
@@ -82,6 +87,10 @@ npm run test:whale
 - `src/ocean-game.ts` / `src/ocean-room.ts`: 海の釣り状態機械とWebSocketルーム
 - `src/collection-db.ts`: SQLiteの魚種マスタ・捕獲記録・重複防止イベント
 - `vendor/`: Three.js配布ファイルとライセンス（外部配布物なのでJSのまま固定）
+
+## ライセンス
+
+自作コードはMIT Licenseで利用できます（本文は [`LICENSE`](./LICENSE)）。Three.js、React、QRコード生成、Honoなどの第三者コンポーネントは各ライセンスを保持しており、一覧と本文は [`THIRD-PARTY-NOTICES.txt`](./THIRD-PARTY-NOTICES.txt) に記載しています。本番ビルドでは [`/license.txt`](./license.txt) と [`/third-party-notices.txt`](./third-party-notices.txt) として公開します。
 
 ## 図鑑DB
 

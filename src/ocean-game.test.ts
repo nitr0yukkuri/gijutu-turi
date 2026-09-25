@@ -35,10 +35,10 @@ test('responding to tension lands one Go fish, including parallel surge',()=>{
       else if(s.tension<.33)held=true;
       step(held);if(game.state.school===7)sawSchool=true;
     }
-    assert.equal(game.state.phase,'caught',JSON.stringify(game.state));assert.equal(game.state.catches,1);assert.ok(sawSchool);
+    assert.equal(game.state.phase,'caught',JSON.stringify(game.state));assert.equal(game.state.catches,1);assert.equal(game.state.fishId,'fish-001');assert.ok(sawSchool);
     assert.ok(game.state.fightTime>10&&game.state.fightTime<100);
     game.action({action:'hook'},now());step(true);assert.equal(game.state.catches,1,'catch must not duplicate');
-    game.action({action:'reset'},now());assert.equal(game.state.phase,'idle');assert.equal(game.state.catches,1);
+    game.action({action:'reset'},now());assert.equal(game.state.phase,'idle');assert.equal(game.state.catches,1);assert.equal(game.state.fishId,'whale-001','the next successful run should introduce Docker');
   }
 });
 

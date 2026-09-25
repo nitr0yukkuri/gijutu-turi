@@ -1,5 +1,8 @@
+import type { FishSpeciesId } from "../fish-species.js";
+
 export type OceanPhase = "idle" | "casting" | "waiting" | "biting" | "fighting" | "caught" | "escaped" | "retrieving";
 export type OceanMode = "rest" | "surge" | "warning" | "split";
+export type { FishSpeciesId } from "../fish-species.js";
 
 export type OceanState = {
   phase: OceanPhase;
@@ -16,6 +19,7 @@ export type OceanState = {
   reason: "" | "missed" | "line" | "slack" | "distance";
   resultAt: number;
   fish?: unknown;
+  fishId: FishSpeciesId;
   fishX?: number;
   fishSpeed?: number;
   school?: number;

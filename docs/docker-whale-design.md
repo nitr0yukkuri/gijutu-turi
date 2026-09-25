@@ -14,11 +14,11 @@ Dockerを連想できるよう、厚い胴体の背にコルゲート状のコ�
 - コンテナは胴の中央に固定し、波打つ尾の動きから切り離す。
 - 小さなノード・コンテナ部品は材質ごとに結合して描画数を抑える。
 
-`createDockerWhale({detail, phase})` は `group`, `update(time,{power,glow})`, `dispose()` を返す。
+`createDockerWhale({detail, phase, waterUniforms})` は `group`, `update(time,{power,glow,visibility})`, `dispose()` を返す。`waterUniforms`を渡した場合は、Go魚と同じ水中の屈折・深度可視性へ接続できる。
 ブラウザに依存しないため、今後の釣りシーンでもそのまま配置できる。
 
 ## 確認
 
 `npm run dev` 後に `/docker-whale.html`。全身・真横・正面・背中を切り替え、
-「Go魚と比べる」で同一縮尺の二匹を並べる。モデル表示のみで、釣りの出現・捕獲判定への接続は未実装。
+「Go魚と比べる」で同一縮尺の二匹を並べる。本編では魚種マスタの`whale-001`として、Go魚捕獲後の次の釣行に出現し、捕獲時に図鑑へ記録される。
 `npm run test:whale` で形状・サイズ・公開アセットを検証。

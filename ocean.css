@@ -40,7 +40,11 @@ dialog{color:var(--ink);width:min(460px,calc(100vw - 36px));max-height:calc(100d
 }
 body:has(#collection-dialog[open]) #sea .chrome,
 body:has(#collection-dialog[open]) #sea .cast-feedback,
-body:has(#collection-dialog[open]) #sea #cast-reticle {
+body:has(#collection-dialog[open]) #sea #cast-reticle,
+body:has(#collection-dialog[open]) #sea .distance-meter,
+body:has(#collection-dialog[open]) #sea #fight-ui,
+body:has(#collection-dialog[open]) #sea #catch-ui,
+body:has(#collection-dialog[open]) #sea #escape-ui {
   visibility: hidden;
 }
 .collection-shell { width: min(100%, 1100px); min-height: 100%; margin: 0 auto; display: flex; flex-direction: column; }
@@ -87,3 +91,99 @@ body:has(#collection-dialog[open]) #sea #cast-reticle {
 .distance-meter{position:absolute;right:40px;bottom:max(82px,calc(env(safe-area-inset-bottom) + 68px));color:#e0edefd9;font:500 15px/1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.04em;font-variant-numeric:tabular-nums;text-shadow:0 1px 12px #092a36;pointer-events:none;z-index:2}
 .phone-distance{display:block;margin:0 0 10px;color:#eaf5f2;font:500 16px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.03em;font-variant-numeric:tabular-nums}
 @media(max-width:600px){.distance-meter{right:22px;bottom:max(82px,calc(env(safe-area-inset-bottom) + 72px));font-size:14px}}
+
+.fight-button-icon{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+
+/* The help panel should feel like a quiet field note, not a separate settings card. */
+#help-dialog {
+  width: min(470px, calc(100vw - 32px));
+  max-height: min(680px, calc(100dvh - 32px));
+  padding: 0;
+  overflow: hidden;
+  background: linear-gradient(155deg, rgba(18, 53, 65, .94), rgba(8, 31, 41, .9));
+  border: 1px solid rgba(211, 234, 236, .18);
+  border-radius: 12px;
+  box-shadow: 0 28px 90px rgba(0, 16, 24, .38);
+}
+#help-dialog::backdrop {
+  background: rgba(5, 22, 31, .38);
+  backdrop-filter: blur(4px) saturate(.88);
+}
+#help-dialog .close-dialog {
+  top: 14px;
+  right: 14px;
+  z-index: 1;
+  width: 34px;
+  height: 34px;
+  color: #d7e7e8;
+  font-size: 22px;
+}
+.help-header {
+  padding: 32px 32px 25px;
+  background: linear-gradient(135deg, rgba(50, 105, 115, .2), transparent 70%);
+  border-bottom: 1px solid rgba(207, 229, 232, .14);
+}
+#help-dialog .eyebrow { margin: 0 0 16px; color: #a9cbd0 !important; font-size: 10px !important; letter-spacing: .2em; }
+#help-dialog h2 { margin: 0; font-size: clamp(24px, 5vw, 31px); font-weight: 400; line-height: 1.4; letter-spacing: .04em; }
+#help-dialog .help-lead { margin: 14px 0 0; color: #b8ced2; font-size: 12px; line-height: 1.75; }
+#help-dialog .instructions { padding: 0 32px; }
+#help-dialog .instructions li { align-items: flex-start; gap: 15px; padding: 19px 0; border-top: 1px solid rgba(207, 229, 232, .14); }
+#help-dialog .instructions li:first-child { border-top: 0; }
+#help-dialog .instructions li > span { flex: 0 0 20px; display: block; width: 20px; height: auto; padding-top: 2px; border: 0; border-radius: 0; color: #86a7af; font: 11px ui-monospace, monospace; text-align: left; }
+.instruction-heading { display: flex; align-items: baseline; gap: 10px; }
+#help-dialog .instruction-heading strong { font-size: 15px; font-weight: 500; }
+.instruction-heading small { color: #83a9b1; font: 9px ui-monospace, monospace; letter-spacing: .16em; }
+#help-dialog .instructions p { margin: 7px 0 0; color: #aec6cb; font-size: 12px; line-height: 1.75; }
+#help-dialog .fine-print { margin: 0; padding: 17px 32px 20px; border-top: 1px solid rgba(207, 229, 232, .14); background: rgba(4, 22, 30, .18); color: #9fb9bf !important; font-size: 11px !important; line-height: 1.7; }
+#help-dialog .fine-print span { color: #d1e3e4; font-size: 10px; letter-spacing: .08em; }
+@media (max-width: 600px) {
+  #help-dialog { max-height: calc(100dvh - 28px); border-radius: 10px; }
+  .help-header { padding: 28px 24px 21px; }
+  #help-dialog .instructions { padding: 0 24px; }
+  #help-dialog .instructions li { padding: 17px 0; }
+  #help-dialog .fine-print { padding: 15px 24px 18px; }
+}
+
+/* Clarity pass: the primary action names the action and explains the gesture. */
+.entry-actions { gap: 7px; }
+.cast-button {
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 230px;
+  min-height: 50px;
+  padding: 12px 22px;
+  border: 1px solid rgba(214, 237, 237, .32);
+  border-radius: 5px;
+  background: rgba(18, 61, 73, .72);
+  box-shadow: 0 8px 24px rgba(2, 20, 27, .14);
+  color: #edf5f3;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: .03em;
+}
+.cast-button:hover { background: rgba(35, 87, 96, .86); border-color: rgba(224, 244, 243, .62); }
+.cast-button:disabled { border-color: rgba(214, 237, 237, .16); background: rgba(18, 61, 73, .36); }
+.cast-button-help { color: #b9d2d5; font-size: 11px; font-weight: 400; letter-spacing: 0; }
+.connect-button { order: 3; min-height: 38px; padding: 8px 14px; border-color: transparent; background: transparent; font-size: 11px; }
+.connect-button:hover { background: rgba(208, 227, 228, .1); border-color: rgba(202, 221, 226, .3); }
+.cast-charge { bottom: 45px; width: 120px; }
+.fight-button { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 170px; min-height: 56px; padding: 10px 20px; }
+.fight-button-label { font-size: 15px; font-weight: 500; line-height: 1.2; }
+.fight-button-help { display: block; margin: 0 !important; color: #b4cdd6; font-size: 11px; font-weight: 400; line-height: 1.3; }
+
+/* Keep the help panel literal and task-focused. */
+#help-dialog { background: rgba(18, 48, 58, .97); border-radius: 6px; box-shadow: 0 24px 70px rgba(0, 16, 24, .34); }
+#help-dialog::backdrop { background: rgba(5, 22, 31, .5); backdrop-filter: blur(3px); }
+.help-header { padding: 31px 32px 23px; background: none; }
+#help-dialog .eyebrow { margin-bottom: 12px; font-family: inherit; font-size: 11px !important; font-weight: 500; letter-spacing: .08em; }
+#help-dialog h2 { font-size: 25px; letter-spacing: .04em; }
+#help-dialog .help-lead { margin-top: 10px; color: #b8ced2; }
+#help-dialog .instruction-heading strong { font-size: 15px; }
+#help-dialog .instructions p { color: #b7cbd0; }
+#help-dialog .fine-print { color: #b0c6ca !important; }
+@media (max-width: 600px) {
+  .cast-button { min-width: 220px; min-height: 50px; }
+  .fight-button { min-width: 170px; min-height: 54px; }
+  .help-header { padding: 27px 24px 20px; }
+}

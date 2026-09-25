@@ -22,6 +22,7 @@ test('fish visibility progresses from hidden wait to shadow, reveal, then full f
   assert.equal(biteEntry,preBiteShadow,'the float dip does not pop the fish brighter');
   assert.ok(approaching>biteEntry&&approaching<nearBait,'the fish clarifies smoothly as it closes in');
   assert.equal(fishVisibilityTarget('fighting',.46),1);
+  assert.equal(fishVisibilityTarget('escaped',1),0,'escape fade owns the final visibility');
 });
 
 test('fish heading preserves dorsal-up through both sides of a pitched turn',()=>{

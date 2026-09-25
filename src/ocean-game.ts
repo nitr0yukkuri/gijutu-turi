@@ -1,5 +1,6 @@
 import { FishLocomotion, magnitude, normalise, scale, type FishMotionSnapshot, type Vec3 } from './fish.js';
 import { BITE_APPROACH_SECONDS, PRE_BITE_APPROACH_SECONDS, WAIT_APPROACH_FRACTION, easeFishApproach } from './fish-approach.js';
+import { DEFAULT_FISH_SPECIES_ID, nextFishSpeciesId, type FishSpeciesId } from './fish-species.js';
 
 export type OceanPhase = 'idle' | 'casting' | 'waiting' | 'biting' | 'fighting' | 'caught' | 'escaped' | 'retrieving';
 export type OceanAction = {action:'cast';strength:number;aim:number} | {action:'hook'|'retrieve'|'reset'};
@@ -8,19 +9,20 @@ export type OceanState = {
   tension:number; distance:number; initialDistance:number; reeling:boolean; biteRemaining:number;
   fightTime:number; mode:'rest'|'surge'|'warning'|'split'; school:number; resultAt:number; approach:number;
   reason:''|'missed'|'line'|'slack'|'distance'; catches:number; fishX:number; fishSpeed:number;
+  fishId:FishSpeciesId;
   fish:FishMotionSnapshot;
 };
 export const ESCAPE_ANIMATION_MS=2000;
 const ESCAPE_ANIMATION_SECONDS=ESCAPE_ANIMATION_MS/1000;
 const BITE_DURATION_SECONDS=4.2;
 const clamp=(x:number,min:number,max:number)=>Math.max(min,Math.min(max,x));
-const fresh=(fish:FishMotionSnapshot):OceanState=>({phase:'idle',strength:.65,aim:0,revision:0,castAt:0,retrieveAt:0,tension:0,distance:0,initialDistance:0,reeling:false,biteRemaining:0,fightTime:0,mode:'rest',school:1,resultAt:0,approach:0,reason:'',catches:0,fishX:0,fishSpeed:0,fish});
+const fresh=(fish:FishMotionSnapshot,fishId:FishSpeciesId):OceanState=>({phase:'idle',strength:.65,aim:0,revision:0,castAt:0,retrieveAt:0,tension:0,distance:0,initialDistance:0,reeling:false,biteRemaining:0,fightTime:0,mode:'rest',school:1,resultAt:0,approach:0,reason:'',catches:0,fishX:0,fishSpeed:0,fishId,fish});
 
 /** Authoritative sea game: hold intent is sampled at a fixed server cadence.
  * Network message frequency never determines reel strength or catch outcome. */
 export class OceanFishingGame {
   private locomotion=new FishLocomotion({x:0,y:-2.2,z:-20},{x:.1,y:0,z:0});
-  state:OceanState=fresh(this.locomotion.snapshot());
+  state:OceanState;
   private age=0;
   private waitDuration=4;
   private overload=0;
@@ -36,7 +38,9 @@ export class OceanFishingGame {
   private swimEffort=.2;
   private escapeAge=ESCAPE_ANIMATION_SECONDS;
   private escapeDirection:Vec3={x:0,y:-.22,z:-1};
-  constructor(private readonly random:()=>number=Math.random){}
+  constructor(private readonly random:()=>number=Math.random, private readonly startingFishId:FishSpeciesId=DEFAULT_FISH_SPECIES_ID){
+    this.state=fresh(this.locomotion.snapshot(),startingFishId);
+  }
   action(input:OceanAction, now:number):boolean {
     const s=this.state;
     if(input.action==='cast'&&s.phase==='idle'){
@@ -51,7 +55,7 @@ export class OceanFishingGame {
       this.approachEnd={x:bait.x+side*1.5,y:bait.y,z:bait.z};
       this.approachDirection=normalise({x:this.approachEnd.x-this.approachStart.x,y:0,z:0});
       this.locomotion.reset(this.approachStart,scale(this.approachDirection,.12));
-      this.state={...fresh(this.locomotion.snapshot()),phase:'casting',strength,aim:clamp(input.aim,-1,1),revision:s.revision+1,castAt:now,catches:s.catches,distance:length,initialDistance:length};
+      this.state={...fresh(this.locomotion.snapshot(),s.fishId),phase:'casting',strength,aim:clamp(input.aim,-1,1),revision:s.revision+1,castAt:now,catches:s.catches,distance:length,initialDistance:length};
       this.syncFishSnapshot();return true;
     }
     if(input.action==='hook'&&s.phase==='biting'){
@@ -70,7 +74,8 @@ export class OceanFishingGame {
     this.steeringPhase=0;this.lateralVelocity=0;this.swimYaw=.3;this.swimEffort=.2;
     this.escapeAge=ESCAPE_ANIMATION_SECONDS;
     this.locomotion.reset({x:0,y:this.fishDepth,z:-20},{x:.1,y:0,z:0});
-    this.state={...fresh(this.locomotion.snapshot()),revision:this.state.revision,catches:this.state.catches};this.age=0;
+    const fishId=nextFishSpeciesId(this.state.fishId,this.state.catches);
+    this.state={...fresh(this.locomotion.snapshot(),fishId),revision:this.state.revision,catches:this.state.catches};this.age=0;
   }
   private escape(reason:OceanState['reason'],now:number){
     const fish=this.locomotion.snapshot(),heading=fish.heading;

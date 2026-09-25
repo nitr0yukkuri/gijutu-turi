@@ -5,37 +5,27 @@ import type { Collection, CollectionEntry, OceanPhase } from "./types.js";
 
 
 const phaseLabels: Record<OceanPhase, string> = {
-  idle: "ここで投げてみる", casting: "投げています", waiting: "巻き戻す", retrieving: "戻しています",
-  biting: "合わせる", fighting: "押して巻く", caught: "もう一度、海へ", escaped: "もう一度、投げる",
+  idle: "投げる", casting: "投げています", waiting: "回収する", retrieving: "戻しています",
+  biting: "合わせる", fighting: "巻く", caught: "もう一度釣る", escaped: "もう一度投げる",
 };
 
 const phoneTitles: Record<OceanPhase, ReactNode> = {
-  idle: <>海に向けて、<br />ひと振り。</>, casting: <>そのまま、<br />海を見て。</>, waiting: <>静かに、<br />アタリを待つ。</>,
-  retrieving: <>もう一度、<br />好きな場所へ。</>, biting: <>いま、<br />合わせる！</>, fighting: <>巻く、<br />緩める。</>,
-  caught: <>釣れた！<br />go fish</>, escaped: <>また、<br />挑もう。</>,
+  idle: <>投げる</>, casting: <>投げています</>, waiting: <>アタリを<br />待っています</>,
+  retrieving: <>ルアーを<br />回収しています</>, biting: <>合わせる</>, fighting: <>魚を巻く</>,
+  caught: <>釣れました</>, escaped: <>逃げられました</>,
 };
 
 const failureHints: Record<string, [string, string]> = {
-  missed: ["合わせが、少し遅かった。", "ウキが沈んだら、Spaceかボタンで合わせよう。"],
-  line: ["糸が、切れた。", "赤くなる前に巻く手を止めよう。"],
-  slack: ["針が、外れた。", "糸が緩みきる前に、少し巻こう。"],
-  distance: ["沖へ、逃げられた。", "魚が落ち着く間に、少しずつ巻こう。"],
+  missed: ["合わせるタイミングが遅れました。", "ウキが沈んだら、ボタンを押してください。"],
+  line: ["糸が切れました。", "糸の張りが赤くなる前に、巻くのを止めてください。"],
+  slack: ["針が外れました。", "魚が掛かったら、糸を緩めすぎないでください。"],
+  distance: ["魚が逃げました。", "魚が落ち着いている間に、少しずつ巻いてください。"],
 };
 
 const phoneHints: Record<OceanPhase, string> = {
-  idle: "速く振るほど遠くへ。スマホをしっかり持ってください。", casting: "ルアーが飛んでいます。", waiting: "ウキが沈んだら、小さく引くかボタンをタッチ。",
-  retrieving: "ルアーを巻き戻しています。", biting: "小さく引く、または下のボタンをタッチ。", fighting: "押して巻く。赤くなる前に離す。",
-  caught: "一匹が群れになる、並行処理の魚。", escaped: "もう一度、海に投げてみよう。",
-};
-
-const cueFor = (phase: OceanPhase, tension: number, mode: string): string => {
-  if (phase === "biting") return "いま、合わせる";
-  if (tension > 80) return "糸が切れる。緩めて";
-  if (tension < 14) return "糸が緩い。少し巻いて";
-  if (mode === "warning") return "魚が、力をためている";
-  if (mode === "split") return "引きが、急に重くなった";
-  if (mode === "surge") return "強い引き。いったん緩める";
-  return "いま、巻ける";
+  idle: "スマホを振って投げます。強く振るほど遠くへ飛びます。", casting: "そのままお待ちください。", waiting: "ウキが沈んだら、画面をタップするかスマホを小さく引きます。",
+  retrieving: "ルアーを回収しています。", biting: "画面のボタンを押すか、スマホを小さく引きます。", fighting: "ボタンを押して巻きます。張りが強くなったら離します。",
+  caught: "Goの並行処理を表す魚です。", escaped: "もう一度投げてください。",
 };
 
 const dialogClick = (dialog: HTMLDialogElement, event: MouseEvent<HTMLDialogElement>): void => {
@@ -55,7 +45,7 @@ function CollectionModel({ entry }: { entry: CollectionEntry }) {
     setFailed(false);
     void import("../rendering/collection-preview.js").then(({ mountCollectionFish }) => {
       if (disposed || !mountRef.current) return;
-      try { preview = mountCollectionFish(mountRef.current); }
+      try { preview = mountCollectionFish(mountRef.current, entry.modelKey ?? "go-fish"); }
       catch { setFailed(true); }
     }).catch(() => setFailed(true));
     return () => { disposed = true; preview?.dispose(); };
@@ -81,7 +71,7 @@ function CollectionDialog({
   const selected = entries.find(entry => entry.id === selectedId) ?? entries[0];
   const caught = selected?.status === "caught";
   const preview = selected?.status === "preview";
-  const hasModel = caught && selected?.modelKey === "go-fish";
+  const hasModel = caught && (selected?.modelKey === "go-fish" || selected?.modelKey === "docker-whale");
 
   return (
     <dialog ref={dialogRef} id="collection-dialog" className="collection-dialog" aria-labelledby="collection-title" onClose={onClosed} onClick={event => dialogClick(event.currentTarget, event)}>
@@ -140,6 +130,9 @@ export function App() {
   const { activate, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, startReel, stopReel, toggleSensor, toggleSound, showToast } = runtime.actions;
   const fighting = state.phase === "fighting";
   const biting = state.phase === "biting";
+  const caughtEntry = collection.entries.find(entry => entry.id === state.fishId);
+  const fightButtonLabel = biting ? "合わせる" : reelHeld ? "巻いています" : "巻く";
+  const fightButtonHint = biting ? "ウキが沈んだら押す" : reelHeld ? "離して止める" : "押して巻く";
   const distanceVisible = ["casting", "waiting", "biting", "fighting"].includes(state.phase);
   const distanceMeters = Math.max(0, state.distance || 0).toFixed(1);
   const tension = Math.round((state.tension || 0) * 100);
@@ -175,6 +168,16 @@ export function App() {
     else window.setTimeout(() => viewToggleRef.current?.focus(), 0);
   };
   useEffect(() => {
+    if (!sceneryOnly) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      showScenery(false);
+    };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [sceneryOnly]);
+  useEffect(() => {
     let active = true;
     if (!controllerUrl) { setQrDataUrl(""); return () => { active = false; }; }
     void toDataURL(controllerUrl, {
@@ -202,19 +205,20 @@ export function App() {
         <output id="distance-meter" className="distance-meter" hidden={!distanceVisible} aria-label={fighting ? "魚までの距離" : "距離"}>{distanceMeters}m</output>
         <div id="cast-reticle" aria-hidden="true" style={reticle ? { left: reticle.x, top: reticle.y } : undefined} />
         <section id="fight-ui" className="fight-ui" hidden={!fighting && !biting} aria-label="魚との駆け引き" data-tension={tension} data-mode={state.mode}>
-          <p id="fight-cue" role="status">{cueFor(state.phase, tension, state.mode)}</p>
           <div className="tension-track" role="meter" aria-label="糸の張り" aria-valuemin={0} aria-valuemax={100} aria-valuenow={tension} aria-valuetext={`${tension}%`} style={{ "--tension-color": tensionColor } as CSSProperties}><span id="tension-fill" style={{ width: `${tension}%` }} /><i /></div>
-          <button id="fight-button" className={`fight-button${reelHeld ? " is-held" : ""}`} disabled={!online || renderFailed} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>{biting ? "合わせる" : reelHeld ? "巻いている — 離すと緩む" : "押して巻く"}</button><small id="fight-guide">{biting ? "SPACE / スマホを小さく引く" : "R 長押しで巻く / 離すと緩む"}</small>
+          <button id="fight-button" className={`fight-button${reelHeld ? " is-held" : ""}${biting ? " is-hook" : ""}`} aria-label={biting ? "合わせる。ウキが沈んだら押す" : reelHeld ? "巻いています。離して止める" : "巻く。押して巻く"} disabled={!online || renderFailed} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>
+            <span className="fight-button-label">{fightButtonLabel}</span><small className="fight-button-help">{fightButtonHint}</small>
+          </button>
         </section>
-        <section id="catch-ui" className="catch-ui" hidden={state.phase !== "caught"} aria-live="polite"><p>NEW ENCOUNTER</p><h1>go fish</h1><p>ひとつの光が、群れになる。</p><button id="catch-again" className="primary-button" disabled={!online} onClick={() => activate()}>もう一度、海へ</button></section>
+        <section id="catch-ui" className="catch-ui" hidden={state.phase !== "caught"} aria-live="polite"><p>NEW ENCOUNTER</p><h1>{caughtEntry ? collectionName(caughtEntry) : "魚"}</h1><p>{caughtEntry?.tagline ?? "新しい魚を釣り上げました。"}</p><button id="catch-again" className="primary-button" disabled={!online} onClick={() => activate()}>もう一度、海へ</button></section>
         <section id="escape-ui" className="escape-ui" hidden={state.phase !== "escaped"} aria-live="polite"><h2>{runtime.state.reason ? (failureHints[runtime.state.reason]?.[0] ?? "逃げられた。") : "逃げられた。"}</h2><p>{runtime.state.reason ? (failureHints[runtime.state.reason]?.[1] ?? "") : ""}</p><button id="escape-again" className="primary-button" disabled={!online} onClick={() => activate()}>もう一度、投げる</button></section>
         <div className="bottom-shade" aria-hidden="true" />
         <footer ref={shoreControlsRef} className="shore-controls chrome">
-          <button className="shore-link" onClick={() => openDialog(helpDialogRef)}><span className="help-mark">?</span> あそびかた</button>
+          <button className="shore-link" onClick={() => openDialog(helpDialogRef)}><span className="help-mark">?</span> 操作方法</button>
           <div className="entry-actions">
-            <button id="connect-button" className="connect-button" onClick={() => openDialog(connectDialogRef)}><svg viewBox="0 0 20 24" aria-hidden="true"><rect x="4" y="2" width="12" height="20" rx="2" /><path d="M8 18h4" /></svg><span>スマホで釣る</span><span className="entry-arrow" aria-hidden="true">↗</span></button>
-            <button id="cast-button" className="cast-button" aria-label={state.phase === "waiting" ? "ルアーを巻き戻す" : "押してためて、離して投げる"} disabled={!online || renderFailed || ["casting", "retrieving"].includes(state.phase)} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}><span id="cast-button-label">{phaseLabels[state.phase]}</span><span className="key-hint" aria-hidden="true">SPACE</span></button>
+            <button id="cast-button" className="cast-button" aria-label={state.phase === "idle" ? "投げる。長押しして、離す" : state.phase === "waiting" ? "ルアーを回収する" : phaseLabels[state.phase]} disabled={!online || renderFailed || ["casting", "retrieving"].includes(state.phase)} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}><span id="cast-button-label">{phaseLabels[state.phase]}</span></button>
             <span className="cast-charge" aria-hidden="true"><span id="charge-fill" style={{ width: `${chargeProgress * 100}%` }} /></span>
+            <button id="connect-button" className="connect-button" onClick={() => openDialog(connectDialogRef)}><svg viewBox="0 0 20 24" aria-hidden="true"><rect x="4" y="2" width="12" height="20" rx="2" /><path d="M8 18h4" /></svg><span>スマホを接続</span><span className="entry-arrow" aria-hidden="true">↗</span></button>
           </div>
           <button className="shore-link" onClick={() => openDialog(collectionDialogRef)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v15M3 4c4-1 7 0 9 2 2-2 5-3 9-2v14c-4-1-7 0-9 2-2-2-5-3-9-2Z" /></svg> 図鑑</button>
         </footer>
@@ -223,15 +227,20 @@ export function App() {
       </main>
       <section id="phone" className="phone" hidden={!isPhone} aria-label="釣り竿コントローラー" data-fight={String(fighting || biting)}>
         <a className="phone-brand" href="./">技術釣り</a><span id="phone-connection" className="phone-connection">{displayConnected ? "海につながっています" : online ? "海の画面が閉じています" : "海との接続が切れています"}</span>
-        <div className="phone-instruction"><p id="phone-kicker">YOUR FISHING ROD</p><h1 id="phone-title">{phoneTitles[state.phase]}</h1><p id="phone-hint">{phoneHints[state.phase]}</p></div>
+        <div className="phone-instruction"><p id="phone-kicker">スマホ操作</p><h1 id="phone-title">{phoneTitles[state.phase]}</h1><p id="phone-hint">{state.phase === "caught" && caughtEntry ? caughtEntry.tagline : phoneHints[state.phase]}</p></div>
         <div className="rod-symbol" aria-hidden="true"><svg viewBox="0 0 160 230"><path d="M48 220 93 32 Q101 14 113 18" /><path className="rod-thread" d="M113 18q22 112-12 164" /><circle cx="101" cy="185" r="4" /><path d="m85 51 15 4m-19 11 16 4m-30 53 16 4" /></svg></div>
-        <div id="phone-tension" className="phone-tension" hidden={!fighting}><output id="phone-distance" className="phone-distance" aria-label="魚までの距離">{distanceMeters}m</output><div className="tension-track" role="meter" aria-label="糸の張り" aria-valuemin={0} aria-valuemax={100} aria-valuenow={tension} aria-valuetext={`${tension}%`} style={{ "--tension-color": tensionColor } as CSSProperties}><span id="phone-tension-fill" style={{ width: `${tension}%` }} /><i /></div><p id="phone-fight-cue">{cueFor(state.phase, tension, state.mode)}</p></div>
+        <div id="phone-tension" className="phone-tension" hidden={!fighting}><output id="phone-distance" className="phone-distance" aria-label="魚までの距離">{distanceMeters}m</output><div className="tension-track" role="meter" aria-label="糸の張り" aria-valuemin={0} aria-valuemax={100} aria-valuenow={tension} aria-valuetext={`${tension}%`} style={{ "--tension-color": tensionColor } as CSSProperties}><span id="phone-tension-fill" style={{ width: `${tension}%` }} /><i /></div></div>
         <button id="sensor-button" className="primary-button" onClick={() => void toggleSensor()}>{sensorButtonLabel}</button><button id="phone-cast" className={`phone-cast${reelHeld ? " is-held" : ""}`} disabled={!online || !displayConnected || ["casting", "retrieving"].includes(state.phase)} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>{phoneCastLabel}</button><p id="sensor-status" className="sensor-status" role="status">{sensorStatus}</p>
       </section>
       <dialog ref={helpDialogRef} id="help-dialog" aria-labelledby="help-title" onClick={event => dialogClick(event.currentTarget, event)}>
-        <button className="close-dialog quiet-button" aria-label="閉じる" onClick={() => closeDialog(helpDialogRef)}>×</button><p className="eyebrow">HOW TO FISH</p><h2 id="help-title">静かな海に、ひと振り。</h2>
-        <ol className="instructions"><li><span>01</span><div><strong>海へ、投げる。</strong><p>スマホは速く振るほど遠くへ飛びます。タッチやSpaceでも投げられます。</p></div></li><li><span>02</span><div><strong>アタリが来たら、合わせる。</strong><p>ウキが沈んだら、ボタン・Space、またはスマホを小さく引きます。</p></div></li><li><span>03</span><div><strong>巻く、緩める。</strong><p>ボタンかRを押している間、巻きます。赤くなる前に離して緩め、青い間に巻きましょう。緩めすぎても逃げます。</p></div></li></ol>
-        <p className="fine-print">スマホはしっかり持ち、手首の小さな動きで。リールはタッチ操作です。キーボードではSpaceで合わせ、Rで巻きます。</p>
+        <button className="close-dialog quiet-button" aria-label="閉じる" onClick={() => closeDialog(helpDialogRef)}>×</button>
+        <header className="help-header"><p className="eyebrow">操作方法</p><h2 id="help-title">釣り方</h2><p className="help-lead">画面中央のボタンを順番に使います。</p></header>
+        <ol className="instructions">
+          <li><span>1</span><div><div className="instruction-heading"><strong>投げる</strong></div><p>「投げる」を長押しし、好きなタイミングで離します。長く押すほど遠くへ飛びます。スペースキーでも操作できます。</p></div></li>
+          <li><span>2</span><div><div className="instruction-heading"><strong>合わせる</strong></div><p>ウキが沈み、ボタンが「合わせる」に変わったら押します。</p></div></li>
+          <li><span>3</span><div><div className="instruction-heading"><strong>巻く</strong></div><p>「巻く」を押している間、魚との距離が縮みます。糸の張りが赤くなったら、いったん離します。</p></div></li>
+        </ol>
+        <p className="fine-print">スマホを使う場合は「スマホを接続」からQRコードを読み取り、スマホ画面の指示に従ってください。</p>
       </dialog>
       <dialog ref={connectDialogRef} id="connect-dialog" aria-label="スマホを接続" aria-describedby="pairing-description" onClick={event => dialogClick(event.currentTarget, event)}>
         <button className="close-dialog quiet-button" aria-label="閉じる" onClick={() => closeDialog(connectDialogRef)}>×</button><p id="pairing-description">QRコードを読み取ってください。</p>

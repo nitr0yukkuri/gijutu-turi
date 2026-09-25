@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { FISH_SPECIES } from "./fish-species.js";
 
 export type CollectionStatus = "unknown" | "caught" | "preview";
 
@@ -41,22 +42,7 @@ type CollectionRow = {
   last_caught_at: string;
 };
 
-const catalog = [
-  {
-    id: "fish-001",
-    number: 1,
-    name: "Go魚",
-    classification: "CONCURRENCY SPECIES",
-    tagline: "ひとつの光が、群れになる。",
-    description: "一匹が複数に分かれ、同時に引く。Goの並行処理を、群れの抵抗として体験する魚。",
-    habitat: "静かな沖",
-    rarity: "COMMON",
-    modelKey: "go-fish",
-    catalogStatus: "active" as const,
-  },
-];
-
-const isPlayerId = (value: string): boolean => /^player_[a-z0-9-]{12,80}$/.test(value);
+export const isPlayerId = (value: string): boolean => /^player_[a-z0-9-]{12,80}$/.test(value);
 
 export class CollectionStore {
   private readonly db: DatabaseSync;
@@ -108,7 +94,7 @@ export class CollectionStore {
         model_key=excluded.model_key,
         catalog_status=excluded.catalog_status
     `);
-    for (const entry of catalog) {
+    for (const entry of FISH_SPECIES) {
       insert.run(
         entry.id,
         entry.number,
@@ -178,15 +164,22 @@ export class CollectionStore {
       INSERT OR IGNORE INTO collection_catch_events (event_key, player_id, fish_id, caught_at)
       VALUES (?, ?, ?, ?)
     `);
-    const result = addEvent.run(eventKey, playerId, fishId, caughtAt);
-    if (Number(result.changes) > 0) {
-      this.db.prepare(`
-        INSERT INTO player_collections (player_id, fish_id, catches, first_caught_at, last_caught_at)
-        VALUES (?, ?, 1, ?, ?)
-        ON CONFLICT(player_id, fish_id) DO UPDATE SET
-          catches = player_collections.catches + 1,
-          last_caught_at = excluded.last_caught_at
-      `).run(playerId, fishId, caughtAt, caughtAt);
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = addEvent.run(eventKey, playerId, fishId, caughtAt);
+      if (Number(result.changes) > 0) {
+        this.db.prepare(`
+          INSERT INTO player_collections (player_id, fish_id, catches, first_caught_at, last_caught_at)
+          VALUES (?, ?, 1, ?, ?)
+          ON CONFLICT(player_id, fish_id) DO UPDATE SET
+            catches = player_collections.catches + 1,
+            last_caught_at = excluded.last_caught_at
+        `).run(playerId, fishId, caughtAt, caughtAt);
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
     }
     return this.getCollection(playerId);
   }

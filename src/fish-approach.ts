@@ -17,5 +17,7 @@ export const fishVisibilityTarget = (phase: string, progress: number): number =>
     const reveal = easeFishApproach((amount - WAIT_APPROACH_FRACTION) / (1 - WAIT_APPROACH_FRACTION));
     return .32 + reveal * .53;
   }
-  return phase === "fighting" || phase === "caught" || phase === "escaped" ? 1 : 0;
+  // Escape presentation owns its own timed fade. Returning 1 here would keep
+  // the fish opaque until the group is hidden at the end of the animation.
+  return phase === "fighting" || phase === "caught" ? 1 : 0;
 };
