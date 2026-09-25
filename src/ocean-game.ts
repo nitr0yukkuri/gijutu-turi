@@ -14,7 +14,10 @@ export type OceanState = {
 };
 export const ESCAPE_ANIMATION_MS=2000;
 const ESCAPE_ANIMATION_SECONDS=ESCAPE_ANIMATION_MS/1000;
-const BITE_DURATION_SECONDS=4.2;
+// Give the player a readable reaction window after the float visibly sinks.
+// The fight difficulty starts only after hooking, so this does not change the
+// reel/tension balance; it only prevents a missed bite from feeling instant.
+const BITE_DURATION_SECONDS=6;
 const clamp=(x:number,min:number,max:number)=>Math.max(min,Math.min(max,x));
 const fresh=(fish:FishMotionSnapshot,fishId:FishSpeciesId):OceanState=>({phase:'idle',strength:.65,aim:0,revision:0,castAt:0,retrieveAt:0,tension:0,distance:0,initialDistance:0,reeling:false,biteRemaining:0,fightTime:0,mode:'rest',school:1,resultAt:0,approach:0,reason:'',catches:0,fishX:0,fishSpeed:0,fishId,fish});
 

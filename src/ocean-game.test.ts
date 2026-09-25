@@ -13,7 +13,9 @@ test('sea loop: ignores premature hook, missed bite escapes, reset is repeatable
   const game=new OceanFishingGame(()=>0);
   assert.equal(game.action({action:'hook'},0),false);
   game.action({action:'cast',strength:.5,aim:0},1000);
-  for(let i=0;i<180;i++)game.step(.05,false,1000+i*50);
+  // Advance past the full reaction window instead of coupling this test to
+  // the exact UX duration shown to a player.
+  for(let i=0;i<320&&game.state.phase!=='escaped';i++)game.step(.05,false,1000+i*50);
   assert.equal(game.state.phase,'escaped');assert.equal(game.state.reason,'missed');
   game.action({action:'reset'},11000);assert.equal(game.state.phase,'idle');assert.equal(game.state.revision,1);
 });

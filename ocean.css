@@ -187,4 +187,4 @@ body:has(#collection-dialog[open]) #sea #escape-ui {
   .fight-button { min-width: 170px; min-height: 54px; }
   .help-header { padding: 27px 24px 20px; }
 }
-.result-connection{margin:14px 0 0!important;color:#b8d0d5!important;font-size:11px!important}.catch-ui .primary-button:disabled,.escape-ui .primary-button:disabled{opacity:.78;cursor:wait}
+.fight-ui{z-index:4}.fight-ui #fight-cue{margin:0 0 14px;font-size:15px;letter-spacing:.06em;text-shadow:0 2px 15px #0e2e39}.fight-ui .is-hook{border-color:#d4f5f1cc;background:#1b5260e6;box-shadow:0 0 0 1px #d4f5f133,0 8px 30px #06232d55;animation:hook-pulse 1.1s ease-in-out infinite}.result-connection{margin:14px 0 0!important;color:#b8d0d5!important;font-size:11px!important}.catch-ui .primary-button:disabled,.escape-ui .primary-button:disabled{opacity:.78;cursor:wait}@keyframes hook-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
