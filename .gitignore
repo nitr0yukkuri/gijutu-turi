@@ -1,8 +1,11 @@
 node_modules/
 .npm-cache/
+.npm-cache-deploy/
 dist/
 .previewlogs/
 .env
 .env.*
 !.env.example
 data/
+
+.vercel

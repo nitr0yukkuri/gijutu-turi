@@ -1,28 +1,37 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { createOcean } from "../rendering/ocean-scene.js";
+import { castStrengthFromMotion, isCastMotionReleased, isCastMotionStart } from "./cast-motion.js";
+import { FISH_SPECIES } from "../fish-species.js";
 import type { Collection, CollectionEntry, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
+
+const configuredBackendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim().replace(/\/+$/, "");
+const backendUrl = (path: string): string => configuredBackendUrl ? `${configuredBackendUrl}${path}` : path;
+const demoFishId = new URLSearchParams(window.location.search).get("fish") === "docker" ? "whale-001" : new URLSearchParams(window.location.search).get("fish") === "go" ? "fish-001" : undefined;
+const roomFishStorageKey = "gijutu.ocean-room-fish";
+const roomFishKey = demoFishId ?? "default";
+
+class OceanRoomRateLimitError extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super("ocean_room_rate_limited");
+  }
+}
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
 const failureHints: Record<string, [string, string]> = {
   missed: ["合わせが、少し遅かった。", "ウキが沈んだら、Spaceかボタンで合わせよう。"],
   line: ["糸が、切れた。", "赤くなる前に巻く手を止めよう。"],
-  slack: ["針が、外れた。", "糸が緩みきる前に、少し巻こう。"],
+  slack: ["針が外れた。", "釣れそうな魚：go fish"],
   distance: ["沖へ、逃げられた。", "魚が落ち着く間に、少しずつ巻こう。"],
 };
 
-const fallbackCatalog: CollectionEntry[] = [
-  {
-    id: "fish-001", number: 1, name: "Go魚", classification: "CONCURRENCY SPECIES",
-    tagline: "ひとつの光が、群れになる。", description: "一匹が複数に分かれ、同時に引く。Goの並行処理を、群れの抵抗として体験する魚。",
-    habitat: "静かな沖", rarity: "COMMON", modelKey: "go-fish", catalogStatus: "active", status: "unknown",
-    catches: 0, firstCaughtAt: null, lastCaughtAt: null,
-  },
-];
-
-const readHasGo = (): boolean => {
-  try { return localStorage.getItem("gijutu.collection.go") === "caught"; } catch { return false; }
-};
+const fallbackCatalog: CollectionEntry[] = FISH_SPECIES.map(species => ({
+  ...species,
+  status: "unknown" as const,
+  catches: 0,
+  firstCaughtAt: null,
+  lastCaughtAt: null,
+}));
 
 const createPlayerId = (): string => {
   try {
@@ -44,22 +53,23 @@ const createPlayerId = (): string => {
 const initialCollection = (caught: boolean): Collection => ({
   entries: fallbackCatalog.map(entry => entry.id === "fish-001" && caught ? { ...entry, status: "caught", catches: 1 } : { ...entry }),
   registered: caught ? 1 : 0,
-  activeTotal: 1,
+  activeTotal: fallbackCatalog.length,
   catalogTotal: fallbackCatalog.length,
 });
 
 const initialState = (): OceanState => ({
   phase: "idle", revision: 0, strength: .65, aim: 0, castAt: 0, retrieveAt: 0,
-  tension: 0, distance: 0, mode: "rest", catches: 0, reason: "", resultAt: 0,
+  tension: 0, distance: 0, mode: "rest", catches: 0, reason: "", resultAt: 0, approach: 0, fishId: "fish-001",
 });
 
 type UseOceanRuntimeOptions = {
   isPhone: boolean;
   controllerId: string | null;
   oceanMountRef: RefObject<HTMLDivElement | null>;
+  collectionOpen: boolean;
 };
 
-export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOceanRuntimeOptions) {
+export function useOceanRuntime({ isPhone, controllerId, oceanMountRef, collectionOpen }: UseOceanRuntimeOptions) {
   const [state, setState] = useState<OceanState>(initialState);
   const stateRef = useRef(state);
   const [online, setOnline] = useState(false);
@@ -76,9 +86,8 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
   const [reticle, setReticle] = useState<Reticle>(null);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const soundEnabledRef = useRef(false);
-  const [collection, setCollection] = useState<Collection>(() => initialCollection(readHasGo()));
+  const [collection, setCollection] = useState<Collection>(() => initialCollection(false));
   const [selectedCollectionId, setSelectedCollectionId] = useState("fish-001");
-  const [roomId, setRoomId] = useState<string | null>(null);
   const [controllerUrl, setControllerUrl] = useState("");
   const [controllerHost, setControllerHost] = useState("");
   const [pairingStatus, setPairingStatus] = useState("接続を待っています");
@@ -88,10 +97,11 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
 
   const sceneRef = useRef<OceanSceneController | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
-  const roomIdRef = useRef<string | null>(null);
   const closingRef = useRef(false);
   const retriesRef = useRef(0);
   const retryTimerRef = useRef<number | null>(null);
+  const hiddenCloseTimerRef = useRef<number | null>(null);
+  const pausedForVisibilityRef = useRef(false);
   const chargeAtRef = useRef<number | null>(null);
   const chargeFrameRef = useRef<number | null>(null);
   const reelTimerRef = useRef<number | null>(null);
@@ -99,13 +109,12 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
   const lastVibrationRef = useRef(0);
   const toastTimerRef = useRef<number | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
-  const hasGoRef = useRef(readHasGo());
   const playerIdRef = useRef(createPlayerId());
   const audioContextRef = useRef<AudioContext | null>(null);
   const seaGainRef = useRef<GainNode | null>(null);
   const sensorTimerRef = useRef<number | null>(null);
   const sensorSamplesRef = useRef(0);
-  const sensorPeakRef = useRef(0);
+  const sensorPeakRef = useRef({ acceleration: 0, angularSpeed: 0 });
   const sensorPeakAtRef = useRef(0);
   const lastGestureRef = useRef(0);
   const gravityRef = useRef({ x: 0, y: 0, z: 0 });
@@ -213,40 +222,17 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
     if (!next) window.setTimeout(() => { if (!soundEnabledRef.current) void audioContext.suspend(); }, 500);
   }, [makeNoise]);
 
-  const markLocalCaught = useCallback(() => {
-    hasGoRef.current = true;
-    try { localStorage.setItem("gijutu.collection.go", "caught"); } catch { /* best effort */ }
-    setCollection(previous => ({
-      ...previous,
-      registered: Math.max(previous.registered, 1),
-      entries: previous.entries.map(entry => entry.id === "fish-001" ? { ...entry, status: "caught", catches: Math.max(entry.catches, 1) } : entry),
-    }));
-  }, []);
-
-  const loadCollection = useCallback(async () => {
+  const loadCollection = useCallback(async (): Promise<boolean> => {
     try {
-      const response = await fetch(`./api/collection?playerId=${encodeURIComponent(playerIdRef.current)}`, { cache: "no-store" });
+      const response = await fetch(`${backendUrl("/api/collection")}?playerId=${encodeURIComponent(playerIdRef.current)}`, { cache: "no-store" });
       if (!response.ok) throw new Error("collection");
       setCollection(await response.json() as Collection);
+      return true;
     } catch {
-      // The local fallback keeps the demo usable when the DB endpoint is unavailable.
+      showToast("図鑑を読み込めません。DBとの接続を確認してください。");
+      return false;
     }
-  }, []);
-
-  const recordCollectionCatch = useCallback(async (eventKey: string) => {
-    try {
-      const response = await fetch("./api/collection/catches", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playerId: playerIdRef.current, fishId: "fish-001", eventKey }),
-      });
-      if (!response.ok) throw new Error("collection");
-      setCollection(await response.json() as Collection);
-      markLocalCaught();
-      showToast("新しい魚が図鑑に登録されました。");
-    } catch {
-      markLocalCaught();
-    }
-  }, [markLocalCaught, showToast]);
+  }, [showToast]);
 
   const send = useCallback((action: object): boolean => {
     if (!onlineRef.current || socketRef.current?.readyState !== WebSocket.OPEN) {
@@ -317,7 +303,6 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
     setConnected(true);
     setPairingStatus(message.controllers ? "釣り竿がつながりました" : "接続を待っています");
     if (next.phase !== "fighting") stopReel();
-    if (!isPhone && next.catches > 0 && !hasGoRef.current) markLocalCaught();
     if (previous.phase !== next.phase) {
       cancelCharge();
       if (next.phase === "idle") showFeedback("");
@@ -326,8 +311,16 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
       if (next.phase === "biting") { playEffect("land"); vibrate([90, 60, 90]); }
       if (next.phase === "fighting") { showFeedback(""); vibrate(80); }
       if (next.phase === "caught") {
+        setSelectedCollectionId(next.fishId);
         showFeedback(""); playEffect("land"); vibrate([90, 90, 180]);
-        if (!isPhone) void recordCollectionCatch(`${roomIdRef.current ?? "local"}:${next.revision}`);
+        if (!isPhone) {
+          // The room persists the catch before broadcasting this snapshot.
+          // The display only reloads the read model; it must not submit a
+          // second catch command from the browser.
+          void loadCollection().then(loaded => {
+            if (loaded) showToast("新しい魚が図鑑に登録されました。");
+          });
+        }
       }
       if (next.phase === "escaped") {
         const [title, hint] = failureHints[next.reason] ?? ["沖へ、逃げられた。", "魚が落ち着く間に、少しずつ巻こう。"];
@@ -336,29 +329,49 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
     }
     if (next.phase === "fighting" && previous.mode !== next.mode && next.mode === "split") vibrate([70, 40, 70, 40, 100]);
     if (next.phase === "fighting" && next.tension > .82 && Date.now() - lastVibrationRef.current > 900) { vibrate(45); lastVibrationRef.current = Date.now(); }
-  }, [cancelCharge, isPhone, markLocalCaught, playEffect, recordCollectionCatch, setConnected, showFeedback, stopReel, vibrate]);
+  }, [cancelCharge, isPhone, loadCollection, playEffect, setConnected, showFeedback, showToast, stopReel, vibrate]);
 
   const getRoom = useCallback(async (): Promise<{ id: string; host?: string }> => {
     if (isPhone) return { id: controllerId ?? "" };
     const stored = sessionStorage.getItem("gijutu.ocean-room");
     const storedHost = sessionStorage.getItem("gijutu.ocean-host-v2") ?? undefined;
-    if (stored && storedHost) return { id: stored, host: storedHost };
+    const storedFish = sessionStorage.getItem(roomFishStorageKey);
+    if (stored && storedHost && storedFish === roomFishKey) return { id: stored, host: storedHost };
     if (stored) sessionStorage.removeItem("gijutu.ocean-room");
-    const response = await fetch("./api/ocean-sessions", { method: "POST" });
+    if (storedHost) sessionStorage.removeItem("gijutu.ocean-host-v2");
+    if (storedFish) sessionStorage.removeItem(roomFishStorageKey);
+    const response = await fetch(backendUrl("/api/ocean-sessions"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playerId: playerIdRef.current, ...(demoFishId ? { fishId: demoFishId } : {}) }),
+    });
+    if (response.status === 429) {
+      const retryAfter = Number(response.headers.get("Retry-After"));
+      throw new OceanRoomRateLimitError(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 60);
+    }
     if (!response.ok) throw new Error("room");
     const result = await response.json() as { id: string; host?: string };
     sessionStorage.setItem("gijutu.ocean-room", result.id);
+    sessionStorage.setItem(roomFishStorageKey, roomFishKey);
     if (result.host) sessionStorage.setItem("gijutu.ocean-host-v2", result.host);
     return result;
   }, [controllerId, isPhone]);
 
   const connect = useCallback(async () => {
+    const scheduleRetry = (finalMessage: string) => {
+      if (closingRef.current || pausedForVisibilityRef.current || retryTimerRef.current !== null) return;
+      if (retriesRef.current >= 4) { showToast(finalMessage); return; }
+      const attempt = retriesRef.current++;
+      retryTimerRef.current = window.setTimeout(() => {
+        retryTimerRef.current = null;
+        void connect();
+      }, 1000 + attempt * 1000);
+    };
     try {
       const room = await getRoom();
+      if (closingRef.current || pausedForVisibilityRef.current) return;
       const nextRoomId = room.id;
       if (!/^sea_[a-f0-9]{32}$/.test(nextRoomId)) throw new Error("link");
-      roomIdRef.current = nextRoomId;
-      setRoomId(nextRoomId);
       if (!isPhone) {
         const phoneUrl = new URL("./", window.location.href);
         if (room.host && ["localhost", "127.0.0.1", "[::1]"].includes(phoneUrl.hostname)) phoneUrl.hostname = room.host;
@@ -366,7 +379,9 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
         setControllerHost(room.host ?? phoneUrl.hostname);
         setControllerUrl(phoneUrl.href);
       }
-      const url = new URL("./ocean-ws", window.location.href);
+      const url = configuredBackendUrl
+        ? new URL(`${configuredBackendUrl}/ocean-ws`)
+        : new URL("./ocean-ws", window.location.href);
       url.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       url.searchParams.set("room", nextRoomId);
       url.searchParams.set("role", isPhone ? "controller" : "display");
@@ -375,26 +390,38 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
       let opened = false;
       socket.addEventListener("open", () => { opened = true; retriesRef.current = 0; setConnected(true); });
       socket.addEventListener("message", event => {
+        if (socketRef.current !== socket) return;
         try {
           const message = JSON.parse(event.data) as OceanMessage;
           if (message.type === "ocean") applyState(message);
         } catch { showToast("海の状態を読み込めませんでした。"); }
       });
       socket.addEventListener("close", () => {
-        if (socketRef.current === socket) socketRef.current = null;
+        // A visibility resume may open a replacement before the old close
+        // event arrives. Stale sockets must not flip the new connection offline
+        // or schedule another reconnect loop.
+        if (socketRef.current !== socket) return;
+        socketRef.current = null;
         setConnected(false);
+        if (pausedForVisibilityRef.current) return;
         if (closingRef.current) return;
         if (!opened && !isPhone) {
           sessionStorage.removeItem("gijutu.ocean-room");
           sessionStorage.removeItem("gijutu.ocean-host-v2");
+          sessionStorage.removeItem(roomFishStorageKey);
         }
-        if (retriesRef.current++ < 4) retryTimerRef.current = window.setTimeout(() => void connect(), 1000 + retriesRef.current * 500);
-        else showToast(isPhone ? "接続できません。海の画面から新しいURLを開いてください。" : "海に接続できません。ページを再読み込みしてください。");
+        scheduleRetry(isPhone ? "接続できません。海の画面から新しいURLを開いてください。" : "海に接続できません。ページを再読み込みしてください。");
       });
       socket.addEventListener("error", () => setConnected(false));
-    } catch {
+    } catch (error) {
       setConnected(false);
-      showToast("海に接続できません。サーバーの起動を確認してください。");
+      if (error instanceof OceanRoomRateLimitError) {
+        const wait = Math.max(1, Math.ceil(error.retryAfterSeconds));
+        showToast(`接続が集中しています。${wait}秒後にもう一度試してください。`);
+        return;
+      }
+      showToast("海に接続できません。再接続しています。");
+      scheduleRetry("海に接続できません。ページを再読み込みしてください。");
     }
   }, [applyState, getRoom, isPhone, setConnected, showToast]);
 
@@ -403,7 +430,6 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
     try {
       const scene = createOcean(oceanMountRef.current, {
         onLand: () => {
-          if (["casting", "waiting"].includes(stateRef.current.phase)) showFeedback("着水", "アタリを待つ", 1900);
           playEffect("land");
         },
         onRenderError: () => setRenderFailed(true),
@@ -415,7 +441,9 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
       console.error("Ocean rendering unavailable", error);
       setRenderFailed(true);
     }
-  }, [isPhone, oceanMountRef, playEffect, showFeedback]);
+  }, [isPhone, oceanMountRef, playEffect]);
+
+  useEffect(() => { sceneRef.current?.setOverlayOpen?.(collectionOpen); }, [collectionOpen]);
 
   useEffect(() => {
     setConnected(false);
@@ -452,18 +480,49 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
 
   useEffect(() => {
     const visibility = () => {
-      if (document.hidden) { cancelCharge(); stopReel(); void audioContextRef.current?.suspend(); }
-      else if (soundEnabledRef.current) void audioContextRef.current?.resume();
+      if (document.hidden) {
+        cancelCharge();
+        stopReel();
+        void audioContextRef.current?.suspend();
+        if (hiddenCloseTimerRef.current !== null) window.clearTimeout(hiddenCloseTimerRef.current);
+        hiddenCloseTimerRef.current = window.setTimeout(() => {
+          hiddenCloseTimerRef.current = null;
+          if (!document.hidden || closingRef.current) return;
+          pausedForVisibilityRef.current = true;
+          if (retryTimerRef.current !== null) window.clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+          socketRef.current?.close();
+          setConnected(false);
+        }, 60_000);
+      } else {
+        if (hiddenCloseTimerRef.current !== null) window.clearTimeout(hiddenCloseTimerRef.current);
+        hiddenCloseTimerRef.current = null;
+        if (pausedForVisibilityRef.current && !closingRef.current) {
+          pausedForVisibilityRef.current = false;
+          retriesRef.current = 0;
+          void connect();
+        } else if (soundEnabledRef.current) void audioContextRef.current?.resume();
+      }
     };
     document.addEventListener("visibilitychange", visibility);
-    return () => document.removeEventListener("visibilitychange", visibility);
-  }, [cancelCharge, stopReel]);
+    return () => {
+      document.removeEventListener("visibilitychange", visibility);
+      if (hiddenCloseTimerRef.current !== null) window.clearTimeout(hiddenCloseTimerRef.current);
+    };
+  }, [cancelCharge, connect, setConnected, stopReel]);
 
   useEffect(() => {
     const pagehide = () => { closingRef.current = true; stopReel(); cancelCharge(); socketRef.current?.close(); sceneRef.current?.dispose(); };
     const pageshow = (event: PageTransitionEvent) => { if (event.persisted) window.location.reload(); };
     window.addEventListener("pagehide", pagehide); window.addEventListener("pageshow", pageshow);
-    if ("serviceWorker" in navigator) void navigator.serviceWorker.register("./service-worker.js").catch(error => console.warn("Offline cache unavailable", error));
+    if ("serviceWorker" in navigator) {
+      const viteMeta = import.meta as ImportMeta & { env?: { DEV?: boolean } };
+      if (viteMeta.env?.DEV) {
+        void navigator.serviceWorker.getRegistrations().then(registrations => Promise.all(registrations.map(registration => registration.unregister())));
+      } else {
+        void navigator.serviceWorker.register("./service-worker.js").catch(error => console.warn("Offline cache unavailable", error));
+      }
+    }
     return () => { window.removeEventListener("pagehide", pagehide); window.removeEventListener("pageshow", pageshow); };
   }, [cancelCharge, stopReel]);
 
@@ -490,6 +549,9 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
       if (!window.isSecureContext || !window.DeviceMotionEvent) { setSensorStatus("センサーが使えない環境です。下のボタンで投げられます。"); return; }
       const motionApi = window.DeviceMotionEvent as typeof DeviceMotionEvent & { requestPermission?: () => Promise<"granted" | "denied"> };
       if (typeof motionApi.requestPermission === "function" && await motionApi.requestPermission() !== "granted") { setSensorStatus("センサーは許可されていません。タッチ操作で遊べます。"); return; }
+      sensorSamplesRef.current = 0;
+      warmupRef.current = 0;
+      if (sensorTimerRef.current !== null) window.clearTimeout(sensorTimerRef.current);
       const motion = (event: DeviceMotionEvent) => {
         if (document.hidden) return;
         const linear = event.acceleration;
@@ -505,15 +567,34 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
           x -= gravity.x; y -= gravity.y; z -= gravity.z;
         }
         if (warmupRef.current++ < 15) return;
-        const force = Math.hypot(x, y, z); const now = performance.now();
-        if (!(stateRef.current.phase === "idle" || stateRef.current.phase === "biting") || !onlineRef.current || now - lastGestureRef.current < 700) { sensorPeakRef.current = 0; return; }
-        if (force > 10 && sensorPeakRef.current === 0) { sensorPeakRef.current = force; sensorPeakAtRef.current = now; }
-        if (sensorPeakRef.current) {
-          sensorPeakRef.current = Math.max(force, sensorPeakRef.current);
-          if (now - sensorPeakAtRef.current > 650) { sensorPeakRef.current = 0; return; }
-          if (force < 4 && now - sensorPeakAtRef.current > 60) {
-            if (stateRef.current.phase === "biting") send({ action: "hook" }); else cast(clamp(sensorPeakRef.current / 28, .45, 1), 0);
-            lastGestureRef.current = now; sensorPeakRef.current = 0;
+        const acceleration = Math.hypot(x, y, z);
+        const rate = event.rotationRate;
+        const angularSpeed = rate && [rate.alpha, rate.beta, rate.gamma].every(Number.isFinite)
+          ? Math.hypot(rate.alpha ?? 0, rate.beta ?? 0, rate.gamma ?? 0)
+          : 0;
+        const now = performance.now();
+        if (!(stateRef.current.phase === "idle" || stateRef.current.phase === "biting") || !onlineRef.current || now - lastGestureRef.current < 700) {
+          sensorPeakRef.current = { acceleration: 0, angularSpeed: 0 };
+          return;
+        }
+        const peak = sensorPeakRef.current;
+        if (isCastMotionStart(acceleration, angularSpeed) && peak.acceleration === 0 && peak.angularSpeed === 0) {
+          peak.acceleration = acceleration;
+          peak.angularSpeed = angularSpeed;
+          sensorPeakAtRef.current = now;
+        }
+        if (peak.acceleration || peak.angularSpeed) {
+          peak.acceleration = Math.max(acceleration, peak.acceleration);
+          peak.angularSpeed = Math.max(angularSpeed, peak.angularSpeed);
+          if (now - sensorPeakAtRef.current > 650) {
+            sensorPeakRef.current = { acceleration: 0, angularSpeed: 0 };
+            return;
+          }
+          if (isCastMotionReleased(acceleration, angularSpeed) && now - sensorPeakAtRef.current > 60) {
+            if (stateRef.current.phase === "biting") send({ action: "hook" });
+            else cast(castStrengthFromMotion(peak.acceleration, peak.angularSpeed), 0);
+            lastGestureRef.current = now;
+            sensorPeakRef.current = { acceleration: 0, angularSpeed: 0 };
           }
         }
       };
@@ -521,7 +602,14 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
       window.addEventListener("devicemotion", motion);
       setSensorsOn(true); setSensorButtonLabel("釣り竿を確認しています");
       sensorTimerRef.current = window.setTimeout(() => {
-        if (sensorSamplesRef.current === 0) { setSensorStatus("センサーの動きを取得できません。タッチで投げられます。"); setSensorButtonLabel("センサーの応答待ち"); }
+        sensorTimerRef.current = null;
+        if (sensorSamplesRef.current === 0) {
+          window.removeEventListener("devicemotion", motion);
+          motionListenerRef.current = null;
+          setSensorsOn(false);
+          setSensorStatus("センサーの動きを取得できません。もう一度試すか、タッチで投げられます。");
+          setSensorButtonLabel("センサーを再試行");
+        }
         else setSensorButtonLabel("釣り竿は有効です");
       }, 2500);
     } catch { setSensorStatus("センサーを開始できません。タッチで投げられます。"); }
@@ -536,7 +624,7 @@ export function useOceanRuntime({ isPhone, controllerId, oceanMountRef }: UseOce
 
   return {
     state, online, controllers, displayConnected, renderFailed, reelHeld, feedback, toast, chargeProgress, reticle,
-    soundEnabled, collection, selectedCollectionId, setSelectedCollectionId, roomId, controllerUrl, controllerHost, pairingStatus,
+    soundEnabled, collection, selectedCollectionId, setSelectedCollectionId, controllerUrl, controllerHost, pairingStatus,
     sensorStatus, sensorButtonLabel, sensorsOn,
     actions: {
       activate, cast, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, releaseCharge,

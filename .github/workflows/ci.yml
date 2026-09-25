@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'codex/**'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: 型検査・テスト・ビルド
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+
+      - name: Node.jsを準備
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 依存関係をインストール
+        run: npm ci
+
+      - name: 型検査
+        run: npm run typecheck
+
+      - name: 自動テスト
+        run: npm test
+
+      - name: 本番ビルド
+        run: npm run build
+
+      - name: 海釣り用サーバーを起動
+        shell: bash
+        run: |
+          npm run dev:server > "$RUNNER_TEMP/gijutu-turi-server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/gijutu-turi-server.pid"
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8787/health > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/gijutu-turi-server.log"
+          exit 1
+
+      - name: 海釣り統合テスト
+        run: npm run test:ocean
+
+      - name: 魚モデル検証
+        run: npm run test:fish
+
+      - name: クジラモデル検証
+        run: npm run test:whale
+
+      - name: Dockerイメージをビルド
+        run: docker build --tag gijutu-turi:ci .
+
+      - name: 海釣り用サーバーを停止
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/gijutu-turi-server.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/gijutu-turi-server.pid")" || true
+          fi

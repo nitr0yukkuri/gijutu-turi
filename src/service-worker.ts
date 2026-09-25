@@ -8,8 +8,6 @@ const PRECACHE_PATHS = [
   "ocean.css",
   "go-fish.html",
   "docker-whale.html",
-  "vendor/three.module.js",
-  "vendor/three.core.js",
   "manifest.webmanifest",
   "assets/gijutu-turi-logo.png",
 ];
@@ -40,7 +38,8 @@ self.addEventListener("fetch", (event) => {
   if (requestUrl.origin !== self.location.origin) return;
   if (requestUrl.pathname.startsWith("/api/") || requestUrl.pathname.endsWith("/ocean-ws")) return;
   const cleanUrl = new URL(requestUrl.pathname, self.location.origin).toString();
-  if (!PRECACHE_URLS.includes(cleanUrl)) return;
+  const isBuiltAsset = requestUrl.pathname.startsWith("/assets/") || requestUrl.pathname.startsWith("/chunks/");
+  if (!PRECACHE_URLS.includes(cleanUrl) && !isBuiltAsset) return;
 
   event.respondWith(
     fetch(event.request).then((response) => {

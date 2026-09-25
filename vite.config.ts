@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { copyFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 
@@ -7,7 +8,27 @@ const backendHttp = `http://127.0.0.1:${backendPort}`;
 const backendWs = `ws://127.0.0.1:${backendPort}`;
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: "copy-third-party-notices",
+      closeBundle() {
+        copyFileSync(
+          resolve(process.cwd(), "LICENSE"),
+          resolve(process.cwd(), "dist/client/license.txt"),
+        );
+        copyFileSync(
+          resolve(process.cwd(), "THIRD-PARTY-NOTICES.txt"),
+          resolve(process.cwd(), "dist/client/third-party-notices.txt"),
+        );
+        mkdirSync(resolve(process.cwd(), "dist/client/assets"), { recursive: true });
+        copyFileSync(
+          resolve(process.cwd(), "assets/gijutu-turi-logo.png"),
+          resolve(process.cwd(), "dist/client/assets/gijutu-turi-logo.png"),
+        );
+      },
+    },
+  ],
   resolve: {
     alias: {
       three: resolve(process.cwd(), "vendor/three.module.js"),

@@ -1,0 +1,117 @@
+GIJUTU TURI — Third-Party Notices
+==================================
+
+This file records the third-party software used by the application and
+distributed through the browser bundle or the Cloud Run server. The original
+GIJUTU TURI source code is licensed separately under LICENSE.
+
+The package versions below are the versions resolved in package-lock.json at
+the time this notice was generated. If dependencies are upgraded, regenerate
+this notice and review the resulting licenses.
+
+SHIPPED APPLICATION COMPONENTS
+------------------------------
+
+The following components are shipped in the browser bundle, vendored browser
+assets, or the production server:
+
+  three 0.186.0 — MIT — https://github.com/mrdoob/three.js
+  react 19.3.0 — MIT — https://github.com/facebook/react
+  react-dom 19.3.0 — MIT — https://github.com/facebook/react
+  scheduler 0.28.0 — MIT — https://github.com/facebook/react
+  qrcode 1.5.4 — MIT — https://github.com/soldair/node-qrcode
+  dijkstrajs 1.0.3 — MIT — https://github.com/tcort/dijkstra.js
+  pngjs 5.0.0 — MIT — https://github.com/pngjs/pngjs
+  yargs 15.4.1 — MIT — https://github.com/yargs/yargs
+  @hono/node-server 1.19.17 — MIT — https://github.com/honojs/node-server
+  hono 4.13.8 — MIT — https://github.com/honojs/hono
+  ws 8.21.3 — MIT — https://github.com/websockets/ws
+  zod 4.6.5 — MIT — https://github.com/colinhacks/zod
+
+The optional ws accelerators bufferutil and utf-8-validate are also MIT
+licensed when installed by npm for a target platform.
+
+MIT LICENSE NOTICES
+-------------------
+
+three.js
+Copyright © 2010-2026 three.js authors
+
+Meta Platforms, Inc. and affiliates
+Copyright (c) Meta Platforms, Inc. and affiliates
+
+qrcode
+Copyright (c) 2012 Ryan Day
+
+dijkstrajs
+Copyright (C) 2008 Wyatt Baldwin
+
+pngjs
+Copyright (c) 2015 Luke Page & Original Contributors
+Copyright (c) 2012 Kuba Niegowski
+
+yargs
+Copyright 2010 James Halliday; Modified work Copyright 2014 Contributors
+
+Hono and @hono/node-server
+Copyright (c) 2021-present Yusuke Wada and Hono contributors
+Copyright (c) 2022-present Yusuke Wada and Hono contributors
+
+ws
+Copyright (c) 2011 Einar Otto Stangvik
+Copyright (c) 2013 Arnout Kazemier and contributors
+Copyright (c) 2016 Luigi Pinca and contributors
+
+zod
+Copyright (c) 2025 Colin McDonnell
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+BUILD-ONLY DEPENDENCIES
+-----------------------
+
+These packages are used by the local/Vercel build process and are not copied
+into the Cloud Run runtime image or intentionally shipped as application
+runtime code:
+
+  typescript 5.9.3 — Apache-2.0
+  lightningcss 1.33.0 — MPL-2.0
+  source-map-js 1.2.1 — BSD-3-Clause
+  picocolors 1.1.1 and related CLI packages — ISC
+  esbuild, rolldown, Vite, tsx, and their build dependencies — primarily MIT
+
+Their license files remain available in the npm packages installed for the
+build. If the build toolchain itself is redistributed, preserve those package
+licenses as well.
+
+DESIGN REFERENCES
+-----------------
+
+The fish design documentation links to the following projects as research
+references. No source code, meshes, textures, or audio from these projects is
+included in GIJUTU TURI according to docs/go-fish-design.md.
+
+  argonautcode/animal-proc-anim — MIT
+  https://github.com/argonautcode/animal-proc-anim/blob/main/LICENSE
+
+  WebGLSamples/WebGLSamples.github.io — BSD-3-Clause
+  https://github.com/WebGLSamples/WebGLSamples.github.io/blob/master/LICENSE.md
+
+  unclemattmakes/polyfish — MIT
+  https://github.com/unclemattmakes/polyfish/blob/main/LICENSE
