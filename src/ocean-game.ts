@@ -1,5 +1,6 @@
 import { FishLocomotion, magnitude, normalise, scale, type FishMotionSnapshot, type Vec3 } from './fish.js';
 import { BITE_APPROACH_SECONDS, PRE_BITE_APPROACH_SECONDS, WAIT_APPROACH_FRACTION, easeFishApproach } from './fish-approach.js';
+import { getFishFightProfile } from './fish-behavior.js';
 import { DEFAULT_FISH_SPECIES_ID, nextFishSpeciesId, type FishSpeciesId } from './fish-species.js';
 
 export type OceanPhase = 'idle' | 'casting' | 'waiting' | 'biting' | 'fighting' | 'caught' | 'escaped' | 'retrieving';
@@ -63,7 +64,7 @@ export class OceanFishingGame {
     }
     if(input.action==='hook'&&s.phase==='biting'){
       s.fishX=s.fish.position.x;s.distance=Math.max(1.7,-s.fish.position.z);this.fishDepth=s.fish.position.y;
-      s.phase='fighting';s.tension=.34;s.biteRemaining=0;s.mode='surge';this.age=0;
+      s.phase='fighting';s.tension=getFishFightProfile(s.fishId).initialTension;s.biteRemaining=0;s.mode='surge';this.age=0;
       this.locomotion.triggerCStart({x:.3,y:0,z:-1});this.syncFishSnapshot();return true;
     }
     if(input.action==='retrieve'&&s.phase==='waiting'){
@@ -143,28 +144,27 @@ export class OceanFishingGame {
     }else if(s.phase==='fighting'){
       s.fightTime+=dt;
       const t=s.fightTime;
+      const profile=getFishFightProfile(s.fishId);
       if(s.distance<6&&this.finalBurst<0)this.finalBurst=t;
       const finale=this.finalBurst<0?-1:t-this.finalBurst;
-      s.mode= t<1.3?'surge':t<5?'rest':t<5.9?'warning':t<8.6?'split':((t-8.6)%6.2<1.4?'surge':'rest');
-      if(finale>=0&&finale<.8)s.mode='warning';
-      else if(finale>=.8&&finale<2.6)s.mode='split';
-      s.school=s.mode==='split'?7:1;
+      ({mode:s.mode,school:s.school}=profile.modeAt(t,finale));
       const surge=s.mode==='surge'||s.mode==='split';
-      const pressure=surge?.28:.035;
-      s.tension=clamp(s.tension+((reeling?.14:-.24)+pressure)*dt,0,1);
+      const opening=t<profile.openingSeconds;
+      const pressure=opening?profile.openingPressure:profile.basePressure;
+      s.tension=clamp(s.tension+((reeling?profile.reelingLoad:-profile.releaseRecovery)+pressure)*dt,0,1);
       const previousDistance=s.distance,previousFishX=s.fishX,previousDepth=this.fishDepth;
       // A burst must be able to take line even while the player is reeling;
       // the following lull remains the clear opportunity to recover it.
-      const retreatSpeed=surge?2.6:.22;
-      const reelSpeed=reeling?(surge?1.55:3.5):0;
+      const retreatSpeed=opening?profile.openingRetreatSpeed:profile.baseRetreatSpeed;
+      const reelSpeed=reeling?(opening?profile.openingReelSpeed:profile.baseReelSpeed):0;
       s.distance=clamp(s.distance+(retreatSpeed-reelSpeed)*dt,1.7,s.initialDistance+24);
       this.overload=s.tension>=.97?this.overload+dt:Math.max(0,this.overload-dt*2);
       this.slack=s.tension<.06?this.slack+dt:0;
       // Continuous steering and bounded acceleration: changing fight mode no
       // longer jumps to another sine-wave phase or instantly reverses the fish.
       this.steeringPhase+=dt*(surge?1.65:.72);
-      const lateral=Math.sin(this.steeringPhase)*(surge?2.4:1.25);
-      const wantedVelocity=clamp((lateral-s.fishX)*2.2,-2.5,2.5);
+      const lateral=Math.sin(this.steeringPhase)*(opening?profile.openingLateralAmplitude:profile.baseLateralAmplitude);
+      const wantedVelocity=clamp((lateral-s.fishX)*2.2,-profile.lateralLimit,profile.lateralLimit);
       this.lateralVelocity+=clamp(wantedVelocity-this.lateralVelocity,-dt*4,dt*4);
       s.fishX+=this.lateralVelocity*dt;
       // Body, tall fins and tail must remain below the wave troughs. These
@@ -178,7 +178,7 @@ export class OceanFishingGame {
       const previousYaw=this.swimYaw;
       const wantedYaw=Math.atan2(this.lateralVelocity,.8);
       this.swimYaw+=clamp(wantedYaw-this.swimYaw,-dt*1.65,dt*1.65);
-      this.swimEffort+=((surge?.95:reeling?.58:.22)-this.swimEffort)*(1-Math.exp(-dt*4));
+      this.swimEffort+=((opening?profile.openingEffort:reeling?profile.reelingEffort:profile.restEffort)-this.swimEffort)*(1-Math.exp(-dt*4));
       const swimSpeed=.65+this.swimEffort*2.5;
       const propulsion:Vec3={x:Math.sin(this.swimYaw)*swimSpeed,y:velocity.y*.4,z:-Math.cos(this.swimYaw)*swimSpeed};
       const turn=clamp((this.swimYaw-previousYaw)/dt/1.65,-1,1);

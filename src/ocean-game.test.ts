@@ -44,6 +44,30 @@ test('responding to tension lands one Go fish, including parallel surge',()=>{
   }
 });
 
+test('Docker whale starts heavy, settles into a steady pull, and remains catchable',()=>{
+  const game=new OceanFishingGame(()=>.5,'whale-001');let now=1000;
+  const step=(held=false)=>{now+=50;game.step(.05,held,now);};
+  const phase=()=>game.state.phase;
+  const mode=()=>game.state.mode;
+  game.action({action:'cast',strength:.5,aim:0},now);
+  while(phase()!=='biting')step();
+  game.action({action:'hook'},now);
+  assert.equal(game.state.mode,'surge');
+  assert.equal(game.state.school,1);
+  assert.ok(game.state.tension>=.5,'Docker should start with a clearly heavier line load');
+  const openingDistance=game.state.distance;
+  for(let i=0;i<8;i++)step(false);
+  assert.ok(game.state.distance>openingDistance+.4,'the opening weight should take some line when the player does not reel');
+  assert.equal(game.state.school,1,'Docker must not switch into the Go school phase');
+
+  for(let i=0;i<3000&&phase()==='fighting';i++){
+    const held=mode()==='rest'&&game.state.tension<.52;
+    step(held);
+  }
+  assert.equal(game.state.phase,'caught',JSON.stringify(game.state));
+  assert.equal(game.state.fishId,'whale-001');
+});
+
 test('a surge takes line while reeling, then the lull lets the player recover it',()=>{
   const {game,step,now}=setup(.5);game.action({action:'hook'},now());
   const startDistance=game.state.distance;
