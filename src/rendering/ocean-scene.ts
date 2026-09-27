@@ -567,7 +567,10 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{} }={}) {
         const wave=catchOrigin?.wave||fish.bodyWave,elapsed=age;
         activeFightFish.update(time,{power:THREE.MathUtils.lerp(wave.amplitude/.3,.15,ease),glow:THREE.MathUtils.lerp(catchOrigin?.glow??.65,1,ease),bodyPhase:wave.phase+elapsed*wave.frequency*Math.PI*2,bodyFrequency:wave.frequency,bodyWavelength:wave.wavelength,turn:(catchOrigin?.swim?.turn||0)*(1-ease),effort:THREE.MathUtils.lerp(catchOrigin?.swim?.effort||.2,.15,ease),tetherLoad:(catchOrigin?.load||0)*(1-ease),visibility:renderedFishVisibility});
       }else{
-        const urgent=state.mode==='surge'||state.mode==='split';
+        // Go's warning is the readable attack telegraph. Keep it species
+        // specific so Docker's steady warning does not inherit a stronger
+        // glow by accident.
+        const urgent=state.mode==='surge'||state.mode==='split'||(state.mode==='warning'&&state.fishId==='fish-001');
         activeFightFish.group.position.copy(fishWorldPosition(fish));
         activeFightFish.group.quaternion.slerp(swimQuaternion,1-Math.exp(-dt*12));
         activeFightFish.group.scale.setScalar(state.fishId==='whale-001'?.42:state.phase==='fighting'?.84:.66);
