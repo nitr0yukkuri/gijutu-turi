@@ -7,6 +7,7 @@ import { fishFightCues } from './fish-fight-cues.js';
 import { smoothRodLoad } from './rod-flex.js';
 import { fishVisibilityTarget, WAIT_APPROACH_FRACTION } from '../fish-approach.js';
 import { ESCAPE_ANIMATION_MS } from '../ocean-game.js';
+import { TackleStateStore } from './tackle-state.js';
 
 // Keep the escape result on screen while the camera returns to the normal view.
 const ESCAPE_FADE_MS = 420;
@@ -290,6 +291,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{} }={}) {
 
   const start=new THREE.Vector3(.85,1.8,4.8),target=new THREE.Vector3(0,0,-21),rodButt=new THREE.Vector3(),rodTip=new THREE.Vector3();
   let state={phase:'idle',castAt:0,strength:.65,aim:0,revision:0};
+  const tackleStore=new TackleStateStore();
   let time=0,lastFrame=0,lastRenderedFrame=0,overlayOpen=false,landedRevision=-1,splashAt=-100,rippleIndex=0,charge=0,chargeAim=0,lastWake=0,lastStroke=0;
   let serverOffset=0,cameraProgress=0,frame,fishSamples=[],catchOrigin=null,displayedWave=null,displayedGlow=.65,displayedSwim=null,displayedLoad=0,displayedRodLoad=0,displayedFishVisibility=0;
   const cameraLookTarget=new THREE.Vector3(0,-3.8,-35);
@@ -332,6 +334,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{} }={}) {
   const addRipple=(x,z,power=1)=>{ripples[rippleIndex++%6].set(x,z,time,power);};
   const setState=(next,serverNow)=>{
     if(Number.isFinite(serverNow)) serverOffset=serverNow-Date.now();
+    tackleStore.update(next,Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset);
     const previousPhase=state.phase,changed=next.revision!==state.revision;
     if(changed){fishSamples=[];schoolAmount=0;schoolWasVisible=false;for(const motion of schoolMotion)motion.initialized=false;}
     if(next.fish){
@@ -388,6 +391,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{} }={}) {
     uniforms.uTime.value=time;
     const active=!['idle','caught','escaped'].includes(state.phase);
     const visibleFish=renderFishSnapshot();
+    const tackle=tackleStore.getState();
     const escapeAge=state.phase==='escaped'?Math.max(0,Date.now()+serverOffset-state.resultAt):ESCAPE_ANIMATION_MS;
     const escapeProgress=THREE.MathUtils.clamp(escapeAge/ESCAPE_ANIMATION_MS,0,1);
     const escapeFadeProgress=state.phase==='escaped'
@@ -413,7 +417,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{} }={}) {
     if(state.phase==='fighting'&&visibleFish)target.set(visibleFish.position.x,0,visibleFish.position.z);
     const castAge=(Date.now()+serverOffset-state.castAt)/1000;
     const showLiveTackle=!overlayOpen;
-    bobber.visible=showLiveTackle&&active&&state.phase!=='fighting';thread.visible=showLiveTackle&&active;rodAssembly.visible=showLiveTackle&&(active||charge>0);rod.visible=rodAssembly.visible;
+    bobber.visible=showLiveTackle&&active&&tackle.phase!=='fighting';thread.visible=showLiveTackle&&active;rodAssembly.visible=showLiveTackle&&(active||charge>0);rod.visible=rodAssembly.visible;
     bobber.scale.setScalar(state.phase==='biting'?.6:1);
     let fling=0;
     if(state.phase==='casting'||state.phase==='waiting'){
@@ -437,10 +441,10 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{} }={}) {
       bobber.position.y=waveHeight(bobber.position.x,bobber.position.z,time)+p*1.8;
       if(Math.floor(p*20)%4===0 && time-ripples[(rippleIndex+5)%6].z>.15)addRipple(bobber.position.x,bobber.position.z,.25);
     }
-    const cues=fishFightCues(visibleFish,state.phase==='fighting'?(visibleFish?.tension??state.tension):0);
+    const cues=fishFightCues(visibleFish,tackle.phase==='fighting'?(visibleFish?.tension??tackle.tension):0);
     const {strain,stroke}=cues;
     // Keep game tension immediate; only the rod's rendered flex eases toward it.
-    displayedRodLoad=smoothRodLoad(displayedRodLoad,state.phase==='fighting'?strain:0,dt);
+    displayedRodLoad=smoothRodLoad(displayedRodLoad,tackle.phase==='fighting'?strain:0,dt);
     const lateralPull=THREE.MathUtils.clamp(visibleFish?.position.x||0,-3,3)*.055*cues.load;
     const rodHorizontalScale=Math.min(1,camera.aspect/.85);
     // Screen-anchored endpoints keep the blank visible instead of cropping the
@@ -517,14 +521,14 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{} }={}) {
       const reelIndex=Math.floor(.16*(rodPointCount-1));reelPoint.copy(rodCenters[reelIndex]);reelTangent.subVectors(rodCenters[reelIndex+1],rodCenters[reelIndex]).normalize();reelDown.copy(rodAxisDown).projectOnPlane(reelTangent);if(reelDown.lengthSq()<.0001)reelDown.set(0,-1,0);else reelDown.normalize();reelSide.crossVectors(reelDown,reelTangent).normalize();rodGuideMatrix.makeBasis(reelSide,reelDown,reelTangent);reelGroup.position.copy(reelPoint);reelGroup.quaternion.setFromRotationMatrix(rodGuideMatrix);
       // A spinning reel's spool faces the rod tip (local +Z); the rotor/bail
       // turns around that axis while the fixed spool reciprocates slightly.
-      const retrievePhase=state.reeling?time*8:time*.15;reelRotorGroup.rotation.z=retrievePhase;reelHandleGroup.rotation.x=retrievePhase;spoolGroup.position.z=.055+Math.sin(retrievePhase)*.004;
+      const retrievePhase=tackle.reeling?time*8:time*.15;reelRotorGroup.rotation.z=retrievePhase;reelHandleGroup.rotation.x=retrievePhase;spoolGroup.position.z=.055+Math.sin(retrievePhase)*.004;
       reelLineExit.set(0,.105,.098+Math.sin(retrievePhase)*.004).applyQuaternion(reelGroup.quaternion).add(reelGroup.position);
       const guideLinePositions=rodGuideLineGeometry.attributes.position.array;
       guideLinePositions[0]=reelLineExit.x;guideLinePositions[1]=reelLineExit.y;guideLinePositions[2]=reelLineExit.z;
       for(let i=0;i<guideEntries.length;i++){const point=guideEntries[i].linePoint,offset=(i+1)*3;guideLinePositions[offset]=point.x;guideLinePositions[offset+1]=point.y;guideLinePositions[offset+2]=point.z;}
       rodGuideLineGeometry.attributes.position.needsUpdate=true;
     }
-    if(thread.visible&&state.phase!=='fighting'){
+    if(thread.visible&&tackle.phase!=='fighting'){
       const a=threadGeometry.attributes.position.array;
       for(let i=0;i<49;i++){const p=i/48;a[i*3]=THREE.MathUtils.lerp(rodLineAnchor.x,bobber.position.x,p);a[i*3+1]=THREE.MathUtils.lerp(rodLineAnchor.y,bobber.position.y,p)-Math.sin(p*Math.PI)*.2;a[i*3+2]=THREE.MathUtils.lerp(rodLineAnchor.z,bobber.position.z,p);}
       threadGeometry.attributes.position.needsUpdate=true;

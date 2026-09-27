@@ -13,6 +13,7 @@ export type OceanState = {
   retrieveAt: number;
   tension: number;
   distance: number;
+  reeling: boolean;
   mode: OceanMode;
   approach: number;
   catches: number;

@@ -57,7 +57,7 @@ const initialCollection = (caught: boolean): Collection => ({
 
 const initialState = (): OceanState => ({
   phase: "idle", revision: 0, strength: .65, aim: 0, castAt: 0, retrieveAt: 0,
-  tension: 0, distance: 0, mode: "rest", catches: 0, reason: "", resultAt: 0, approach: 0, fishId: "fish-001",
+  tension: 0, distance: 0, reeling: false, mode: "rest", catches: 0, reason: "", resultAt: 0, approach: 0, fishId: "fish-001",
 });
 
 type UseOceanRuntimeOptions = {
