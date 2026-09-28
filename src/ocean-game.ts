@@ -2,6 +2,7 @@ import { FishLocomotion, magnitude, normalise, scale, type FishMotionSnapshot, t
 import { BITE_APPROACH_SECONDS, PRE_BITE_APPROACH_SECONDS, WAIT_APPROACH_FRACTION, easeFishApproach } from './fish-approach.js';
 import { getFishFightProfile } from './fish-behavior.js';
 import { DEFAULT_FISH_SPECIES_ID, nextFishSpeciesId, type FishSpeciesId } from './fish-species.js';
+import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH, castDistanceForStrength } from './cast-distance.js';
 
 export type OceanPhase = 'idle' | 'casting' | 'waiting' | 'biting' | 'fighting' | 'caught' | 'escaped' | 'retrieving';
 export type OceanAction = {action:'cast';strength:number;aim:number} | {action:'hook'|'retrieve'|'reset'};
@@ -48,7 +49,7 @@ export class OceanFishingGame {
   action(input:OceanAction, now:number):boolean {
     const s=this.state;
     if(input.action==='cast'&&s.phase==='idle'){
-      const strength=clamp(input.strength,.2,1), length=12+strength*23;
+      const strength=clamp(input.strength,CAST_MIN_STRENGTH,CAST_MAX_STRENGTH), length=castDistanceForStrength(strength);
       this.age=0;this.overload=0;this.slack=0;this.finalBurst=-1;this.waitDuration=2.4+clamp(this.random(),0,1)*1.8;
       this.fishDepth=-2.2;
       this.steeringPhase=0;this.lateralVelocity=0;this.swimYaw=.3;this.swimEffort=.2;

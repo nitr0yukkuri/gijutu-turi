@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { createOcean } from "../rendering/ocean-scene.js";
 import { castStrengthFromMotion, isCastMotionReleased, isCastMotionStart } from "./cast-motion.js";
+import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH } from "../cast-distance.js";
 import { FISH_SPECIES, type FishSpeciesId } from "../fish-species.js";
 import type { Collection, CollectionEntry, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
 
@@ -247,7 +248,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const cast = useCallback((strength = .65, direction = aimRef.current) => {
     const current = stateRef.current;
     if (current.phase !== "idle" || renderFailed || (isPhone && !displayConnectedRef.current)) return;
-    send({ action: "cast", strength: clamp(strength, .2, 1), aim: clamp(direction, -1, 1) });
+    send({ action: "cast", strength: clamp(strength, CAST_MIN_STRENGTH, CAST_MAX_STRENGTH), aim: clamp(direction, -1, 1) });
   }, [isPhone, renderFailed, send]);
 
   const startCharge = useCallback(() => {
@@ -255,7 +256,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     chargeAtRef.current = performance.now();
     const update = () => {
       if (chargeAtRef.current === null) return;
-      const power = clamp((performance.now() - chargeAtRef.current) / 1100, .2, 1);
+      const power = clamp((performance.now() - chargeAtRef.current) / 1100, CAST_MIN_STRENGTH, CAST_MAX_STRENGTH);
       setChargeProgress(power);
       sceneRef.current?.setCharge(power, aimRef.current);
       const point = sceneRef.current?.aimScreen(aimRef.current, power);
@@ -267,7 +268,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
 
   const releaseCharge = useCallback(() => {
     if (chargeAtRef.current === null) return;
-    const power = clamp((performance.now() - chargeAtRef.current) / 1100, .45, 1);
+    const power = clamp((performance.now() - chargeAtRef.current) / 1100, CAST_MIN_STRENGTH, CAST_MAX_STRENGTH);
     cancelCharge();
     cast(power);
   }, [cancelCharge, cast]);

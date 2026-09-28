@@ -19,6 +19,12 @@ test('sea loop: ignores premature hook, missed bite escapes, reset is repeatable
   assert.equal(game.state.phase,'escaped');assert.equal(game.state.reason,'missed');
   game.action({action:'reset'},11000);assert.equal(game.state.phase,'idle');assert.equal(game.state.revision,1);
 });
+test('minimum cast strength starts the float at ten metres',()=>{
+  const game=new OceanFishingGame(()=>0);
+  game.action({action:'cast',strength:.2,aim:0},1000);
+  assert.equal(game.state.initialDistance,10);
+  assert.equal(game.state.distance,10);
+});
 test('holding reel blindly breaks the line; never reeling cannot catch',()=>{
   for(const held of [true,false]){
     const {game,step,now}=setup();game.action({action:'hook'},now());
