@@ -7,6 +7,7 @@ import { fishFightCues } from './fish-fight-cues.js';
 import { smoothRodLoad } from './rod-flex.js';
 import { fishVisibilityTarget, WAIT_APPROACH_FRACTION } from '../fish-approach.js';
 import { ESCAPE_ANIMATION_MS } from '../ocean-game.js';
+import { castDistanceForStrength } from '../cast-distance.js';
 import { TackleStateStore } from './tackle-state.js';
 
 // Keep the escape result on screen while the camera returns to the normal view.
@@ -343,7 +344,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{} }={}) {
       if(fishSamples.length>16)fishSamples.shift();
     }
     state={...next};
-    target.set(next.aim*7,0,-(12+next.strength*23));
+    target.set(next.aim*7,0,-castDistanceForStrength(next.strength));
     if(['fighting','caught'].includes(next.phase)&&next.fish)target.set(next.fish.position.x,0,next.fish.position.z);
     else if(['fighting','caught'].includes(next.phase))target.set(next.aim*7+(next.fishX||0),0,-next.distance);
     if(next.phase==='caught'&&previousPhase!=='caught'&&next.fish){
@@ -367,7 +368,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{} }={}) {
   };
   const setCharge=(amount,aim=0)=>{charge=amount;chargeAim=aim;};
   const aimScreen=(aim=0,strength=.65)=>{
-    const projected=new THREE.Vector3(aim*7,0,-(12+strength*23)).project(camera);
+    const projected=new THREE.Vector3(aim*7,0,-castDistanceForStrength(strength)).project(camera);
     return {x:(projected.x*.5+.5)*mount.clientWidth,y:(-.5*projected.y+.5)*mount.clientHeight};
   };
   const resize=()=>{
