@@ -150,7 +150,9 @@ export class OceanFishingGame {
       const finale=this.finalBurst<0?-1:t-this.finalBurst;
       ({mode:s.mode,school:s.school}=profile.modeAt(t,finale));
       const surge=s.mode==='surge'||s.mode==='split';
-      const warning=s.mode==='warning';
+      // The warning telegraph is a Go-fish attack cue. Docker also has a
+      // warning phase near landing, but it must keep its steady-pull motion.
+      const warning=s.mode==='warning'&&s.fishId==='fish-001';
       const opening=t<profile.openingSeconds;
       const pressure=opening
         ? profile.openingPressure

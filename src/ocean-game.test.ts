@@ -66,10 +66,16 @@ test('Docker whale starts heavy, settles into a steady pull, and remains catchab
   assert.ok(game.state.distance>openingDistance+.4,'the opening weight should take some line when the player does not reel');
   assert.equal(game.state.school,1,'Docker must not switch into the Go school phase');
 
+  let sawWarning=false;
   for(let i=0;i<3000&&phase()==='fighting';i++){
     const held=mode()==='rest'&&game.state.tension<.52;
     step(held);
+    if(mode()==='warning'){
+      sawWarning=true;
+      assert.equal(game.state.fish.gait,'coast','Docker warning stays a steady pull, not the Go turn cue');
+    }
   }
+  assert.ok(sawWarning,'the Docker warning phase should be exercised');
   assert.equal(game.state.phase,'caught',JSON.stringify(game.state));
   assert.equal(game.state.fishId,'whale-001');
 });
