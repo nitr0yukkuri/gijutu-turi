@@ -10,8 +10,8 @@
   "theme_color": "#172d3c",
   "icons": [
     {
-      "src": "./assets/gijutu-turi-logo.png",
-      "sizes": "1536x1024",
+      "src": "./assets/gijutu-turi-favicon-generated.png",
+      "sizes": "256x256",
       "type": "image/png",
       "purpose": "any"
     }

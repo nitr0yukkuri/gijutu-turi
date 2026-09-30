@@ -26,6 +26,14 @@ export default defineConfig({
           resolve(process.cwd(), "assets/gijutu-turi-logo.png"),
           resolve(process.cwd(), "dist/client/assets/gijutu-turi-logo.png"),
         );
+        copyFileSync(
+          resolve(process.cwd(), "assets/gijutu-turi-favicon-generated.png"),
+          resolve(process.cwd(), "dist/client/assets/gijutu-turi-favicon-generated.png"),
+        );
+        copyFileSync(
+          resolve(process.cwd(), "favicon.svg"),
+          resolve(process.cwd(), "dist/client/favicon.svg"),
+        );
       },
     },
   ],
@@ -47,7 +55,9 @@ export default defineConfig({
       "/ws": { target: backendWs, ws: true },
       "/manifest.webmanifest": { target: backendHttp },
       "/service-worker.js": { target: backendHttp },
+      "/favicon.svg": { target: backendHttp },
       "/assets/gijutu-turi-logo.png": { target: backendHttp },
+      "/assets/gijutu-turi-favicon-generated.png": { target: backendHttp },
     },
   },
   build: {
