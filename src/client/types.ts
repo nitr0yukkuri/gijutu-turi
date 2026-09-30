@@ -15,6 +15,8 @@ export type OceanState = {
   distance: number;
   reeling: boolean;
   mode: OceanMode;
+  stamina?: number;
+  canReel?: boolean;
   approach: number;
   catches: number;
   reason: "" | "missed" | "line" | "slack" | "distance";

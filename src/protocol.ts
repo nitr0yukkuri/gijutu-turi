@@ -2,12 +2,6 @@ import { z } from "zod";
 
 export const sessionIdSchema = z.string().regex(/^session_[a-z0-9]{12}$/);
 
-const vectorSchema = z.object({
-  x: z.number().finite().min(-1).max(1),
-  y: z.number().finite().min(-1).max(1),
-  z: z.number().finite().min(-1).max(1),
-});
-
 const inputPayloadSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("cast"),
@@ -19,11 +13,6 @@ const inputPayloadSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("hook"),
-  }),
-  z.object({
-    action: z.literal("rod_motion"),
-    direction: vectorSchema,
-    strength: z.number().finite().min(0).max(1).default(0),
   }),
   z.object({
     action: z.literal("reset"),
@@ -53,10 +42,14 @@ export type FishState =
 
 export type FishGait =
   | "cruise"
+  | "css_cruise"
   | "turn"
   | "burst"
   | "coast"
   | "hooked_burst"
+  | "heavy_start"
+  | "heavy_surge"
+  | "heavy_glide"
   | "exhausted";
 
 export interface BodyWaveSnapshot {

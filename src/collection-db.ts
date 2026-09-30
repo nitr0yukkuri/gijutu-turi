@@ -94,7 +94,19 @@ export class CollectionStore {
         model_key=excluded.model_key,
         catalog_status=excluded.catalog_status
     `);
+    const releaseLegacyPlaceholder = this.db.prepare(`
+      DELETE FROM fish_species
+      WHERE id LIKE 'unknown-%'
+        AND number = ?
+        AND catalog_status = 'preview'
+        AND NOT EXISTS (SELECT 1 FROM player_collections WHERE fish_id = fish_species.id)
+        AND NOT EXISTS (SELECT 1 FROM collection_catch_events WHERE fish_id = fish_species.id)
+    `);
     for (const entry of FISH_SPECIES) {
+      // Older databases reserved numbered preview slots as unknown-003, etc.
+      // Release only an unreferenced placeholder before promoting a real species
+      // into that slot; collection history remains untouched.
+      releaseLegacyPlaceholder.run(entry.number);
       insert.run(
         entry.id,
         entry.number,

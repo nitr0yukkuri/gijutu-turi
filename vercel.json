@@ -5,11 +5,13 @@
   "redirects": [
     { "source": "/gofish/", "destination": "/gofish", "permanent": true },
     { "source": "/dockerwhale/", "destination": "/dockerwhale", "permanent": true },
-    { "source": "/docker/", "destination": "/docker", "permanent": true }
+    { "source": "/docker/", "destination": "/docker", "permanent": true },
+    { "source": "/cssfish/", "destination": "/cssfish", "permanent": true }
   ],
   "rewrites": [
     { "source": "/gofish", "destination": "/index.html" },
     { "source": "/dockerwhale", "destination": "/index.html" },
-    { "source": "/docker", "destination": "/index.html" }
+    { "source": "/docker", "destination": "/index.html" },
+    { "source": "/cssfish", "destination": "/index.html" }
   ]
 }
