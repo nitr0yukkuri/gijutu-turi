@@ -31,10 +31,19 @@ const TAU = Math.PI * 2;
 
 const GAIT_PROFILES: Record<FishGait, GaitProfile> = {
   cruise: { acceleration: 1.8, drag: 0.7, amplitude: 0.08, frequency: 1.6, wavelength: 0.8 },
+  // CSS fish is small and calm, but never visually inert. Its lower effort
+  // is expressed through a gentler wave rather than the near-static coast gait.
+  css_cruise: { acceleration: 1.55, drag: 0.68, amplitude: 0.12, frequency: 1.65, wavelength: 0.82 },
   turn: { acceleration: 2.8, drag: 0.9, amplitude: 0.16, frequency: 2.6, wavelength: 0.72 },
   burst: { acceleration: 5.4, drag: 0.35, amplitude: 0.22, frequency: 4.6, wavelength: 0.64 },
   coast: { acceleration: 0.7, drag: 0.28, amplitude: 0.045, frequency: 0.8, wavelength: 0.9 },
   hooked_burst: { acceleration: 7.2, drag: 0.3, amplitude: 0.3, frequency: 5.8, wavelength: 0.58 },
+  // Large animals need a distinct, authoritative gait: a short heavy start
+  // followed by a slow body wave. A separate heavy surge lets a large animal
+  // become violent without borrowing Go's light, school-like burst.
+  heavy_start: { acceleration: 3.6, drag: 0.42, amplitude: 0.16, frequency: 2.4, wavelength: 0.68 },
+  heavy_surge: { acceleration: 5.1, drag: 0.3, amplitude: 0.25, frequency: 4.1, wavelength: 0.62 },
+  heavy_glide: { acceleration: 0.9, drag: 0.42, amplitude: 0.1, frequency: 0.78, wavelength: 0.94 },
   exhausted: { acceleration: 1, drag: 1.25, amplitude: 0.025, frequency: 0.6, wavelength: 1 },
 };
 
@@ -85,6 +94,9 @@ export class FishLocomotion {
   private heading: Vec3;
   private gait: FishGait = "cruise";
   private wavePhase = 0;
+  private waveAmplitude = GAIT_PROFILES.cruise.amplitude;
+  private waveFrequency = GAIT_PROFILES.cruise.frequency;
+  private waveWavelength = GAIT_PROFILES.cruise.wavelength;
   private stamina = 100;
   private cStartRemaining = 0;
   private swim: FishMotionSnapshot['swim'];
@@ -118,8 +130,15 @@ export class FishLocomotion {
       this.heading = normalise(lerp(this.heading, normalise(this.velocity), clamp(delta * 7, 0, 1)));
     }
 
+    // Smooth every gait transition, not only the CSS cruise entry. Otherwise
+    // a CSS fish eases for one frame when it starts resisting, then snaps to
+    // the new wave profile on the next update.
+    const waveBlend = 1 - Math.exp(-delta * 5.5);
+    this.waveAmplitude += (profile.amplitude - this.waveAmplitude) * waveBlend;
+    this.waveFrequency += (profile.frequency - this.waveFrequency) * waveBlend;
+    this.waveWavelength += (profile.wavelength - this.waveWavelength) * waveBlend;
     this.gait = activeGait;
-    this.wavePhase = (this.wavePhase + profile.frequency * TAU * delta) % TAU;
+    this.wavePhase = (this.wavePhase + this.waveFrequency * TAU * delta) % TAU;
     this.cStartRemaining = Math.max(0, this.cStartRemaining - delta);
   }
 
@@ -162,13 +181,15 @@ export class FishLocomotion {
     this.heading = normalise(velocity);
     this.gait = "cruise";
     this.wavePhase = 0;
+    this.waveAmplitude = GAIT_PROFILES.cruise.amplitude;
+    this.waveFrequency = GAIT_PROFILES.cruise.frequency;
+    this.waveWavelength = GAIT_PROFILES.cruise.wavelength;
     this.stamina = 100;
     this.cStartRemaining = 0;
     this.swim = undefined;
   }
 
   snapshot(): FishMotionSnapshot {
-    const profile = GAIT_PROFILES[this.gait];
     const speed = magnitude(this.velocity);
     const speedFactor = clamp((this.swim ? magnitude(this.swim.velocity) : speed) / 2.8, 0.35, 1.35);
     return {
@@ -180,9 +201,9 @@ export class FishLocomotion {
       ...(this.swim ? { swim: { ...this.swim, velocity: { ...this.swim.velocity } } } : {}),
       bodyWave: {
         phase: this.wavePhase,
-        amplitude: profile.amplitude * speedFactor,
-        frequency: profile.frequency,
-        wavelength: profile.wavelength,
+        amplitude: this.waveAmplitude * speedFactor,
+        frequency: this.waveFrequency,
+        wavelength: this.waveWavelength,
       },
     };
   }

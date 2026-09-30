@@ -34,8 +34,6 @@ export class FishingSimulation {
   private fightModeRemaining = 0;
   private lastProcessedInput = -1;
   private pendingEvents: DomainEvent[] = [];
-  private rodDirection: Vec3 = { x: 0, y: 0, z: 0 };
-  private rodStrength = 0;
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
@@ -51,10 +49,6 @@ export class FishingSimulation {
         break;
       case "hook":
         this.hook();
-        break;
-      case "rod_motion":
-        this.rodDirection = normalise(input.direction);
-        this.rodStrength = input.strength;
         break;
       case "reset":
         this.reset();
@@ -225,13 +219,12 @@ export class FishingSimulation {
     });
     const targetSpeed = isBurst ? 1.35 + staminaRatio * 1.25 : 0.3 + staminaRatio * 0.35;
     const gait = isBurst ? "burst" : "coast";
-    const rodControl = this.rodStrength * 0.25;
     const swimPull = isBurst ? 0.72 + staminaRatio * 0.25 : 0.12;
     const lineDirection = normalise(subtract(this.lurePosition, this.fish.snapshot().position));
     const lineForce = scale(lineDirection, this.lineTension * 1.6);
 
-    this.lineTension = clamp(this.lineTension + (swimPull - rodControl) * delta, 0, 1);
-    this.lineLength = clamp(this.lineLength + swimPull * delta - rodControl * delta, 1.5, 30);
+    this.lineTension = clamp(this.lineTension + swimPull * delta, 0, 1);
+    this.lineLength = clamp(this.lineLength + swimPull * delta, 1.5, 30);
     this.fish.setStamina(this.fish.getStamina() - delta * (isBurst ? 6 : 0.8));
     this.fish.update(delta, { direction, speed: targetSpeed, gait }, lineForce);
 

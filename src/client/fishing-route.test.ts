@@ -9,12 +9,21 @@ test("public fish routes select only the initial species", () => {
   assert.deepEqual(resolveFishingRoute("/dockerwhale/"), {
     key: "dockerwhale", path: "/dockerwhale", initialFishId: "whale-001", title: "Dockerクジラ — 技術釣り",
   });
+  assert.deepEqual(resolveFishingRoute("/cssfish/"), {
+    key: "cssfish", path: "/cssfish", initialFishId: "css-001", title: "CSS fish — 技術釣り",
+  });
+  assert.deepEqual(resolveFishingRoute("/", "k8s"), {
+    key: "k8sfish", path: "/", initialFishId: "k8s-001", title: "K8sレヴィアタン — 技術釣り",
+  });
 });
 
 test("docker is a compatibility alias and the old query links remain usable", () => {
   assert.equal(resolveFishingRoute("/docker").path, "/dockerwhale");
   assert.equal(resolveFishingRoute("/", "go").path, "/gofish");
   assert.equal(resolveFishingRoute("/", "docker").path, "/dockerwhale");
+  assert.equal(resolveFishingRoute("/", "css").path, "/cssfish");
+  assert.equal(resolveFishingRoute("/", "cssfish").initialFishId, "css-001");
+  assert.equal(resolveFishingRoute("/", "k8sfish").initialFishId, "k8s-001");
 });
 
 test("unknown paths keep the default fishing route", () => {

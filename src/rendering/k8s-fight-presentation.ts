@@ -1,0 +1,58 @@
+import type { OceanMode, OceanPhase } from '../client/types.js';
+
+export type K8sFightPresentation = {
+  bodyVisibility: number;
+  echoVisibility: number;
+  echoSpread: number;
+  wakeGain: number;
+};
+
+export const K8S_ECHO_COUNT = 2;
+
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+
+const smoothstep = (value: number): number => {
+  const amount = clamp01(value);
+  return amount * amount * (3 - 2 * amount);
+};
+
+/**
+ * K8S Leviathan cues are a view of one server-owned fish, not extra fish state.
+ * Distance reveals the body and its echoes; the server fight mode fans echoes
+ * out during a surge and gathers them before landing.
+ */
+export function k8sFightPresentation(
+  phase: OceanPhase,
+  distance: number,
+  mode: OceanMode,
+): K8sFightPresentation {
+  if (phase === 'caught') {
+    return { bodyVisibility: 1, echoVisibility: .68, echoSpread: .56, wakeGain: 0 };
+  }
+
+  if (phase !== 'fighting') {
+    return { bodyVisibility: 1, echoVisibility: 0, echoSpread: 1, wakeGain: 0 };
+  }
+
+  // Use the actual line distance, not a renderer clock, so all screens reveal
+  // the same fish even after reconnecting or receiving a late snapshot.
+  const distanceProgress = clamp01((44 - Math.max(0, distance)) / (44 - 8));
+  const approach = smoothstep(distanceProgress);
+  const modeGain = mode === 'surge' ? .96 : mode === 'split' ? 1.12 : mode === 'warning' ? .34 : .18;
+  const echoVisibility = (.012 + .72 * approach) * modeGain;
+  const echoSpread = mode === 'warning'
+    ? .52
+    : mode === 'surge'
+      ? 1.8
+      : mode === 'split'
+        ? 2.25
+        : .72 + .18 * approach;
+  const wakeGain = approach * (mode === 'surge' ? 1.4 : mode === 'split' ? 1.8 : mode === 'warning' ? .75 : .25);
+
+  return {
+    bodyVisibility: .48 + .52 * approach,
+    echoVisibility,
+    echoSpread,
+    wakeGain,
+  };
+}

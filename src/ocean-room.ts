@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { isPlayerId } from './collection-db.js';
 import { RequestRateLimiter } from './request-rate-limit.js';
 import { OceanFishingGame, type OceanAction } from './ocean-game.js';
-import { DEFAULT_FISH_SPECIES_ID, isFishSpeciesId, type FishSpeciesId } from './fish-species.js';
+import { isFishSpeciesId, randomActiveFishSpeciesId, type FishSpeciesId } from './fish-species.js';
 export type { OceanState } from './ocean-game.js';
 
 const actionSchema=z.discriminatedUnion('action',[
@@ -75,8 +75,10 @@ export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eve
     if(parsed.data.fishId&&!isFishSpeciesId(parsed.data.fishId))return c.json({error:'invalid_fish_id'},400);
     if(rooms.size>=128)return c.json({error:'rooms_full'},503);
     const id=`sea_${randomBytes(16).toString('hex')}`;
-    const fishId=isFishSpeciesId(parsed.data.fishId)?parsed.data.fishId:DEFAULT_FISH_SPECIES_ID;
-    rooms.set(id,{game:new OceanFishingGame(Math.random,fishId),clients:new Map(),commands:[],lastActive:Date.now(),playerId:parsed.data.playerId});
+    const pinnedFishId=isFishSpeciesId(parsed.data.fishId)?parsed.data.fishId:undefined;
+    const fishId=pinnedFishId??randomActiveFishSpeciesId();
+    const fishSelectionMode=pinnedFishId?'fixed':'rotate';
+    rooms.set(id,{game:new OceanFishingGame(Math.random,fishId,fishSelectionMode),clients:new Map(),commands:[],lastActive:Date.now(),playerId:parsed.data.playerId});
     c.header('Cache-Control','no-store');return c.json({id,host:accessHost(c.req.url)},201);
   });
   const upgrade=(request:IncomingMessage,socket:Duplex,head:Buffer):boolean=>{

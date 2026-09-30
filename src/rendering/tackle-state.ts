@@ -1,5 +1,7 @@
 import type { FishSpeciesId } from "../fish-species.js";
 import type { OceanMode, OceanPhase } from "../client/types.js";
+import { RETRIEVE_DURATION_MS } from "../ocean-timing.js";
+import { retrieveProgressAt } from "./retrieve-presentation.js";
 
 export type TackleStateSource = {
   phase: OceanPhase;
@@ -7,6 +9,7 @@ export type TackleStateSource = {
   mode: OceanMode;
   tension: number;
   distance: number;
+  retrieveAt?: number;
   reeling?: boolean;
   revision: number;
 };
@@ -17,6 +20,7 @@ export type TackleSnapshot = {
   mode: OceanMode;
   tension: number;
   distance: number;
+  retrieveAt: number;
   reeling: boolean;
   revision: number;
   serverAt: number;
@@ -35,6 +39,7 @@ const initialSnapshot: TackleSnapshot = {
   mode: "rest",
   tension: 0,
   distance: 0,
+  retrieveAt: 0,
   reeling: false,
   revision: 0,
   serverAt: 0,
@@ -66,6 +71,7 @@ export class TackleStateStore {
       mode: source.mode,
       tension: source.tension,
       distance: source.distance,
+      retrieveAt: source.retrieveAt ?? 0,
       reeling: source.reeling === true,
       revision: source.revision,
       serverAt,
@@ -88,5 +94,14 @@ export class TackleStateStore {
 
   getTransitions(): readonly TackleTransition[] {
     return this.history;
+  }
+
+  /**
+   * Progress for the one-shot retrieve presentation. The timestamp comes
+   * from the authoritative room state; rendering only interpolates it.
+   */
+  getRetrieveProgress(serverNow: number, durationMs = RETRIEVE_DURATION_MS): number {
+    if (this.current.phase !== "retrieving") return 0;
+    return retrieveProgressAt(serverNow, this.current.retrieveAt, durationMs);
   }
 }

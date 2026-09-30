@@ -46,6 +46,7 @@ const publicAssets = new Map([
   ["/gofish", ["index.html", "text/html; charset=utf-8"]],
   ["/dockerwhale", ["index.html", "text/html; charset=utf-8"]],
   ["/docker", ["index.html", "text/html; charset=utf-8"]],
+  ["/cssfish", ["index.html", "text/html; charset=utf-8"]],
   ["/ocean.css", ["ocean.css", "text/css"]],
   ["/ocean2.css", ["ocean2.css", "text/css"]],
   ["/ocean3.css", ["ocean3.css", "text/css"]],
@@ -66,7 +67,9 @@ const publicAssets = new Map([
   ["/third-party-notices.txt", ["third-party-notices.txt", "text/plain; charset=utf-8"]],
   ["/manifest.webmanifest", ["manifest.webmanifest", "application/manifest+json"]],
   ["/service-worker.js", ["src/service-worker.ts", "text/javascript"]],
+  ["/favicon.svg", ["favicon.svg", "image/svg+xml"]],
   ["/assets/gijutu-turi-logo.png", ["assets/gijutu-turi-logo.png", "image/png"]],
+  ["/assets/gijutu-turi-favicon-generated.png", ["assets/gijutu-turi-favicon-generated.png", "image/png"]],
 ]);
 const fishAddons = [
   "controls/OrbitControls.js", "environments/RoomEnvironment.js",
@@ -76,13 +79,13 @@ const fishAddons = [
   "shaders/CopyShader.js", "shaders/LuminosityHighPassShader.js", "shaders/OutputShader.js",
 ];
 for (const addon of fishAddons) publicAssets.set(`/vendor/addons/${addon}`, [`vendor/addons/${addon}`, "text/javascript"]);
-for (const route of ["/gofish", "/dockerwhale", "/docker"]) {
+for (const route of ["/gofish", "/dockerwhale", "/docker", "/cssfish"]) {
   app.get(`${route}/`, c => c.redirect(`${route}${new URL(c.req.url).search}`, 308));
 }
 for (const [route, asset] of publicAssets) {
   app.get(route, async c => {
     try {
-      const preferred = new Set(["/", "/index.html", "/gofish", "/dockerwhale", "/docker", "/ocean.css", "/ocean2.css", "/ocean3.css", "/ocean-app.js", "/go-fish.html", "/docker-whale.html", "/service-worker.js", "/manifest.webmanifest", "/license.txt", "/third-party-notices.txt"]);
+      const preferred = new Set(["/", "/index.html", "/gofish", "/dockerwhale", "/docker", "/cssfish", "/ocean.css", "/ocean2.css", "/ocean3.css", "/ocean-app.js", "/go-fish.html", "/docker-whale.html", "/service-worker.js", "/manifest.webmanifest", "/favicon.svg", "/assets/gijutu-turi-favicon-generated.png", "/license.txt", "/third-party-notices.txt"]);
       const candidates = preferred.has(route) ? [`dist/client/${asset[0]}`, asset[0]] : [asset[0]];
       let bytes: Buffer | undefined;
       for (const candidate of candidates) {
@@ -98,7 +101,7 @@ const serveBuiltAsset = async (c: Context, prefix: "assets" | "chunks") => {
   if (!relative || relative.includes("..") || !/^[A-Za-z0-9._/-]+$/.test(relative)) return c.notFound();
   try {
     const bytes = await readFile(resolve(process.cwd(), "dist", "client", prefix, relative));
-    const contentType = relative.endsWith(".css") ? "text/css" : relative.endsWith(".map") ? "application/json" : "text/javascript";
+    const contentType = relative.endsWith(".css") ? "text/css" : relative.endsWith(".svg") ? "image/svg+xml" : relative.endsWith(".png") ? "image/png" : relative.endsWith(".map") ? "application/json" : "text/javascript";
     return new Response(bytes as unknown as BodyInit, { headers: { "Content-Type": contentType, "Cache-Control": "no-cache" } });
   } catch { return c.notFound(); }
 };

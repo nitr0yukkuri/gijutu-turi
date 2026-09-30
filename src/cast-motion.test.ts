@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {castStrengthFromMotion,isCastMotionReleased,isCastMotionStart} from './client/cast-motion.js';
+import {castStrengthFromMotion,isCastMotionReleased,isCastMotionStart,isReelMotionStart,isReelMotionStop,reelAngularSignal} from './client/cast-motion.js';
 
 test("cast power increases with either the phone flick's acceleration or angular speed",()=>{
   assert.ok(castStrengthFromMotion(20,0)>castStrengthFromMotion(12,0));
@@ -19,4 +19,13 @@ test('motion thresholds reject resting drift and accept a quick phone rotation',
   assert.equal(isCastMotionStart(9,220),true);
   assert.equal(isCastMotionReleased(3,60),true);
   assert.equal(isCastMotionReleased(5,60),false);
+});
+
+test('phone rotation exposes one stable reel signal across device axes',()=>{
+  assert.equal(reelAngularSignal(12, -240, 40), -240);
+  assert.equal(reelAngularSignal(null, null, null), 0);
+  assert.equal(isReelMotionStart(-140), true);
+  assert.equal(isReelMotionStart(80), false);
+  assert.equal(isReelMotionStop(30), true);
+  assert.equal(isReelMotionStop(50), false);
 });

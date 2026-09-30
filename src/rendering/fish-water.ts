@@ -63,21 +63,84 @@ vec4 fishWaterProjection(vec3 localPosition) {
 // A minimum at normal fight depth lets the actual anatomy interrupt the water
 // background; depth/range still erase it in deep/distant water. This is an
 // artistic readability budget, not a measured scattering coefficient.
-const presence={floor:.30,surface:.32,clearDepth:2.4,falloff:.35,near:34,far:72,rangeLoss:.82,fin:.85,light:.30,detail:.18};
-export function fishWaterCoverage(depth,distance,transmission,part='body') {
-  const d=Math.max(0,Math.min(1,(distance-presence.near)/(presence.far-presence.near)));
-  return (presence.floor+presence.surface*Math.max(0,Math.min(1,transmission)))
-    *Math.exp(-Math.max(0,depth-presence.clearDepth)*presence.falloff)
-    *(1-d*d*(3-2*d)*presence.rangeLoss)*({body:1,fin:presence.fin,light:presence.light,detail:presence.detail,line:0}[part]??1);
+export type FishWaterProfile = Readonly<{
+  floor: number;
+  surface: number;
+  clearDepth: number;
+  falloff: number;
+  near: number;
+  far: number;
+  rangeLoss: number;
+  fin: number;
+  light: number;
+  detail: number;
+  /** Cargo is separate from anatomy details so it stays readable in motion. */
+  cargo: number;
+  bodyLightMin: number;
+  bodyLightMax: number;
+  finLight: number;
+  lightPartLight: number;
+  detailPartLight: number;
+  cargoPartLight: number;
+  /** Preserve warm red pigments for stateful species while submerged. */
+  redStateRetention?: number;
+}>;
+
+export const DEFAULT_FISH_WATER_PROFILE: FishWaterProfile = {
+  floor: .30, surface: .32, clearDepth: 2.4, falloff: .35, near: 34, far: 72,
+  rangeLoss: .82, fin: .85, light: .30, detail: .18,
+  cargo: .36,
+  bodyLightMin: .22, bodyLightMax: .36, finLight: .28, lightPartLight: .64, detailPartLight: .14, cargoPartLight: .28,
+};
+
+// Large bodies need a coherent mass in the water. Fine details remain
+// suppressed, while Docker cargo gets a separate bounded budget so the load
+// reads as attached weight instead of disappearing into the sea.
+export const DOCKER_WHALE_WATER_PROFILE: FishWaterProfile = {
+  floor: .38, surface: .42, clearDepth: 3.2, falloff: .22, near: 42, far: 96,
+  rangeLoss: .62, fin: .94, light: .23, detail: .07,
+  // Docker cargo is dense, painted metal. It should fade with depth, but it
+  // must not be treated like a tiny decorative node and disappear into the sea.
+  cargo: .70,
+  bodyLightMin: .30, bodyLightMax: .48, finLight: .34, lightPartLight: .42, detailPartLight: .08, cargoPartLight: .40,
+};
+
+// CSS fish needs its state palette to survive the shallow approach shadow. It
+// remains the same anatomical mesh, but its cascade bands must be readable
+// before the fish is fully hooked.
+export const CSS_FISH_WATER_PROFILE: FishWaterProfile = {
+  floor: .36, surface: .4, clearDepth: 2.5, falloff: .24, near: 34, far: 80,
+  rangeLoss: .68, fin: .98, light: .46, detail: .22,
+  cargo: .36,
+  bodyLightMin: .54, bodyLightMax: .76, finLight: .52, lightPartLight: .9, detailPartLight: .22, cargoPartLight: .28,
+  redStateRetention: .76,
+};
+
+// K8S is a large, dark-bodied leviathan. Keep the natural charcoal/olive
+// palette, but give its broad body and fins enough underwater contrast to read
+// at fight distance without turning the animal into a glowing effect.
+export const K8S_LEVIATHAN_WATER_PROFILE: FishWaterProfile = {
+  floor: .40, surface: .43, clearDepth: 3.0, falloff: .20, near: 42, far: 100,
+  rangeLoss: .58, fin: .96, light: .40, detail: .12,
+  cargo: .36,
+  bodyLightMin: .40, bodyLightMax: .62, finLight: .46, lightPartLight: .64, detailPartLight: .14, cargoPartLight: .30,
+};
+
+export function fishWaterCoverage(depth,distance,transmission,part='body',profile=DEFAULT_FISH_WATER_PROFILE) {
+  const d=Math.max(0,Math.min(1,(distance-profile.near)/(profile.far-profile.near)));
+  return (profile.floor+profile.surface*Math.max(0,Math.min(1,transmission)))
+    *Math.exp(-Math.max(0,depth-profile.clearDepth)*profile.falloff)
+    *(1-d*d*(3-2*d)*profile.rangeLoss)*({body:1,fin:profile.fin,light:profile.light,detail:profile.detail,line:0,cargo:profile.cargo}[part]??1);
 }
 
-const optics = `
+const opticsFor = (profile: FishWaterProfile) => `
 uniform sampler2D uWaterBackdrop;
 uniform vec2 uWaterSize;
 uniform mat4 uCamera;
 uniform mat4 uProjectionInverse;
 uniform float uWaterPart;
 uniform float uFishVisibility;
+${profile.redStateRetention === undefined ? '' : 'uniform float uCssRedState;'}
 vec3 throughWater(vec3 fishColor) {
   float depth=max(0.0,heightAt(vFishWorld.xz)-vFishWorld.y);
   float submerged=smoothstep(0.0,.12,depth);
@@ -101,7 +164,10 @@ vec3 throughWater(vec3 fishColor) {
   float path=depth/max(.25,cosWater);
   // Separate direct extinction from the existing water background. These
   // per-world-unit coefficients are a visual water preset, not measured data.
-  vec3 extinction=exp(-vec3(.58,.22,.17)*path);
+  ${profile.redStateRetention === undefined
+    ? 'vec3 extinction=exp(-vec3(.58,.22,.17)*path);'
+    : `float redExtinction=mix(.58,.58*(1.0-${profile.redStateRetention.toFixed(2)}),clamp(uCssRedState,0.0,1.0));
+  vec3 extinction=exp(-vec3(redExtinction,.22,.17)*path);`}
   float haze=1.0-exp(-max(t,0.0)*.006);
   float vignette=1.0-smoothstep(.3,.95,length((screenUv-.5)*vec2(.75,1.0)))*.18;
   vec3 background=texture2D(uWaterBackdrop,screenUv).rgb;
@@ -109,41 +175,41 @@ vec3 throughWater(vec3 fishColor) {
   // subtracting only a dim ambient-water term left almost the entire reflected
   // background untouched and the fish vanished. Keep some wave texture over
   // the body, but give the solid mesh its own bounded contrast contribution.
-  float rangeVisibility=1.0-smoothstep(${presence.near.toFixed(1)},${presence.far.toFixed(1)},max(t,0.0))*${presence.rangeLoss};
-  float depthVisibility=exp(-max(0.0,depth-${presence.clearDepth})*${presence.falloff});
-  float partCoverage=uWaterPart<.5?1.0:uWaterPart<1.5?${presence.fin}:uWaterPart<2.5?${presence.light}:uWaterPart<3.5?${presence.detail}:0.0;
-  float coverage=(${presence.floor}+${presence.surface}*transmission)*depthVisibility*rangeVisibility*partCoverage;
+   float rangeVisibility=1.0-smoothstep(${profile.near.toFixed(1)},${profile.far.toFixed(1)},max(t,0.0))*${profile.rangeLoss};
+   float depthVisibility=exp(-max(0.0,depth-${profile.clearDepth})*${profile.falloff});
+    float partCoverage=uWaterPart<.5?1.0:uWaterPart<1.5?${profile.fin}:uWaterPart<2.5?${profile.light}:uWaterPart<3.5?${profile.detail}:uWaterPart<4.5?0.0:${profile.cargo};
+   float coverage=(${profile.floor}+${profile.surface}*transmission)*depthVisibility*rangeVisibility*partCoverage;
   // Give the hooked body a little more direct radiance than the approach
   // shadow. At normal desktop/mobile render sizes the silhouette must survive
   // the water blend instead of disappearing into the sea color.
   float fightReadability=smoothstep(.55,.95,uFishVisibility);
-  float lightScale=uWaterPart<.5?mix(.22,.36,fightReadability):uWaterPart<1.5?.28:uWaterPart<2.5?.64:uWaterPart<3.5?.14:.6;
+   float lightScale=uWaterPart<.5?mix(${profile.bodyLightMin},${profile.bodyLightMax},fightReadability):uWaterPart<1.5?${profile.finLight}:uWaterPart<2.5?${profile.lightPartLight}:uWaterPart<3.5?${profile.detailPartLight}:uWaterPart<4.5?0.0:${profile.cargoPartLight};
   vec3 underwater=background*(1.0-coverage)+transmission*extinction*(1.0-haze*.97)*vignette*fishColor*lightScale;
   return mix(background,mix(fishColor,underwater,submerged),uFishVisibility);
 }`;
 
 // Opt-in: catalog/viewer materials and the sky/sea palette are untouched.
-export function applyFishWater(material, waterUniforms, part='detail') {
+export function applyFishWater(material, waterUniforms, part='detail', profile=DEFAULT_FISH_WATER_PROFILE) {
   const compile=material.onBeforeCompile;
   const cacheKey=material.customProgramCacheKey();
   const originallyToneMapped=material.toneMapped;
   material.onBeforeCompile=shader=>{
     compile.call(material,shader);
     Object.assign(shader.uniforms,waterUniforms);
-    shader.uniforms.uWaterPart={value:{body:0,fin:1,light:2,detail:3,line:4}[part]};
+    shader.uniforms.uWaterPart={value:{body:0,fin:1,light:2,detail:3,line:4,cargo:5}[part]};
     shader.vertexShader=surface+refraction+'\n'+shader.vertexShader;
     shader.vertexShader=shader.vertexShader.replace('#include <project_vertex>',
       '#include <project_vertex>\ngl_Position=fishWaterProjection(transformed);');
     // Fins have a custom shader; other parts use Three's project chunk.
     shader.vertexShader=shader.vertexShader.replace('gl_Position=projectionMatrix*mv;',
       'gl_Position=fishWaterProjection(p);');
-    shader.fragmentShader=surface+optics+'\n'+shader.fragmentShader;
+     shader.fragmentShader=surface+opticsFor(profile)+'\n'+shader.fragmentShader;
     shader.fragmentShader=shader.fragmentShader.replace('#include <tonemapping_fragment>',
       `gl_FragColor.rgb=throughWater(gl_FragColor.rgb);
       ${originallyToneMapped?'':'vec3 fishBeforeTone=gl_FragColor.rgb;'}
       #include <tonemapping_fragment>
       ${originallyToneMapped?'':'gl_FragColor.rgb=mix(fishBeforeTone,gl_FragColor.rgb,smoothstep(0.0,.12,heightAt(vFishWorld.xz)-vFishWorld.y));'}`);
   };
-  material.customProgramCacheKey=()=>cacheKey+'-underwater-v3-'+part;
+  material.customProgramCacheKey=()=>cacheKey+'-underwater-v3-'+part+(profile.redStateRetention===undefined?'':`-red-${profile.redStateRetention}`);
   material.toneMapped=true;
 }

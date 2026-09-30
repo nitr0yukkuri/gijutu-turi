@@ -1,15 +1,17 @@
 // @ts-nocheck -- the procedural mesh uses the vendored Three.js runtime, whose JS distribution has no declarations.
 import * as THREE from '../../vendor/three.module.js';
-import { applyFishWater } from './fish-water.js';
+import { applyFishWater, DOCKER_WHALE_WATER_PROFILE } from './fish-water.js';
 
 // Original Docker-inspired creature. Nose -X, back +Y, flukes spread along Z.
 // DOM-free model: the same group/update/dispose contract as createGoFish.
 const clamp = THREE.MathUtils.clamp;
+// A whale reads as a long, tapered mass rather than an even inflatable ring:
+// keep the head broad but let the shoulder and caudal peduncle narrow clearly.
 const profile = [
-  [-5.8,.04,.045,-.12],[-5.58,.65,.76,-.08],[-5.12,1.43,1.44,.05],
-  [-4.3,1.91,1.87,.13],[-3.15,2.05,2.02,.14],[-1.6,2.05,2.03,.13],
-  [0,1.86,1.85,.1],[1.55,1.42,1.38,.16],[2.85,.86,.77,.28],
-  [3.9,.4,.35,.43],[4.75,.2,.24,.57],[5.1,.17,.23,.62],
+  [-5.8,.03,.035,-.12],[-5.58,.42,.47,-.08],[-5.12,.98,.96,.05],
+  [-4.3,1.4,1.34,.13],[-3.15,1.67,1.55,.14],[-1.6,1.72,1.58,.13],
+  [0,1.58,1.47,.1],[1.55,1.28,1.16,.16],[2.85,.72,.64,.28],
+  [3.9,.33,.30,.43],[4.75,.15,.17,.57],[5.1,.12,.14,.62],
 ];
 const sectionCurve = new THREE.CatmullRomCurve3(profile.map(p=>new THREE.Vector3(p[0],p[1],p[2])));
 const centerCurve = new THREE.CatmullRomCurve3(profile.map(p=>new THREE.Vector3(p[0],p[3],0)));
@@ -67,16 +69,43 @@ function makeFin(stations,sign,low) {
 }
 
 const deformation=`
-uniform float uWhaleTime;
+// uWhalePhase is the server-authored body-wave phase in radians. The renderer
+// may interpolate packets, but it must never invent a second whale clock.
+uniform float uWhalePhase;
+uniform float uWhaleFrequency;
+uniform float uWhaleWavelength;
+uniform float uWhaleAmplitude;
+uniform float uWhaleEffort;
+uniform float uWhaleTurn;
 uniform float uPower;
 float lift(float x){
   float tail=smoothstep(-.5,6.9,x);
-  return sin(uWhaleTime*1.25-x*.42)*tail*tail*(.32+uPower*.55);
+  float bodyPosition=clamp((x+5.1)/10.2,0.0,1.0);
+  // The torso stays comparatively rigid; the travelling wave accumulates
+  // through the peduncle instead of making the whole whale look gelatinous.
+  float spatialWave=mix(.58,1.05,clamp(uWhaleWavelength,0.0,1.2));
+  float wave=sin(uWhalePhase-bodyPosition*spatialWave);
+  float effort=mix(.68,1.16,clamp(uWhaleEffort,0.0,1.0));
+  return wave*tail*tail*(.08+uWhaleAmplitude*1.45)*effort+uWhaleTurn*bodyPosition*bodyPosition*.08;
+}
+float flukeStroke(){
+  float stroke=sin(uWhalePhase+.35);
+  // Cetacean burst strokes are asymmetric: the power stroke is stronger than
+  // the recovery stroke. Keep the difference restrained for a heavy whale.
+  return stroke*mix(.72,1.12,1.0-step(0.0,stroke));
 }
 vec3 swim(vec3 p){
   p.y+=lift(p.x);
+  float effort=mix(.68,1.16,clamp(uWhaleEffort,0.0,1.0));
+  float fluke=smoothstep(3.85,6.35,p.x);
+  float flukeSpan=.62+.38*smoothstep(0.0,2.8,abs(p.z));
+  float flukeBeat=flukeStroke()*fluke*flukeSpan*(.08+uWhaleAmplitude*1.8)*effort;
+  // The tip travels farther than the peduncle, producing an actual fluke
+  // stroke rather than a uniform vertical translation of the mesh.
+  p.y+=flukeBeat*(.42+.68*smoothstep(4.35,6.35,p.x));
   float flipper=(1.0-smoothstep(-.1,2.0,p.x))*smoothstep(1.65,4.5,abs(p.z));
-  p.y+=sin(uWhaleTime*1.25-.8)*flipper*(.08+uPower*.24);
+  p.y+=sin(uWhalePhase-.8+uWhaleFrequency*.08)*flipper*(.045+uWhaleAmplitude*.35)*mix(.7,1.08,clamp(uWhaleEffort,0.0,1.0));
+  p.z+=uWhaleTurn*flipper*.12;
   return p;
 }
 vec3 swimNormal(vec3 p,vec3 n){
@@ -91,7 +120,7 @@ function animate(material,uniforms,mode='plain') {
     shader.vertexShader=deformation+'\nvarying vec3 vWhale;\n'+shader.vertexShader;
     shader.vertexShader=shader.vertexShader.replace('#include <beginnormal_vertex>','#include <beginnormal_vertex>\nobjectNormal=swimNormal(position,objectNormal);');
     shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvWhale=position;transformed=swim(position);');
-    shader.fragmentShader='uniform float uWhaleTime; uniform float uGlow; varying vec3 vWhale;\n'+shader.fragmentShader;
+    shader.fragmentShader='uniform float uWhalePhase; uniform float uGlow; varying vec3 vWhale;\n'+shader.fragmentShader;
     if(mode==='skin')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`
       #include <color_fragment>
       float belly=1.0-smoothstep(-1.65,-.42,vWhale.y);
@@ -101,7 +130,7 @@ function animate(material,uniforms,mode='plain') {
       diffuseColor.rgb=mix(ink,vec3(.20,.43,.47),belly*.75);
       diffuseColor.rgb*=.91+grain*.07+mottling*.055;
     `);
-    if(mode==='glow')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb*=uGlow*(.87+.13*sin(vWhale.x*1.7-uWhaleTime*1.2));');
+    if(mode==='glow')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb*=uGlow*(.87+.13*sin(vWhale.x*1.7-uWhalePhase));');
   };
   material.customProgramCacheKey=()=>`docker-whale-v1-${mode}`;
   return material;
@@ -110,17 +139,29 @@ function animate(material,uniforms,mode='plain') {
 export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   const low=detail==='low',group=new THREE.Group();group.name='Dockerクジラ';
   const habitatUniforms=waterUniforms?{...waterUniforms,uFishCenter:{value:group.position},uFishVisibility:{value:1}}:null;
-  const uniforms={uWhaleTime:{value:phase},uPower:{value:.45},uGlow:{value:1}};
+  const uniforms={
+    uWhalePhase:{value:phase},uWhaleFrequency:{value:.78},uWhaleWavelength:{value:.94},
+    uWhaleAmplitude:{value:.1},uWhaleEffort:{value:.38},uWhaleTurn:{value:0},
+    uPower:{value:.45},uGlow:{value:1},
+  };
   const geometries=new Set(),materials=new Set(),parts=[];
-  const skin=animate(new THREE.MeshPhysicalMaterial({color:0xffffff,roughness:.37,metalness:.18,clearcoat:.65,clearcoatRoughness:.24,envMapIntensity:.55}),uniforms,'skin');
+  // Cargo is a rigid load with its own inertial mount. Keeping the mount
+  // separate lets it lag behind a turn without deforming the whale's body.
+  const cargoMount=new THREE.Group();cargoMount.name='コンテナ慣性マウント';group.add(cargoMount);
+  const skin=animate(new THREE.MeshPhysicalMaterial({color:0xffffff,roughness:.66,metalness:.02,clearcoat:.08,clearcoatRoughness:.58,envMapIntensity:.35}),uniforms,'skin');
   const glow=animate(new THREE.MeshBasicMaterial({color:new THREE.Color(.04,1.65,2.8),toneMapped:false}),uniforms,'glow');
   const trace=animate(new THREE.MeshStandardMaterial({color:0x197b9e,emissive:0x14769c,emissiveIntensity:.55,roughness:.3,metalness:.6}),uniforms);
   const black=animate(new THREE.MeshPhysicalMaterial({color:0x010b14,roughness:.12,clearcoat:1,metalness:.15}),uniforms);
-  const cargo=new THREE.MeshPhysicalMaterial({color:0x0c4565,roughness:.60,metalness:.32,clearcoat:.12,clearcoatRoughness:.55});
+  // The load needs a separate readability budget from the whale skin. A
+  // slightly brighter painted-blue body plus a restrained cyan edge lets the
+  // container remain legible under the water blend without turning it into a
+  // glowing billboard.
+  const cargo=new THREE.MeshPhysicalMaterial({color:0x12617d,roughness:.56,metalness:.36,clearcoat:.22,clearcoatRoughness:.48,emissive:0x032332,emissiveIntensity:.18});
+  const cargoAccent=new THREE.MeshStandardMaterial({color:0x3e9caf,emissive:0x0d5367,emissiveIntensity:.42,roughness:.36,metalness:.58});
   const ribs=new THREE.MeshStandardMaterial({color:0x237596,roughness:.4,metalness:.6});
   const deck=new THREE.MeshStandardMaterial({color:0x061b29,roughness:.48,metalness:.65});
-  function add(g,m,name){
-    geometries.add(g);materials.add(m);const mesh=new THREE.Mesh(g,m);mesh.name=name;mesh.frustumCulled=false;group.add(mesh);parts.push(mesh);return mesh;
+  function add(g,m,name,parent=group){
+    geometries.add(g);materials.add(m);const mesh=new THREE.Mesh(g,m);mesh.name=name;mesh.frustumCulled=false;parent.add(mesh);parts.push(mesh);return mesh;
   }
   function tube(points,radius,m,name){
     const c=new THREE.CatmullRomCurve3(points.map(p=>p.isVector3?p:new THREE.Vector3(...p)));
@@ -134,8 +175,8 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   const flippers=[],flukes=[];
   for(const sign of [-1,1]){
     flippers.push(add(makeFin([[-2.5,-.6,1.4,.6,.23],[-1.8,-.9,2.1,.79,.19],[-.85,-1.34,3.05,.65,.12],[.1,-1.48,4.05,.33,.055],[.6,-1.38,4.55,.008,.008]],sign,low),skin,'pectoral-'+sign));
-    flukes.push(add(makeFin([[4.65,.6,0,.43,.17],[5.1,.65,.7,.83,.2],[5.6,.69,1.9,.9,.16],[6.25,.87,3.0,.62,.09],[6.85,1.12,3.75,.008,.008]],sign,low),skin,'horizontal-fluke-'+sign));
-    tube([[4.35,.65,.23*sign],[4.5,.72,.7*sign],[4.77,.76,1.8*sign],[5.69,.92,3.0*sign],[6.85,1.12,3.75*sign]],.025,glow,'fluke-rim');
+    flukes.push(add(makeFin([[4.55,.6,0,.5,.19],[5.0,.65,.55,.8,.2],[5.45,.69,1.4,.86,.16],[5.95,.82,2.25,.56,.09],[6.4,1.0,2.8,.008,.008]],sign,low),skin,'horizontal-fluke-'+sign));
+    tube([[4.3,.65,.23*sign],[4.5,.72,.62*sign],[4.72,.76,1.4*sign],[5.4,.9,2.25*sign],[6.4,1.0,2.8*sign]],.025,glow,'fluke-rim');
     tube([[-2.8,-.5,1.7*sign],[-2.48,-.91,2.1*sign],[-1.42,-1.35,3.05*sign],[-.19,-1.47,4.05*sign],[.6,-1.38,4.55*sign]],.025,glow,'flipper-rim');
     // Mouth folds follow the head surface, and remain attached while swimming.
     tube(Array.from({length:22},(_,i)=>surface(.015+i/21*.28,sign>0?-.24:Math.PI+.24,.017)),.039,black,'mouth-fold');
@@ -169,57 +210,101 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   const dorsalG=new THREE.ExtrudeGeometry(dorsal,{depth:.16,bevelEnabled:true,bevelThickness:.06,bevelSize:.06,bevelSegments:2,steps:1,curveSegments:14});dorsalG.translate(0,0,-.08);add(dorsalG,skin,'dorsal-keel');
   tube([[1.8,1.47,0],[2.6,1.63,0],[3.02,2.32,0],[3.31,1.73,0]],.018,glow,'dorsal-rim');
 
-  function box(w,h,d,point,m,name,bevel=false){
+  function box(w,h,d,point,m,name,bevel=false,parent=group){
     let g;
     if(bevel){
       const s=new THREE.Shape();s.moveTo(-w/2,-h/2);s.lineTo(w/2,-h/2);s.lineTo(w/2,h/2);s.lineTo(-w/2,h/2);s.closePath();
       g=new THREE.ExtrudeGeometry(s,{depth:d-.07,bevelEnabled:true,bevelThickness:.035,bevelSize:.035,bevelSegments:2,steps:1});g.translate(0,0,-(d-.07)/2);
     }else g=new THREE.BoxGeometry(w,h,d);
-    g.translate(...point);return add(g,m,name);
+    g.translate(...point);return add(g,m,name,parent);
   }
-  box(5.15,.18,2.65,[-1.25,2.04,0],deck,'cargo-saddle',true);
+  // Lower the whole load a little so the upper containers stay in the whale
+  // silhouette instead of floating above it. The mount still supplies the
+  // shared inertial lift/roll animation below.
+  const cargoVerticalOffset=-.16;
+  group.userData.cargoVerticalOffset=cargoVerticalOffset;
+  box(5.15,.18,2.65,[-1.25,2.04+cargoVerticalOffset,0],deck,'cargo-saddle',true,cargoMount);
+  // A soft dark contact patch keeps the load visually seated on the back in
+  // the catalog view. It is intentionally disabled underwater, where the
+  // water material already owns the depth/readability treatment.
+  const contactShadowGeometry=new THREE.PlaneGeometry(4.35,1.9);
+  const contactShadowMaterial=new THREE.MeshBasicMaterial({color:0x020a11,transparent:true,opacity:.24,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
+  const contactShadow=new THREE.Mesh(contactShadowGeometry,contactShadowMaterial);
+  contactShadow.name='cargo-contact-shadow';
+  contactShadow.rotation.x=-Math.PI/2;
+  contactShadow.position.set(-1.25,2.17+cargoVerticalOffset,0);
+  contactShadow.visible=!waterUniforms;
+  group.add(contactShadow);
   const containers=[];
-  const slots=[[-2.95,0],[-1.3,0],[.35,0],[-2.12,1],[-.47,1]];
-  for(const [x,level] of slots)for(const z of [-.68,.68]){
-    const y=2.68+level*1.11,w=1.49,h=.95,d=1.21;
-    const block=box(w,h,d,[x,y,z],cargo,'container',true);containers.push(block);
+  // Match the Docker whale logo's nine containers in a centered 4/3/2 stack.
+  // Each crate spans the deck width, so the same nine containers read from
+  // either side instead of duplicating the logo's visible cargo in depth.
+  const slots=[
+    [-2.675,0],[-1.725,0],[-.775,0],[.175,0],
+    [-2.2,1],[-1.25,1],[-.3,1],
+    [-1.725,2],[-.775,2],
+  ];
+  for(const [x,level] of slots){
+    const y=2.48+level*.7+cargoVerticalOffset,w=.92,h=.68,d=2.28,z=0;
+    const block=box(w,h,d,[x,y,z],cargo,'container',true,cargoMount);containers.push(block);
     for(const side of [-1,1]){
-      for(let i=0;i<7;i++)box(.025,h*.8,.025,[x-w*.39+i*w*.13,y,z+side*(d/2+.037)],ribs,'container-corrugation');
-      for(const a of [-1,1])box(w+.04,.025,.027,[x,y+a*h/2,z+side*(d/2+.04)],trace,'container-rail');
-      box(.025,h,.027,[x-w/2,y,z+side*(d/2+.04)],trace,'container-corner');
-      box(.025,h,.027,[x+w/2,y,z+side*(d/2+.04)],trace,'container-corner');
+      for(let i=0;i<7;i++)box(.025,h*.8,.025,[x-w*.39+i*w*.13,y,z+side*(d/2+.037)],ribs,'container-corrugation',false,cargoMount);
+      for(const a of [-1,1])box(w+.04,.025,.027,[x,y+a*h/2,z+side*(d/2+.04)],cargoAccent,'container-rail',false,cargoMount);
+      box(.025,h,.027,[x-w/2,y,z+side*(d/2+.04)],cargoAccent,'container-corner',false,cargoMount);
+      box(.025,h,.027,[x+w/2,y,z+side*(d/2+.04)],cargoAccent,'container-corner',false,cargoMount);
       // Three tiny status windows, not text pasted onto the creature.
-      for(let i=0;i<3;i++)box(.082,.035,.018,[x-.40+i*.16,y-.32,z+side*(d/2+.065)],glow,'container-status');
+      for(let i=0;i<3;i++)box(.082,.035,.018,[x-.16+i*.16,y-h*.33,z+side*(d/2+.065)],glow,'container-status',false,cargoMount);
     }
-    for(const side of [-1,1])for(const offset of [-.20,.20])box(.027,.73,.027,[x+side*(w/2+.038),y,z+offset],ribs,'door-bar');
+    for(const side of [-1,1])for(const offset of [-.20,.20])box(.027,h*.76,.027,[x+side*(w/2+.038),y,z+offset],cargoAccent,'door-bar',false,cargoMount);
   }
-  sphere([-4.3,1.93,0],.12,black,'blowhole',[1.8,.4,1]);
+  sphere([-4.3,1.59,0],.12,black,'blowhole',[1.8,.4,1]);
 
   // All geometry is in model space: batch small details into shared materials.
   // Keep body/fins separately addressable for model inspection.
   const anatomical=new Set([body,...flippers,...flukes]);
-  for(const m of [...materials]){
-    const batch=parts.filter(p=>p.material===m&&!anatomical.has(p));if(batch.length<2)continue;
+  for(const parent of [group,cargoMount])for(const m of [...materials]){
+    const batch=parts.filter(p=>p.parent===parent&&p.material===m&&!anatomical.has(p));if(batch.length<2)continue;
     const positions=[],normals=[],uvs=[];
     for(const mesh of batch){
       const g=mesh.geometry.index?mesh.geometry.toNonIndexed():mesh.geometry;
       for(const [name,out] of [['position',positions],['normal',normals],['uv',uvs]])for(const v of g.attributes[name].array)out.push(v);
-      if(g!==mesh.geometry)g.dispose();group.remove(mesh);geometries.delete(mesh.geometry);mesh.geometry.dispose();
+      if(g!==mesh.geometry)g.dispose();mesh.parent?.remove(mesh);geometries.delete(mesh.geometry);mesh.geometry.dispose();
     }
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
-    add(g,m,'batched-'+(m===glow?'lights':m===cargo?'containers':m===ribs?'ribs':'details'));
+    add(g,m,'batched-'+(m===glow?'lights':m===cargo?'containers':m===ribs?'ribs':'details'),parent);
   }
   if(habitatUniforms){
     for(const material of materials){
-      const part=material===skin?'body':material===glow?'light':'detail';
-      applyFishWater(material,habitatUniforms,part);
+       const part=material===skin?'body':material===glow?'light':material===cargo||material===cargoAccent?'cargo':'detail';
+      applyFishWater(material,habitatUniforms,part,DOCKER_WHALE_WATER_PROFILE);
     }
   }
-  let disposed=false;
+  let disposed=false,cargoYaw=0,cargoRoll=0,cargoSide=0,cargoLift=.12;
   return {
-    group,body,flippers,flukes,containerCount:containers.length,waterUniforms:habitatUniforms,
-    update(time,{power=.45,glow=1,visibility=1}={}){uniforms.uWhaleTime.value=time+phase;uniforms.uPower.value=clamp(power,0,1);uniforms.uGlow.value=clamp(glow,0,3);if(habitatUniforms)habitatUniforms.uFishVisibility.value=clamp(visibility,0,1);},
+    group,body,flippers,flukes,cargoMount,containerCount:containers.length,waterUniforms:habitatUniforms,
+    update(time,{power=.45,glow=1,visibility=1,bodyPhase,bodyFrequency,bodyWavelength,effort=.38,turn=0,amplitude,tetherLoad=0,styleDelta=1/60}={}){
+      const synced=Number.isFinite(bodyPhase)&&Number.isFinite(bodyFrequency)&&bodyFrequency>0;
+      uniforms.uWhalePhase.value=synced?bodyPhase:time+phase;
+      uniforms.uWhaleFrequency.value=synced?bodyFrequency:.78;
+      uniforms.uWhaleWavelength.value=synced&&Number.isFinite(bodyWavelength)?bodyWavelength:.94;
+      uniforms.uWhaleAmplitude.value=synced&&Number.isFinite(amplitude)?Math.max(0,amplitude):clamp(power,0,1)*.1;
+      uniforms.uWhaleEffort.value=clamp(effort,0,1);
+      uniforms.uWhaleTurn.value=clamp(turn,-1,1);
+      uniforms.uPower.value=clamp(power,0,1);uniforms.uGlow.value=clamp(glow,0,3);
+      if(habitatUniforms)habitatUniforms.uFishVisibility.value=clamp(visibility,0,1);
+      const dt=Number.isFinite(styleDelta)?clamp(styleDelta,0,.1):1/60;
+      const load=clamp(tetherLoad??0,0,1),heavyTurn=clamp(turn,-1,1);
+      const settle=1-Math.exp(-dt*1.8);
+      // A heavy load resists yaw and settles down instead of bobbing like a
+      // buoy. The root whale still owns the authoritative heading.
+      cargoYaw+=(-heavyTurn*.13-cargoYaw)*settle;
+      cargoSide+=(-heavyTurn*.12-cargoSide)*settle;
+      cargoRoll+=(-heavyTurn*.045-load*.018-cargoRoll)*settle;
+      cargoLift+=((.12-load*.055)-cargoLift)*(1-Math.exp(-dt*1.45));
+      cargoMount.rotation.set(0,cargoYaw,cargoRoll);
+      cargoMount.position.set(0,cargoLift,cargoSide);
+    },
     get stats(){return {meshes:group.children.length,triangles:[...geometries].reduce((sum,g)=>sum+(g.index?g.index.count:g.attributes.position.count)/3,0)};},
-    dispose(){if(disposed)return;disposed=true;for(const g of geometries)g.dispose();for(const m of materials)m.dispose();group.clear();},
+    dispose(){if(disposed)return;disposed=true;for(const g of geometries)g.dispose();for(const m of materials)m.dispose();contactShadowGeometry.dispose();contactShadowMaterial.dispose();group.clear();},
   };
 }

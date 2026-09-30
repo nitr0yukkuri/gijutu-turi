@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 const base=process.env.OCEAN_URL??'http://127.0.0.1:8787';
-for(const path of ['/','/gofish','/dockerwhale','/docker','/ocean-app.js','/ocean-scene.js','/ocean.css','/vendor/three.module.js','/vendor/three.core.js','/service-worker.js']){
+for(const path of ['/','/gofish','/dockerwhale','/docker','/cssfish','/ocean-app.js','/ocean-scene.js','/ocean.css','/vendor/three.module.js','/vendor/three.core.js','/service-worker.js']){
   const response=await fetch(base+path);assert.equal(response.status,200,`${path} must load`);
   assert.ok((await response.text()).length>100,`${path} must not be empty`);
 }
@@ -16,7 +16,7 @@ const invalidFishSession=await fetch(base+'/api/ocean-sessions',{
 assert.equal(invalidFishSession.status,400,'rooms must reject unknown fish species');
 const playerId=`player_${crypto.randomUUID().replaceAll('-','')}`;
 const {id}=await (await fetch(base+'/api/ocean-sessions',{
-  method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId}),
+  method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId,fishId:'fish-001'}),
 })).json();
 const peers=[];
 function peer(role){
@@ -78,6 +78,14 @@ try{
   phone.ws.send(JSON.stringify({action:'cast',strength:5,aim:0}));
   await new Promise(resolve=>setTimeout(resolve,100));
   assert.equal(display.messages.at(-1).state.phase,'fighting','invalid cast must be rejected during a fight');
+  const cssPlayer=`player_${crypto.randomUUID().replaceAll('-','')}`;
+  const cssRoom=await (await fetch(base+'/api/ocean-sessions',{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:cssPlayer,fishId:'css-001'}),
+  })).json();
+  const cssSocket=new WebSocket(base.replace('http','ws')+`/ocean-ws?room=${cssRoom.id}&role=display`,{origin:base});
+  const cssMessages=[];cssSocket.on('message',raw=>cssMessages.push(JSON.parse(raw)));cssSocket.on('error',()=>{});peers.push(cssSocket);
+  await until(()=>cssMessages.length,'CSS fish room open');
+  assert.equal(cssMessages.at(-1).state.fishId,'css-001','CSS fish route must not fall back to Docker');
   const dockerPlayer=`player_${crypto.randomUUID().replaceAll('-','')}`;
   const dockerRoom=await (await fetch(base+'/api/ocean-sessions',{
     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:dockerPlayer,fishId:'whale-001'}),
