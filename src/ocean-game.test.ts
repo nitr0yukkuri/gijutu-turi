@@ -66,12 +66,36 @@ test('Docker whale starts heavy, settles into a steady pull, and remains catchab
   assert.ok(game.state.distance>openingDistance+.4,'the opening weight should take some line when the player does not reel');
   assert.equal(game.state.school,1,'Docker must not switch into the Go school phase');
 
+  let sawWarning=false;
   for(let i=0;i<3000&&phase()==='fighting';i++){
     const held=mode()==='rest'&&game.state.tension<.52;
     step(held);
+    if(mode()==='warning'){
+      sawWarning=true;
+      assert.equal(game.state.fish.gait,'coast','Docker warning stays a steady pull, not the Go turn cue');
+    }
   }
+  assert.ok(sawWarning,'the Docker warning phase should be exercised');
   assert.equal(game.state.phase,'caught',JSON.stringify(game.state));
   assert.equal(game.state.fishId,'whale-001');
+});
+
+test('Go fish attack phases take line and stay physically readable',()=>{
+  const {game,step,now}=setup(.5);game.action({action:'hook'},now());
+  const mode=()=>game.state.mode;
+  while(mode()!=='warning')step(false);
+  const warningDistance=game.state.distance;
+  step(false);
+  assert.equal(game.state.fish.gait,'turn','the warning telegraph should move the body');
+  assert.ok(game.state.distance>warningDistance,'the warning should begin taking line');
+
+  while(mode()!=='split')step(false);
+  const attackDistance=game.state.distance;
+  const attackTension=game.state.tension;
+  for(let i=0;i<10;i++)step(true);
+  assert.equal(game.state.fish.gait,'burst','the split attack should use the burst gait');
+  assert.ok(game.state.distance>attackDistance+.1,'Go should take line even while the player reels during an attack');
+  assert.ok(game.state.tension>attackTension,'the attack should load the line instead of becoming inert');
 });
 
 test('a surge takes line while reeling, then the lull lets the player recover it',()=>{

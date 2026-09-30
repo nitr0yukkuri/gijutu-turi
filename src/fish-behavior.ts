@@ -13,6 +13,14 @@ export type FishFightProfile = {
   baseRetreatSpeed: number;
   openingReelSpeed: number;
   baseReelSpeed: number;
+  warningPressure?: number;
+  warningRetreatSpeed?: number;
+  warningReelSpeed?: number;
+  warningEffort?: number;
+  surgePressure?: number;
+  surgeRetreatSpeed?: number;
+  surgeReelSpeed?: number;
+  surgeEffort?: number;
   openingLateralAmplitude: number;
   baseLateralAmplitude: number;
   lateralLimit: number;
@@ -48,6 +56,17 @@ const GO_FISH_PROFILE: FishFightProfile = {
   baseRetreatSpeed: .22,
   openingReelSpeed: 1.55,
   baseReelSpeed: 3.5,
+  // Go's warning and split phases must change the line, not just the color.
+  // The warning is a readable turn; the later attack still takes line while
+  // the player is reeling, leaving the following rest as the recovery window.
+  warningPressure: .3,
+  warningRetreatSpeed: .55,
+  warningReelSpeed: 1.25,
+  warningEffort: .48,
+  surgePressure: .36,
+  surgeRetreatSpeed: 1.35,
+  surgeReelSpeed: .85,
+  surgeEffort: .88,
   openingLateralAmplitude: 2.4,
   baseLateralAmplitude: 1.25,
   lateralLimit: 2.5,

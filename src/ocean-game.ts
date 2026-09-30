@@ -150,20 +150,43 @@ export class OceanFishingGame {
       const finale=this.finalBurst<0?-1:t-this.finalBurst;
       ({mode:s.mode,school:s.school}=profile.modeAt(t,finale));
       const surge=s.mode==='surge'||s.mode==='split';
+      // The warning telegraph is a Go-fish attack cue. Docker also has a
+      // warning phase near landing, but it must keep its steady-pull motion.
+      const warning=s.mode==='warning'&&s.fishId==='fish-001';
       const opening=t<profile.openingSeconds;
-      const pressure=opening?profile.openingPressure:profile.basePressure;
+      const pressure=opening
+        ? profile.openingPressure
+        : surge
+          ? profile.surgePressure??profile.basePressure
+          : warning
+            ? profile.warningPressure??profile.basePressure
+            : profile.basePressure;
       s.tension=clamp(s.tension+((reeling?profile.reelingLoad:-profile.releaseRecovery)+pressure)*dt,0,1);
       const previousDistance=s.distance,previousFishX=s.fishX,previousDepth=this.fishDepth;
       // A burst must be able to take line even while the player is reeling;
       // the following lull remains the clear opportunity to recover it.
-      const retreatSpeed=opening?profile.openingRetreatSpeed:profile.baseRetreatSpeed;
-      const reelSpeed=reeling?(opening?profile.openingReelSpeed:profile.baseReelSpeed):0;
+      const retreatSpeed=opening
+        ? profile.openingRetreatSpeed
+        : surge
+          ? profile.surgeRetreatSpeed??profile.baseRetreatSpeed
+          : warning
+            ? profile.warningRetreatSpeed??profile.baseRetreatSpeed
+            : profile.baseRetreatSpeed;
+      const reelSpeed=reeling
+        ? opening
+          ? profile.openingReelSpeed
+          : surge
+            ? profile.surgeReelSpeed??profile.baseReelSpeed
+            : warning
+              ? profile.warningReelSpeed??profile.baseReelSpeed
+              : profile.baseReelSpeed
+        : 0;
       s.distance=clamp(s.distance+(retreatSpeed-reelSpeed)*dt,1.7,s.initialDistance+24);
       this.overload=s.tension>=.97?this.overload+dt:Math.max(0,this.overload-dt*2);
       this.slack=s.tension<.06?this.slack+dt:0;
       // Continuous steering and bounded acceleration: changing fight mode no
       // longer jumps to another sine-wave phase or instantly reverses the fish.
-      this.steeringPhase+=dt*(surge?1.65:.72);
+      this.steeringPhase+=dt*(surge?1.65:warning?1.15:.72);
       const lateral=Math.sin(this.steeringPhase)*(opening?profile.openingLateralAmplitude:profile.baseLateralAmplitude);
       const wantedVelocity=clamp((lateral-s.fishX)*2.2,-profile.lateralLimit,profile.lateralLimit);
       this.lateralVelocity+=clamp(wantedVelocity-this.lateralVelocity,-dt*4,dt*4);
@@ -179,11 +202,20 @@ export class OceanFishingGame {
       const previousYaw=this.swimYaw;
       const wantedYaw=Math.atan2(this.lateralVelocity,.8);
       this.swimYaw+=clamp(wantedYaw-this.swimYaw,-dt*1.65,dt*1.65);
-      this.swimEffort+=((opening?profile.openingEffort:reeling?profile.reelingEffort:profile.restEffort)-this.swimEffort)*(1-Math.exp(-dt*4));
+      const effortTarget=opening
+        ? profile.openingEffort
+        : surge
+          ? profile.surgeEffort??(reeling?profile.reelingEffort:profile.restEffort)
+          : warning
+            ? profile.warningEffort??(reeling?profile.reelingEffort:profile.restEffort)
+            : reeling
+              ? profile.reelingEffort
+              : profile.restEffort;
+      this.swimEffort+=(effortTarget-this.swimEffort)*(1-Math.exp(-dt*4));
       const swimSpeed=.65+this.swimEffort*2.5;
       const propulsion:Vec3={x:Math.sin(this.swimYaw)*swimSpeed,y:velocity.y*.4,z:-Math.cos(this.swimYaw)*swimSpeed};
       const turn=clamp((this.swimYaw-previousYaw)/dt/1.65,-1,1);
-      this.locomotion.update(dt,{direction:normalise(propulsion),speed:magnitude(propulsion),gait:surge?'burst':reeling?'turn':'coast'});
+      this.locomotion.update(dt,{direction:normalise(propulsion),speed:magnitude(propulsion),gait:surge?'burst':warning||reeling?'turn':'coast'});
       this.locomotion.setRootMotion({x:s.fishX,y:this.fishDepth,z:-s.distance},velocity,{velocity:propulsion,effort:this.swimEffort,turn});
       this.syncFishSnapshot();
       // Give the player time to react to a bad reel decision. A short red
