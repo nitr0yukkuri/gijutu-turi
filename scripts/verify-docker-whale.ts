@@ -8,9 +8,11 @@ const go=createGoFish({detail:'low'}),goSize=new THREE.Box3().setFromObject(go.g
 for(const detail of ['high','low']){
   const whale=createDockerWhale({detail}),box=new THREE.Box3().setFromObject(whale.group),size=box.getSize(new THREE.Vector3());
   assert.ok(size.x>goSize.x*2,'whale must exceed twice Go fish length at the same scale');
-  assert.ok(whaleSection(.4).height>1.9,'substantial body volume');
+  const torso=whaleSection(.4);
+  assert.ok(torso.height>1.6,'the whale keeps substantial body volume beneath its cargo');
+  assert.ok(whaleSection(0).height<torso.height*.1&&whaleSection(1).height<torso.height*.1,'the hull tapers at the snout and tail');
   assert.equal(whale.flukes.length,2);assert.equal(whale.flippers.length,2);
-  assert.equal(whale.containerCount,10);
+  assert.equal(whale.containerCount,9,'Docker whale matches the logo’s nine-container stack');
   assert.ok(whale.stats.meshes<=16,'batched small details');assert.ok(whale.stats.triangles<90_000,'geometry budget');
   whale.group.traverse(mesh=>{
     if(!mesh.isMesh)return;
