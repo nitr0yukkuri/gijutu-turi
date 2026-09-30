@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { createOcean } from "../rendering/ocean-scene.js";
-import { castStrengthFromMotion, isCastMotionReleased, isCastMotionStart } from "./cast-motion.js";
+import { FishingAudioController } from "../audio/fishing-audio.js";
+import { castStrengthFromMotion, isCastMotionReleased, isCastMotionStart, isReelMotionStart, isReelMotionStop, reelAngularSignal } from "./cast-motion.js";
 import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH } from "../cast-distance.js";
 import { FISH_SPECIES, type FishSpeciesId } from "../fish-species.js";
 import type { Collection, CollectionEntry, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
@@ -58,7 +59,8 @@ const initialCollection = (caught: boolean): Collection => ({
 
 const initialState = (): OceanState => ({
   phase: "idle", revision: 0, strength: .65, aim: 0, castAt: 0, retrieveAt: 0,
-  tension: 0, distance: 0, reeling: false, mode: "rest", catches: 0, reason: "", resultAt: 0, approach: 0, fishId: "fish-001",
+  tension: 0, distance: 0, reeling: false, mode: "rest", catches: 0, reason: "", resultAt: 0, approach: 0,
+  stamina: 1, canReel: false, fishId: "fish-001",
 });
 
 type UseOceanRuntimeOptions = {
@@ -71,12 +73,13 @@ type UseOceanRuntimeOptions = {
 };
 
 export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePath, oceanMountRef, collectionOpen }: UseOceanRuntimeOptions) {
-  const roomFishKey = initialFishId ?? "default";
+  // Include the selection policy in the cache key so a room created before
+  // fish-specific routes became fixed cannot be reused after the fix.
+  const roomFishKey = initialFishId ? `fixed:${initialFishId}` : "rotate";
   const [state, setState] = useState<OceanState>(initialState);
   const stateRef = useRef(state);
   const [online, setOnline] = useState(false);
   const onlineRef = useRef(false);
-  const [controllers, setControllers] = useState(0);
   const [displayConnected, setDisplayConnected] = useState(true);
   const displayConnectedRef = useRef(true);
   const [renderFailed, setRenderFailed] = useState(false);
@@ -92,9 +95,8 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const [selectedCollectionId, setSelectedCollectionId] = useState("fish-001");
   const [controllerUrl, setControllerUrl] = useState("");
   const [controllerHost, setControllerHost] = useState("");
-  const [pairingStatus, setPairingStatus] = useState("接続を待っています");
-  const [sensorStatus, setSensorStatus] = useState("小さな動きで大丈夫です。");
-  const [sensorButtonLabel, setSensorButtonLabel] = useState("釣り竿を有効にする");
+  const [sensorStatus, setSensorStatus] = useState("投げるときは振り、魚が掛かったらスマホを回します。");
+  const [sensorButtonLabel, setSensorButtonLabel] = useState("モーション操作を有効にする");
   const [sensorsOn, setSensorsOn] = useState(false);
 
   const sceneRef = useRef<OceanSceneController | null>(null);
@@ -112,8 +114,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const toastTimerRef = useRef<number | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
   const playerIdRef = useRef(createPlayerId());
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const seaGainRef = useRef<GainNode | null>(null);
+  const fishingAudioRef = useRef<FishingAudioController | null>(null);
   const sensorTimerRef = useRef<number | null>(null);
   const sensorSamplesRef = useRef(0);
   const sensorPeakRef = useRef({ acceleration: 0, angularSpeed: 0 });
@@ -121,6 +122,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const lastGestureRef = useRef(0);
   const gravityRef = useRef({ x: 0, y: 0, z: 0 });
   const warmupRef = useRef(0);
+  const motionReelRef = useRef(false);
   const motionListenerRef = useRef<((event: DeviceMotionEvent) => void) | null>(null);
 
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -128,7 +130,6 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   useEffect(() => { displayConnectedRef.current = displayConnected; }, [displayConnected]);
   useEffect(() => { reelHeldRef.current = reelHeld; }, [reelHeld]);
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
-
   const showToast = useCallback((text: string) => {
     setToast(text);
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
@@ -145,12 +146,19 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     if (isPhone && typeof navigator.vibrate === "function") navigator.vibrate(pattern);
   }, [isPhone]);
 
+  const getFishingAudio = useCallback(() => {
+    if (!fishingAudioRef.current) fishingAudioRef.current = new FishingAudioController();
+    return fishingAudioRef.current;
+  }, []);
+
   const stopReel = useCallback(() => {
     if (reelHeldRef.current && socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(JSON.stringify({ action: "reel", held: false }));
     setReelHeld(false);
     if (reelTimerRef.current !== null) window.clearInterval(reelTimerRef.current);
     reelTimerRef.current = null;
-  }, []);
+    motionReelRef.current = false;
+    fishingAudioRef.current?.syncReeling(stateRef.current, false);
+  }, [getFishingAudio]);
 
   const cancelCharge = useCallback(() => {
     chargeAtRef.current = null;
@@ -166,63 +174,15 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     if (!value) {
       stopReel();
       cancelCharge();
-      setControllers(0);
-      setPairingStatus("海との接続を確認しています");
     }
   }, [cancelCharge, stopReel]);
 
-  const makeNoise = useCallback((duration: number): AudioBuffer => {
-    const audioContext = audioContextRef.current;
-    if (!audioContext) throw new Error("audio_unavailable");
-    const buffer = audioContext.createBuffer(1, audioContext.sampleRate * duration, audioContext.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let index = 0; index < data.length; index += 1) data[index] = Math.random() * 2 - 1;
-    return buffer;
-  }, []);
-
-  const playEffect = useCallback((kind: "cast" | "land") => {
-    const audioContext = audioContextRef.current;
-    if (!soundEnabledRef.current || !audioContext) return;
-    const time = audioContext.currentTime;
-    const source = audioContext.createBufferSource();
-    source.buffer = makeNoise(kind === "cast" ? .45 : .6);
-    const filter = audioContext.createBiquadFilter();
-    filter.type = "bandpass";
-    filter.frequency.value = kind === "cast" ? 1300 : 650;
-    filter.Q.value = .5;
-    const gain = audioContext.createGain();
-    gain.gain.setValueAtTime(.001, time);
-    gain.gain.exponentialRampToValueAtTime(kind === "cast" ? .06 : .12, time + .03);
-    gain.gain.exponentialRampToValueAtTime(.001, time + .4);
-    source.connect(filter); filter.connect(gain); gain.connect(audioContext.destination); source.start();
-    source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
-  }, [makeNoise]);
-
   const toggleSound = useCallback(async () => {
-    const AudioContextCtor = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextCtor) throw new Error("audio_unavailable");
-    if (!audioContextRef.current) {
-      const audioContext = new AudioContextCtor();
-      const seaGain = audioContext.createGain();
-      seaGain.gain.value = 0;
-      seaGain.connect(audioContext.destination);
-      const noise = audioContext.createBufferSource(); noise.buffer = makeNoise(5); noise.loop = true;
-      const filter = audioContext.createBiquadFilter(); filter.type = "lowpass"; filter.frequency.value = 600;
-      const lfo = audioContext.createOscillator(); lfo.frequency.value = .14;
-      const modulation = audioContext.createGain(); modulation.gain.value = .008;
-      lfo.connect(modulation); modulation.connect(seaGain.gain); lfo.start(); noise.connect(filter); filter.connect(seaGain); noise.start();
-      audioContextRef.current = audioContext; seaGainRef.current = seaGain;
-    }
-    const audioContext = audioContextRef.current;
-    const seaGain = seaGainRef.current;
-    if (!audioContext || !seaGain) return;
-    await audioContext.resume();
-    const next = !soundEnabledRef.current;
+    const next = await getFishingAudio().toggle();
     setSoundEnabled(next);
     soundEnabledRef.current = next;
-    seaGain.gain.setTargetAtTime(next ? .035 : 0, audioContext.currentTime, .4);
-    if (!next) window.setTimeout(() => { if (!soundEnabledRef.current) void audioContext.suspend(); }, 500);
-  }, [makeNoise]);
+    if (next) getFishingAudio().sync(stateRef.current, stateRef.current);
+  }, [getFishingAudio]);
 
   const loadCollection = useCallback(async (): Promise<boolean> => {
     try {
@@ -277,12 +237,13 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     if (reelHeldRef.current || stateRef.current.phase !== "fighting" || !onlineRef.current || (isPhone && !displayConnectedRef.current)) return;
     setReelHeld(true);
     reelHeldRef.current = true;
+    fishingAudioRef.current?.syncReeling(stateRef.current, true);
     send({ action: "reel", held: true });
     reelTimerRef.current = window.setInterval(() => {
       if (onlineRef.current && stateRef.current.phase === "fighting") send({ action: "reel", held: true });
       else stopReel();
     }, 120);
-  }, [isPhone, send, stopReel]);
+  }, [getFishingAudio, isPhone, send, stopReel]);
 
   const activate = useCallback(() => {
     const phase = stateRef.current.phase;
@@ -298,23 +259,22 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     const next = message.state;
     stateRef.current = next;
     setState(next);
-    setControllers(message.controllers);
     setDisplayConnected(message.displays > 0);
     displayConnectedRef.current = message.displays > 0;
+    fishingAudioRef.current?.sync(previous, next);
     sceneRef.current?.setState(next, message.serverNow);
     setConnected(true);
-    setPairingStatus(message.controllers ? "釣り竿がつながりました" : "接続を待っています");
     if (next.phase !== "fighting") stopReel();
     if (previous.phase !== next.phase) {
       cancelCharge();
       if (next.phase === "idle") showFeedback("");
-      if (next.phase === "casting") { showFeedback(""); playEffect("cast"); }
+      if (next.phase === "casting") showFeedback("");
       if (next.phase === "waiting") showFeedback("アタリを、待つ。", "ウキが沈んだら合わせる", 2200);
-      if (next.phase === "biting") { playEffect("land"); vibrate([90, 60, 90]); }
+      if (next.phase === "biting") vibrate([90, 60, 90]);
       if (next.phase === "fighting") { showFeedback(""); vibrate(80); }
       if (next.phase === "caught") {
         setSelectedCollectionId(next.fishId);
-        showFeedback(""); playEffect("land"); vibrate([90, 90, 180]);
+        showFeedback(""); vibrate([90, 90, 180]);
         if (!isPhone) {
           // The room persists the catch before broadcasting this snapshot.
           // The display only reloads the read model; it must not submit a
@@ -331,7 +291,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     }
     if (next.phase === "fighting" && previous.mode !== next.mode && next.mode === "split") vibrate([70, 40, 70, 40, 100]);
     if (next.phase === "fighting" && next.tension > .82 && Date.now() - lastVibrationRef.current > 900) { vibrate(45); lastVibrationRef.current = Date.now(); }
-  }, [cancelCharge, isPhone, loadCollection, playEffect, setConnected, showFeedback, showToast, stopReel, vibrate]);
+  }, [cancelCharge, getFishingAudio, isPhone, loadCollection, setConnected, showFeedback, showToast, stopReel, vibrate]);
 
   const getRoom = useCallback(async (): Promise<{ id: string; host?: string }> => {
     if (isPhone) return { id: controllerId ?? "" };
@@ -432,7 +392,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     try {
       const scene = createOcean(oceanMountRef.current, {
         onLand: () => {
-          playEffect("land");
+          fishingAudioRef.current?.play("splash");
         },
         onRenderError: () => setRenderFailed(true),
       }) as OceanSceneController;
@@ -443,7 +403,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       console.error("Ocean rendering unavailable", error);
       setRenderFailed(true);
     }
-  }, [isPhone, oceanMountRef, playEffect]);
+  }, [getFishingAudio, isPhone, oceanMountRef]);
 
   useEffect(() => { sceneRef.current?.setOverlayOpen?.(collectionOpen); }, [collectionOpen]);
 
@@ -485,7 +445,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       if (document.hidden) {
         cancelCharge();
         stopReel();
-        void audioContextRef.current?.suspend();
+        fishingAudioRef.current?.suspend();
         if (hiddenCloseTimerRef.current !== null) window.clearTimeout(hiddenCloseTimerRef.current);
         hiddenCloseTimerRef.current = window.setTimeout(() => {
           hiddenCloseTimerRef.current = null;
@@ -503,7 +463,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
           pausedForVisibilityRef.current = false;
           retriesRef.current = 0;
           void connect();
-        } else if (soundEnabledRef.current) void audioContextRef.current?.resume();
+        } else if (soundEnabledRef.current) void fishingAudioRef.current?.resume();
       }
     };
     document.addEventListener("visibilitychange", visibility);
@@ -561,7 +521,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
         const raw = hasLinear ? linear : event.accelerationIncludingGravity;
         if (!raw || typeof raw.x !== "number" || typeof raw.y !== "number" || typeof raw.z !== "number" || ![raw.x, raw.y, raw.z].every(Number.isFinite)) return;
         sensorSamplesRef.current += 1;
-        if (sensorSamplesRef.current === 1) { setSensorStatus("釣り竿が使えます。小さく振って、海へ。"); setSensorButtonLabel("釣り竿は有効です"); }
+        if (sensorSamplesRef.current === 1) { setSensorStatus("投げるときは振り、魚が掛かったらスマホを回します。"); setSensorButtonLabel("モーション操作は有効です"); }
         let { x, y, z } = raw;
         if (!hasLinear) {
           const gravity = gravityRef.current;
@@ -575,8 +535,24 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
           ? Math.hypot(rate.alpha ?? 0, rate.beta ?? 0, rate.gamma ?? 0)
           : 0;
         const now = performance.now();
-        if (!(stateRef.current.phase === "idle" || stateRef.current.phase === "biting") || !onlineRef.current || now - lastGestureRef.current < 700) {
+        const phase = stateRef.current.phase;
+        if (!(phase === "idle" || phase === "biting" || phase === "fighting") || !onlineRef.current || now - lastGestureRef.current < 700 && phase !== "fighting") {
           sensorPeakRef.current = { acceleration: 0, angularSpeed: 0 };
+          if (motionReelRef.current) stopReel();
+          return;
+        }
+        if (phase === "fighting") {
+          const rotation = reelAngularSignal(rate?.alpha ?? null, rate?.beta ?? null, rate?.gamma ?? null);
+          if (isReelMotionStart(rotation)) {
+            // Motion owns the lease only when it started it. This prevents a
+            // sensor sample from stopping a reel held by the screen control.
+            if (!reelHeldRef.current) {
+              motionReelRef.current = true;
+              startReel();
+            }
+          } else if (motionReelRef.current && isReelMotionStop(rotation)) {
+            stopReel();
+          }
           return;
         }
         const peak = sensorPeakRef.current;
@@ -602,7 +578,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       };
       motionListenerRef.current = motion;
       window.addEventListener("devicemotion", motion);
-      setSensorsOn(true); setSensorButtonLabel("釣り竿を確認しています");
+      setSensorsOn(true); setSensorButtonLabel("モーション操作を確認しています");
       sensorTimerRef.current = window.setTimeout(() => {
         sensorTimerRef.current = null;
         if (sensorSamplesRef.current === 0) {
@@ -612,21 +588,23 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
           setSensorStatus("センサーの動きを取得できません。もう一度試すか、タッチで投げられます。");
           setSensorButtonLabel("センサーを再試行");
         }
-        else setSensorButtonLabel("釣り竿は有効です");
+        else setSensorButtonLabel("モーション操作は有効です");
       }, 2500);
     } catch { setSensorStatus("センサーを開始できません。タッチで投げられます。"); }
-  }, [cast, isPhone, send, sensorsOn, showToast]);
+  }, [cast, isPhone, send, sensorsOn, showToast, startReel, stopReel]);
 
   useEffect(() => () => {
     if (motionListenerRef.current) window.removeEventListener("devicemotion", motionListenerRef.current);
     if (sensorTimerRef.current !== null) window.clearTimeout(sensorTimerRef.current);
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
+    fishingAudioRef.current?.dispose();
+    fishingAudioRef.current = null;
   }, []);
 
   return {
-    state, online, controllers, displayConnected, renderFailed, reelHeld, feedback, toast, chargeProgress, reticle,
-    soundEnabled, collection, selectedCollectionId, setSelectedCollectionId, controllerUrl, controllerHost, pairingStatus,
+    state, online, displayConnected, renderFailed, reelHeld, feedback, toast, chargeProgress, reticle,
+    soundEnabled, collection, selectedCollectionId, setSelectedCollectionId, controllerUrl, controllerHost,
     sensorStatus, sensorButtonLabel, sensorsOn,
     actions: {
       activate, cast, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, releaseCharge,

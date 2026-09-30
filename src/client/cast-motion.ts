@@ -22,3 +22,23 @@ export function isCastMotionStart(acceleration: number, angularSpeed: number): b
 export function isCastMotionReleased(acceleration: number, angularSpeed: number): boolean {
   return acceleration < 4 && angularSpeed < 80;
 }
+
+/**
+ * Pick the strongest signed device-axis rotation. Android devices can report
+ * a wrist rotation on a different axis depending on how the phone is held,
+ * so the reel gesture should not be tied to alpha alone.
+ */
+export function reelAngularSignal(alpha: number | null, beta: number | null, gamma: number | null): number {
+  return [alpha, beta, gamma]
+    .filter((value): value is number => Number.isFinite(value))
+    .reduce((strongest, value) => Math.abs(value) > Math.abs(strongest) ? value : strongest, 0);
+}
+
+/** Hysteresis keeps a single wrist turn from chattering the reel on/off. */
+export function isReelMotionStart(angularSpeed: number): boolean {
+  return Number.isFinite(angularSpeed) && Math.abs(angularSpeed) > 90;
+}
+
+export function isReelMotionStop(angularSpeed: number): boolean {
+  return !Number.isFinite(angularSpeed) || Math.abs(angularSpeed) < 35;
+}
