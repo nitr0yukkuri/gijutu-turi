@@ -73,7 +73,7 @@ PCで次のURLを開くと、最初に登場する魚種を固定できます。
 | `/?fish=k8s` | K8sレヴィアタン | 二つの影を従える魚のデモ。通常抽選には含まれません |
 | `/docker` | Dockerクジラ | `/dockerwhale` の互換エイリアス |
 
-`/?fish=go` / `/?fish=docker` / `/?fish=cssfish` と `/fish=go` / `/fish=docker` / `/fish=cssfish` も互換用に利用できます。新しく共有するURLやQRコードでは、上表の正規パスを使ってください。`/` の抽選結果は同じルームのPC・スマホで共有され、リロードで途中変更されません。
+`/?fish=go` / `/?fish=docker` / `/?fish=cssfish` / `/?fish=k8s` と `/fish=go` / `/fish=docker` / `/fish=css` / `/fish=cssfish` / `/fish=k8s` / `/fish=k8sfish` も互換用に利用できます。新しく共有するURLやQRコードでは、上表の正規パスを使ってください。`/` の抽選結果は同じルームのPC・スマホで共有され、リロードで途中変更されません。
 
 ## 操作
 
@@ -123,6 +123,8 @@ npm run test:whale
 - `ocean-app.js`: Viteが生成する本番クライアントバンドル
 - `src/ocean-room.ts`: キャスト体験専用のサーバー状態管理
 - `src/ocean-game.ts` / `src/ocean-room.ts`: 海の釣り状態機械とWebSocketルーム
+- `src/ocean-contract.ts`: PC・スマホ間で共有するWebSocket状態とメッセージ契約
+- `src/fishing-routes.ts`: ブラウザーとサーバーで共有する旧魚種URL別名
 - `src/fish-species.ts`: 魚種ID、モデル、図鑑、ルートで共有する魚種レジストリ
 - `src/rendering/tackle-state.ts`: サーバー状態を表示用スナップショットへ変換する境界
 - `src/collection-db.ts`: SQLiteの魚種マスタ・捕獲記録・重複防止イベント

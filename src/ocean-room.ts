@@ -9,6 +9,7 @@ import { isPlayerId } from './collection-db.js';
 import { RequestRateLimiter } from './request-rate-limit.js';
 import { OceanFishingGame, type OceanAction } from './ocean-game.js';
 import { isFishSpeciesId, randomActiveFishSpeciesId, type FishSpeciesId } from './fish-species.js';
+import type { OceanMessage } from './ocean-contract.js';
 export type { OceanState } from './ocean-game.js';
 
 const actionSchema=z.discriminatedUnion('action',[
@@ -57,7 +58,8 @@ export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eve
   // the same fishing action.
   const canControl=(room:Room,client:Client)=>client.role==='controller'||client.role==='display'&&count(room,'controller')===0;
   const broadcast=(room:Room)=>{
-    const data=JSON.stringify({type:'ocean',state:room.game.snapshot(),rodStroke:room.rodStroke,serverNow:Date.now(),controllers:count(room,'controller'),displays:count(room,'display')});
+    const message:OceanMessage={type:'ocean',state:room.game.snapshot(),rodStroke:room.rodStroke,serverNow:Date.now(),controllers:count(room,'controller'),displays:count(room,'display')};
+    const data=JSON.stringify(message);
     for(const client of room.clients.keys())if(client.readyState===WebSocket.OPEN&&client.bufferedAmount<64_000)client.send(data);
   };
   app.post('/api/ocean-sessions',async c=>{

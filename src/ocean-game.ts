@@ -4,19 +4,15 @@ import { getFishFightProfile, k8sSurfaceLungeProgress } from './fish-behavior.js
 import { DEFAULT_FISH_SPECIES_ID, nextFishSpeciesId, type FishSpeciesId } from './fish-species.js';
 import { RETRIEVE_DURATION_SECONDS } from './ocean-timing.js';
 import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH, castDistanceForStrength } from './cast-distance.js';
-import { getHookResult, isCriticalHookWindow, type HookResult } from './hook-timing.js';
+import { getHookResult, isCriticalHookWindow } from './hook-timing.js';
+import type { OceanWireState } from './ocean-contract.js';
 
-export type OceanPhase = 'idle' | 'casting' | 'waiting' | 'biting' | 'fighting' | 'caught' | 'escaped' | 'retrieving';
+export type { OceanMode, OceanPhase } from './ocean-contract.js';
 export type OceanAction = {action:'cast';strength:number;aim:number} | {action:'hook'|'retrieve'|'reset'};
 export type FishSelectionMode = 'rotate' | 'fixed';
-export type OceanState = {
-  phase:OceanPhase; strength:number; aim:number; revision:number; castAt:number; retrieveAt:number;
-  tension:number; distance:number; initialDistance:number; reeling:boolean; biteRemaining:number;
-  fightTime:number; mode:'rest'|'surge'|'warning'|'split'; school:number; resultAt:number; approach:number;
-  stamina:number; canReel:boolean;
-  criticalWindow:boolean; hookResult:HookResult|null;
-  reason:''|'missed'|'line'|'slack'|'distance'; catches:number; fishX:number; fishSpeed:number;
-  fishId:FishSpeciesId;
+export type OceanState = OceanWireState & {
+  initialDistance:number; biteRemaining:number; fightTime:number;
+  stamina:number; canReel:boolean; school:number; fishX:number; fishSpeed:number;
   fish:FishMotionSnapshot;
 };
 export const ESCAPE_ANIMATION_MS=2000;
