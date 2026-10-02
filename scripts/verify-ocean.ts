@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 const base=process.env.OCEAN_URL??'http://127.0.0.1:8787';
-for(const path of ['/','/gofish','/dockerwhale','/docker','/cssfish','/ocean-app.js','/ocean-scene.js','/ocean.css','/vendor/three.module.js','/vendor/three.core.js','/service-worker.js']){
+for(const path of ['/','/gofish','/dockerwhale','/docker','/cssfish','/fish=go','/fish=docker','/fish=css','/fish=cssfish','/fish=k8s','/fish=k8sfish','/ocean-app.js','/ocean-scene.js','/ocean.css','/vendor/three.module.js','/vendor/three.core.js','/service-worker.js']){
   const response=await fetch(base+path);assert.equal(response.status,200,`${path} must load`);
   assert.ok((await response.text()).length>100,`${path} must not be empty`);
 }
@@ -53,6 +53,18 @@ try{
   assert.ok(latestState().fish?.position&&latestState().fish?.heading&&latestState().fish?.bodyWave,'fight snapshots must include authoritative fish motion');
   phone.ws.send(JSON.stringify({action:'hook'}));
   await until(()=>latestState()?.phase==='fighting','hook');
+  assert.equal(latestState()?.canReel,false,'the opening cue is advisory and does not make the two reel controls behave differently');
+  phone.ws.send(JSON.stringify({action:'reel',held:true}));
+  await until(()=>latestState()?.reeling,'phone reel input during the running-fish cue');
+  assert.equal(latestState()?.canReel,false);
+  phone.ws.send(JSON.stringify({action:'reel',held:false}));
+  await until(()=>!latestState()?.reeling,'phone reel release during the running-fish cue');
+  const startingRodStroke=display.messages.at(-1)?.rodStroke??0;
+  display.ws.send(JSON.stringify({action:'rod-pump'}));
+  await wait(120);
+  assert.equal(display.messages.at(-1)?.rodStroke,startingRodStroke,'the paired display cannot override the phone controller');
+  phone.ws.send(JSON.stringify({action:'rod-pump'}));
+  await until(()=>display.messages.at(-1)?.rodStroke===startingRodStroke+1,'phone rod stroke broadcast');
   let held=false,sawSchool=false;
   const fightDeadline=Date.now()+15_000;
   while(Date.now()<fightDeadline&&!['caught','escaped'].includes(latestState()?.phase)){
