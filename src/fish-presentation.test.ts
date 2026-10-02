@@ -140,17 +140,27 @@ test('CSS fish has its own compact silhouette and exposes smooth state-material 
   model.dispose();go.dispose();
 });
 
-test('K8s leviathan uses an armored non-neon silhouette and a short solid tail',()=>{
+test('K8s leviathan uses fused armor, a clean jaw seam, and an asymmetric powerful tail',()=>{
   const cluster=createGoFish({visualProfile:'cluster'}),go=createGoFish({visualProfile:'catalog'});
   assert.equal(cluster.group.name,'K8s Leviathan');
   assert.match(cluster.body.material.customProgramCacheKey(),/-cluster$/);
-  assert.ok(cluster.group.children.some(mesh=>mesh.name==='merged-armored-scutes'),'the body carries small overlapping armor plates in one draw');
+  assert.ok(cluster.group.children.some(mesh=>mesh.name==='dorsal-head-shield'),'the crown carries a connected, low-relief armor shield');
+  assert.ok(cluster.group.children.some(mesh=>mesh.name==='merged-eyes-and-anatomy'),'the jaw seam and eye anatomy remain in one detail draw');
+  assert.ok(!cluster.group.children.some(mesh=>mesh.name.includes('cheek-armor')||mesh.name.includes('jaw-plate')),'the face avoids floating, contrasting oval plates');
   assert.ok(cluster.group.children.some(mesh=>mesh.name.startsWith('forked-tail-')),'the tail remains an anatomical fin');
   assert.ok(!cluster.group.children.some(mesh=>mesh.name.startsWith('tail-filament-')),'the monster does not inherit Go’s glowing streamers');
+  const upperTail=cluster.group.children.find(mesh=>mesh.name==='forked-tail-1');
+  const lowerTail=cluster.group.children.find(mesh=>mesh.name==='forked-tail--1');
+  assert.ok(upperTail&&lowerTail,'both caudal lobes are modeled');
+  const upperTailBounds=new THREE.Box3().setFromObject(upperTail),lowerTailBounds=new THREE.Box3().setFromObject(lowerTail);
+  assert.ok(upperTailBounds.max.y>Math.abs(lowerTailBounds.min.y)*1.5,'the upper caudal lobe gives the silhouette an ancient-fish profile');
   const bounds=new THREE.Box3().setFromObject(cluster.group),goBounds=new THREE.Box3().setFromObject(go.group);
   assert.ok(bounds.max.x<goBounds.max.x-.45,'its caudal shape does not reuse the extra-long Go silhouette');
   const shader={uniforms:{...THREE.ShaderLib.physical.uniforms},vertexShader:THREE.ShaderLib.physical.vertexShader,fragmentShader:THREE.ShaderLib.physical.fragmentShader};
   cluster.body.material.onBeforeCompile(shader);
+  assert.match(shader.vertexShader,/uBodyFlexStart/,'K8s uses its own compact-body flex origin');
+  assert.match(shader.vertexShader,/uBodyFlexLength/,'K8s reaches the caudal peduncle over its own body length');
+  assert.match(shader.vertexShader,/uFinPhaseLag/,'K8s fins trail the authoritative body-wave phase');
   assert.match(shader.fragmentShader,/vec3\(\.105,\.155,\.145\)/,'the main body uses a muted mineral palette');
   assert.doesNotMatch(shader.fragmentShader,/uStyleBody/,'it is not using CSS fish styling');
   cluster.dispose();go.dispose();
@@ -175,10 +185,10 @@ test('fish body-wave profiles keep easing across consecutive gait-transition fra
   assert.ok(second>first&&second<.22,'the following frame continues easing instead of snapping');
 });
 
-test('K8s fish keeps a faint single-body approach before its replicas appear in the fight',()=>{
+test('K8s fish keeps a readable single-body approach before its replicas appear in the fight',()=>{
   assert.equal(fishVisibilityTarget('waiting',0,'k8s-001'),0);
   assert.ok(fishVisibilityTarget('waiting',.46,'k8s-001')<fishVisibilityTarget('waiting',.46,'css-001'));
-  assert.equal(fishVisibilityTarget('biting',1,'k8s-001'),.58,'the bite keeps the leviathan as a shadow instead of fully revealing it');
+  assert.equal(fishVisibilityTarget('biting',1,'k8s-001'),.7,'the bite keeps the leviathan readable without fully revealing the fight silhouette');
   assert.equal(fishVisibilityTarget('fighting',1,'k8s-001'),1);
 });
 

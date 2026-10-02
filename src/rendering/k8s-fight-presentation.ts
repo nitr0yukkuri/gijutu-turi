@@ -44,13 +44,15 @@ export function k8sFightPresentation(
   const approach = smoothstep(distanceProgress);
   const breach = clamp01(surfaceLunge);
   const modeGain = mode === 'surge' ? .96 : mode === 'split' ? 1.12 : mode === 'warning' ? .34 : .18;
-  const echoVisibility = (.012 + .72 * approach) * modeGain * (1 - breach * .84);
+  // Keep replicas readable through the breach: the main fish may occlude them,
+  // but a K8s surge should not make the cluster collapse to a single animal.
+  const echoVisibility = (.004 + .22 * approach) * modeGain * (1 - breach * .25);
   const echoSpread = mode === 'warning'
     ? .52
     : mode === 'surge'
       ? 1.8
       : mode === 'split'
-        ? 2.25 - breach * 1.45
+      ? 2.25 - breach * .5
         : .72 + .18 * approach;
   const wakeGain = approach * (mode === 'surge' ? 1.4 : mode === 'split' ? 1.8 : mode === 'warning' ? .75 : .25) + breach * 1.5;
 
