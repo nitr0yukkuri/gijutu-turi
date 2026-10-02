@@ -1,4 +1,5 @@
 import type { FishSpeciesId } from "../fish-species.js";
+import type { HookResult } from "../hook-timing.js";
 
 export type OceanPhase = "idle" | "casting" | "waiting" | "biting" | "fighting" | "caught" | "escaped" | "retrieving";
 export type OceanMode = "rest" | "surge" | "warning" | "split";
@@ -17,6 +18,8 @@ export type OceanState = {
   mode: OceanMode;
   stamina?: number;
   canReel?: boolean;
+  criticalWindow?: boolean;
+  hookResult?: HookResult | null;
   approach: number;
   catches: number;
   reason: "" | "missed" | "line" | "slack" | "distance";
@@ -31,6 +34,7 @@ export type OceanState = {
 export type OceanMessage = {
   type: "ocean";
   state: OceanState;
+  rodStroke?: number;
   serverNow: number;
   controllers: number;
   displays: number;
@@ -62,6 +66,7 @@ export type Collection = {
 
 export type OceanSceneController = {
   setState: (state: OceanState, serverNow?: number) => void;
+  rodStroke?: () => void;
   setCharge: (amount: number, aim?: number) => void;
   aimScreen: (aim?: number, strength?: number) => { x: number; y: number };
   setOverlayOpen?: (open: boolean) => void;

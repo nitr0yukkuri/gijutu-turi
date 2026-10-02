@@ -14,7 +14,7 @@ const phaseLabels: Record<OceanPhase, string> = {
 
 const phoneTitles: Record<OceanPhase, ReactNode> = {
   idle: <>投げる</>, casting: <>投げています</>, waiting: <>アタリを<br />待っています</>,
-  retrieving: <>ルアーを<br />回収しています</>, biting: <>合わせる</>, fighting: <>魚を巻く</>,
+  retrieving: <>ルアーを<br />回収しています</>, biting: <>合わせる</>, fighting: <>魚とファイト中</>,
   caught: <>釣れました</>, escaped: <>逃げられました</>,
 };
 
@@ -27,7 +27,7 @@ const failureHints: Record<string, [string, string]> = {
 
 const phoneHints: Record<OceanPhase, string> = {
   idle: "スマホを振って投げます。強く振るほど遠くへ飛びます。", casting: "そのままお待ちください。", waiting: "ウキが沈んだら、画面をタップするかスマホを小さく引きます。",
-  retrieving: "ルアーを回収しています。", biting: "画面のボタンを押すか、スマホを小さく引きます。", fighting: "スマホを回すとリールが回ります。止めると止まります。",
+  retrieving: "ルアーを回収しています。", biting: "画面のボタンを押すか、スマホを小さく引きます。", fighting: "魚が落ち着いたら回して巻く。走ったら止めて待つ。手前に引いて戻すと竿を引けます。",
   caught: "釣り上げた魚を図鑑に記録しました。", escaped: "もう一度投げてください。",
 };
 
@@ -189,13 +189,13 @@ export function App() {
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
   const runtime = useOceanRuntime({ isPhone, controllerId, initialFishId: fishingRoute.initialFishId, routePath: fishingRoute.path, oceanMountRef, collectionOpen });
-  const { state, online, displayConnected, renderFailed, reelHeld, feedback, toast, chargeProgress, reticle, soundEnabled, collection, selectedCollectionId, controllerUrl, sensorStatus, sensorButtonLabel, sensorsOn } = runtime;
-  const { activate, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, startReel, stopReel, toggleSensor, toggleSound, showToast } = runtime.actions;
+  const { state, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, toast, chargeProgress, reticle, soundEnabled, collection, selectedCollectionId, controllerUrl, sensorStatus, sensorButtonLabel, sensorsOn } = runtime;
+  const { activate, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, startReel, stopReel, performRodStroke, toggleSensor, toggleSound, showToast } = runtime.actions;
   const fighting = state.phase === "fighting";
   const biting = state.phase === "biting";
   const caughtEntry = collection.entries.find(entry => entry.id === state.fishId);
   const fightButtonLabel = biting ? "合わせる" : reelHeld ? "巻いています" : "巻く";
-  const fightButtonHint = biting ? "ウキが沈んだら押す" : reelHeld ? "離して止める" : "押して巻く";
+  const fightButtonHint = biting ? (state.criticalWindow ? "今押すと、ナイスフッキング！" : "ウキが沈んだら押す") : reelHeld ? "離して止める" : "押して巻く";
   const resultActionLabel = online ? "もう一度、投げる" : "再接続中…";
   const resultConnectionHint = online ? "" : "海との接続が戻ると、もう一度投げられます。";
   const distanceVisible = ["casting", "waiting", "biting", "fighting", "caught"].includes(state.phase);
@@ -204,7 +204,7 @@ export function App() {
   const tensionColor = tension > 80 ? "#ef9c80" : tension < 12 ? "#a9bfcb" : "#a6e4e7";
   const phoneCastLabel = state.phase === "idle" ? "タッチで投げる" : fighting ? (reelHeld ? "巻いている — 離すと緩む" : "押して巻く / 離して緩める") : phaseLabels[state.phase];
   const fightCue = biting
-    ? "ウキが沈んだ。今、押す"
+    ? state.criticalWindow ? "今、合わせる！" : "ウキが沈んだ。今、押す"
     : tension <= 8
       ? "糸が緩んでいます。少し巻いて張りを戻す"
     : state.canReel
@@ -254,13 +254,14 @@ export function App() {
         <output id="distance-meter" className="distance-meter" hidden={!distanceVisible} aria-label={fighting ? "魚までの距離" : "距離"}>{distanceMeters}m</output>
         <div id="cast-reticle" aria-hidden="true" style={reticle ? { left: reticle.x, top: reticle.y } : undefined} />
         <section id="fight-ui" className="fight-ui" hidden={!fighting && !biting} aria-label="魚との駆け引き" data-tension={tension} data-mode={state.mode}>
+          {hookFeedback && <p className="hook-critical-status" role="status">ナイスフッキング！</p>}
           <p id="fight-cue" role="status">{fightCue}</p>
           <div className="tension-track" role="meter" aria-label="糸の張り" aria-valuemin={0} aria-valuemax={100} aria-valuenow={tension} aria-valuetext={`${tension}%`} style={{ "--tension-color": tensionColor } as CSSProperties}><span id="tension-fill" style={{ width: `${tension}%` }} /><i /></div>
-          <button id="fight-button" className={`fight-button${reelHeld ? " is-held" : ""}${biting ? " is-hook" : ""}`} aria-label={biting ? "合わせる。ウキが沈んだら押す" : reelHeld ? "巻いています。離して止める" : "巻く。押して巻く"} disabled={!online || renderFailed} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>
+          <button id="fight-button" className={`fight-button${reelHeld ? " is-held" : ""}${biting ? " is-hook" : ""}${biting && state.criticalWindow ? " is-critical-window" : ""}`} aria-label={biting ? state.criticalWindow ? "今が狙いどき。合わせる" : "合わせる。ウキが沈んだら押す" : reelHeld ? "巻いています。離して止める" : "巻く。押して巻く"} disabled={!online || renderFailed} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>
             <span className="fight-button-label">{fightButtonLabel}</span><small className="fight-button-help">{fightButtonHint}</small>
           </button>
         </section>
-        <section id="catch-ui" className="catch-ui" hidden={state.phase !== "caught"} aria-live="polite"><p>NEW ENCOUNTER</p><h1>{caughtEntry ? collectionName(caughtEntry) : "魚"}</h1><p>{caughtEntry?.tagline ?? "新しい魚を釣り上げました。"}</p><button id="catch-again" className="primary-button" disabled={!online} onClick={() => activate()}>{online ? "もう一度、海へ" : "再接続中…"}</button>{!online && <p className="result-connection" role="status">{resultConnectionHint}</p>}</section>
+        <section id="catch-ui" className="catch-ui" hidden={state.phase !== "caught"} aria-live="polite"><p>{newEncounter ? "NEW ENCOUNTER" : "FISH CAUGHT"}</p><h1>{caughtEntry ? collectionName(caughtEntry) : "魚"}</h1><p>{caughtEntry?.tagline ?? "魚を釣り上げました。"}</p><button id="catch-again" className="primary-button" disabled={!online} onClick={() => activate()}>{online ? "もう一度、海へ" : "再接続中…"}</button>{!online && <p className="result-connection" role="status">{resultConnectionHint}</p>}</section>
         <section id="escape-ui" className="escape-ui" hidden={state.phase !== "escaped"} aria-live="polite"><h2>{runtime.state.reason ? (failureHints[runtime.state.reason]?.[0] ?? "逃げられた。") : "逃げられた。"}</h2><p>{runtime.state.reason ? (failureHints[runtime.state.reason]?.[1] ?? "") : ""}</p><button id="escape-again" className="primary-button" disabled={!online} onClick={() => activate()}>{resultActionLabel}</button>{!online && <p className="result-connection" role="status">{resultConnectionHint}</p>}</section>
         <div className="bottom-shade" aria-hidden="true" />
         <footer className="shore-controls">
@@ -276,11 +277,11 @@ export function App() {
       </main>
       <section id="phone" className="phone" hidden={!isPhone} aria-label="釣り竿コントローラー" data-fight={String(fighting || biting)}>
         <a className="phone-brand" href="./">技術釣り</a><div id="phone-connection" className="phone-connection" data-connected={String(online && displayConnected)} aria-live="polite"><i aria-hidden="true" /><span>{!online ? "海に接続しています…" : displayConnected ? "PC画面と接続済み" : "PC画面を待っています"}</span></div>
-        <div className="phone-instruction"><p id="phone-kicker">スマホ操作</p><h1 id="phone-title">{phoneTitles[state.phase]}</h1><p id="phone-hint">{state.phase === "caught" && caughtEntry ? caughtEntry.tagline : fighting ? "スマホを回すとリールが回ります。止めると止まります。画面のリールも使えます。" : phoneHints[state.phase]}</p></div>
-        <div className="rod-symbol" aria-hidden="true"><svg viewBox="0 0 160 230"><path d="M48 220 93 32 Q101 14 113 18" /><path className="rod-thread" d="M113 18q22 112-12 164" /><circle cx="101" cy="185" r="4" /><path d="m85 51 15 4m-19 11 16 4m-30 53 16 4" /></svg></div>
+        <div className="phone-instruction"><p id="phone-kicker">スマホ操作</p><h1 id="phone-title">{phoneTitles[state.phase]}</h1><p id="phone-hint">{state.phase === "caught" && caughtEntry ? caughtEntry.tagline : fighting ? "回して巻く。手前に引いて戻すと、竿を引けます。" : biting && state.criticalWindow ? "今が狙いどき。画面をタップするか、小さく引いて合わせます。" : phoneHints[state.phase]}</p>{hookFeedback && <p className="hook-critical-status" role="status">ナイスフッキング！</p>}</div>
+        <div key={rodStrokeRevision} className={`rod-symbol${fighting ? " is-fighting" : ""}`} aria-hidden="true"><svg viewBox="0 0 160 230"><path d="M48 220 93 32 Q101 14 113 18" /><path className="rod-thread" d="M113 18q22 112-12 164" /><circle cx="101" cy="185" r="4" /><path d="m85 51 15 4m-19 11 16 4m-30 53 16 4" /></svg></div>
         <div id="phone-tension" className="phone-tension" hidden={!fighting}><output id="phone-distance" className="phone-distance" aria-label="魚までの距離">{distanceMeters}m</output><div className="tension-track" role="meter" aria-label="糸の張り" aria-valuemin={0} aria-valuemax={100} aria-valuenow={tension} aria-valuetext={`${tension}%`} style={{ "--tension-color": tensionColor } as CSSProperties}><span id="phone-tension-fill" style={{ width: `${tension}%` }} /><i /></div></div>
         <button id="sensor-button" className="primary-button" onClick={() => void toggleSensor()}>{sensorButtonLabel}</button>
-        {fighting ? <PhoneReelControl active={reelHeld} disabled={!online || !displayConnected || !state.canReel} onStart={startReel} onStop={stopReel} /> : <button id="phone-cast" className={`phone-cast${reelHeld ? " is-held" : ""}`} disabled={!online || !displayConnected || ["casting", "retrieving"].includes(state.phase)} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>{phoneCastLabel}</button>}
+        {fighting ? <><PhoneReelControl active={reelHeld} disabled={!online || !displayConnected} onStart={startReel} onStop={stopReel} /><button type="button" className="phone-rod-pump" disabled={!online || !displayConnected} onClick={performRodStroke}><span>竿を引く</span><small>手前に引いて、元の位置へ戻す</small></button></> : <button id="phone-cast" className={`phone-cast${reelHeld ? " is-held" : ""}${biting && state.criticalWindow ? " is-critical-window" : ""}`} disabled={!online || !displayConnected || ["casting", "retrieving"].includes(state.phase)} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>{biting && state.criticalWindow ? "今、合わせる！" : phoneCastLabel}</button>}
         <p id="sensor-status" className="sensor-status" role="status">{sensorStatus}</p>
       </section>
       <dialog ref={helpDialogRef} id="help-dialog" aria-labelledby="help-title" onClick={event => dialogClick(event.currentTarget, event)}>
@@ -289,7 +290,7 @@ export function App() {
         <ol className="instructions">
           <li><span>1</span><div><div className="instruction-heading"><strong>投げる</strong></div><p>「投げる」を長押しし、好きなタイミングで離します。長く押すほど遠くへ飛びます。スペースキーでも操作できます。</p></div></li>
           <li><span>2</span><div><div className="instruction-heading"><strong>合わせる</strong></div><p>ウキが沈み、ボタンが「合わせる」に変わったら押します。</p></div></li>
-          <li><span>3</span><div><div className="instruction-heading"><strong>落ち着いたら巻く</strong></div><p>魚が走っている間は巻かずに待ちます。落ち着いたら「巻く」を押し、糸の張りが赤くなったらいったん離します。</p></div></li>
+          <li><span>3</span><div><div className="instruction-heading"><strong>巻く・竿を引く</strong></div><p>魚が走っている間は巻かずに待ちます。落ち着いたら「巻く」を押し、糸の張りが赤くなったらいったん離します。スマホでは、手前に引いて元の位置へ戻すと竿を引けます。これはリールを巻く操作とは別です。</p></div></li>
         </ol>
         <p className="fine-print">スマホを使う場合は「スマホを接続」からQRコードを読み取り、スマホ画面の指示に従ってください。</p>
       </dialog>
