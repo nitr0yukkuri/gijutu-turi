@@ -26,6 +26,14 @@ test("docker is a compatibility alias and the old query links remain usable", ()
   assert.equal(resolveFishingRoute("/", "k8sfish").initialFishId, "k8s-001");
 });
 
+test("fish path aliases select the requested initial species",()=>{
+  assert.equal(resolveFishingRoute("/fish=cssfish").initialFishId,"css-001");
+  assert.equal(resolveFishingRoute("/fish=cssfish/").initialFishId,"css-001");
+  assert.equal(resolveFishingRoute("/fish=go").initialFishId,"fish-001");
+  assert.equal(resolveFishingRoute("/fish=docker").initialFishId,"whale-001");
+  assert.equal(resolveFishingRoute("/fish=k8s").initialFishId,"k8s-001");
+});
+
 test("unknown paths keep the default fishing route", () => {
   assert.equal(resolveFishingRoute("/unknown").key, "default");
   assert.equal(resolveFishingRoute("/").initialFishId, undefined);

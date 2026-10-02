@@ -71,6 +71,8 @@ const publicAssets = new Map([
   ["/assets/gijutu-turi-logo.png", ["assets/gijutu-turi-logo.png", "image/png"]],
   ["/assets/gijutu-turi-favicon-generated.png", ["assets/gijutu-turi-favicon-generated.png", "image/png"]],
 ]);
+const legacyFishPathAliases=["/fish=go","/fish=docker","/fish=css","/fish=cssfish","/fish=k8s","/fish=k8sfish"] as const;
+for(const route of legacyFishPathAliases)publicAssets.set(route,["index.html","text/html; charset=utf-8"]);
 const fishAddons = [
   "controls/OrbitControls.js", "environments/RoomEnvironment.js",
   "postprocessing/EffectComposer.js", "postprocessing/RenderPass.js",
@@ -79,13 +81,13 @@ const fishAddons = [
   "shaders/CopyShader.js", "shaders/LuminosityHighPassShader.js", "shaders/OutputShader.js",
 ];
 for (const addon of fishAddons) publicAssets.set(`/vendor/addons/${addon}`, [`vendor/addons/${addon}`, "text/javascript"]);
-for (const route of ["/gofish", "/dockerwhale", "/docker", "/cssfish"]) {
+for (const route of ["/gofish", "/dockerwhale", "/docker", "/cssfish",...legacyFishPathAliases]) {
   app.get(`${route}/`, c => c.redirect(`${route}${new URL(c.req.url).search}`, 308));
 }
 for (const [route, asset] of publicAssets) {
   app.get(route, async c => {
     try {
-      const preferred = new Set(["/", "/index.html", "/gofish", "/dockerwhale", "/docker", "/cssfish", "/ocean.css", "/ocean2.css", "/ocean3.css", "/ocean-app.js", "/go-fish.html", "/docker-whale.html", "/service-worker.js", "/manifest.webmanifest", "/favicon.svg", "/assets/gijutu-turi-favicon-generated.png", "/license.txt", "/third-party-notices.txt"]);
+      const preferred = new Set(["/", "/index.html", "/gofish", "/dockerwhale", "/docker", "/cssfish", ...legacyFishPathAliases, "/ocean.css", "/ocean2.css", "/ocean3.css", "/ocean-app.js", "/go-fish.html", "/docker-whale.html", "/service-worker.js", "/manifest.webmanifest", "/favicon.svg", "/assets/gijutu-turi-favicon-generated.png", "/license.txt", "/third-party-notices.txt"]);
       const candidates = preferred.has(route) ? [`dist/client/${asset[0]}`, asset[0]] : [asset[0]];
       let bytes: Buffer | undefined;
       for (const candidate of candidates) {

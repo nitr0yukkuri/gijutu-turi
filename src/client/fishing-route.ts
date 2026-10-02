@@ -50,17 +50,22 @@ const normalizePathname = (pathname: string): string => {
 
 /** Resolve the public fishing URL without coupling routing to the game loop. */
 export const resolveFishingRoute = (pathname: string, legacyFish?: string | null): FishingRoute => {
-  switch (normalizePathname(pathname)) {
+  const normalizedPath=normalizePathname(pathname);
+  switch (normalizedPath) {
     case "/gofish": return GO_FISH_ROUTE;
     case "/dockerwhale":
     case "/docker": return DOCKER_WHALE_ROUTE;
     case "/cssfish": return CSS_FISH_ROUTE;
   }
 
+  // Some shared links encode the fish as a path segment rather than a query.
+  const pathFish=/^\/fish=([^/]+)$/.exec(normalizedPath)?.[1];
+  const requestedFish=pathFish??legacyFish;
+
   // Keep the old demo links working while giving QR codes a canonical path.
-  if (legacyFish === "go") return GO_FISH_ROUTE;
-  if (legacyFish === "docker") return DOCKER_WHALE_ROUTE;
-  if (legacyFish === "css" || legacyFish === "cssfish") return CSS_FISH_ROUTE;
-  if (legacyFish === "k8s" || legacyFish === "k8sfish") return K8S_FISH_ROUTE;
+  if (requestedFish === "go") return GO_FISH_ROUTE;
+  if (requestedFish === "docker") return DOCKER_WHALE_ROUTE;
+  if (requestedFish === "css" || requestedFish === "cssfish") return CSS_FISH_ROUTE;
+  if (requestedFish === "k8s" || requestedFish === "k8sfish") return K8S_FISH_ROUTE;
   return DEFAULT_ROUTE;
 };
