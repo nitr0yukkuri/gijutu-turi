@@ -1,6 +1,11 @@
 import type { FishSpeciesId } from "../fish-species.js";
+import {
+  legacyFishAliasFromPath,
+  legacyFishRouteKey,
+  type FishingRouteKey,
+} from "../fishing-routes.js";
 
-export type FishingRouteKey = "default" | "gofish" | "dockerwhale" | "cssfish" | "k8sfish";
+export type { FishingRouteKey } from "../fishing-routes.js";
 
 export type FishingRoute = {
   key: FishingRouteKey;
@@ -59,13 +64,14 @@ export const resolveFishingRoute = (pathname: string, legacyFish?: string | null
   }
 
   // Some shared links encode the fish as a path segment rather than a query.
-  const pathFish=/^\/fish=([^/]+)$/.exec(normalizedPath)?.[1];
+  const pathFish=legacyFishAliasFromPath(normalizedPath);
   const requestedFish=pathFish??legacyFish;
 
-  // Keep the old demo links working while giving QR codes a canonical path.
-  if (requestedFish === "go") return GO_FISH_ROUTE;
-  if (requestedFish === "docker") return DOCKER_WHALE_ROUTE;
-  if (requestedFish === "css" || requestedFish === "cssfish") return CSS_FISH_ROUTE;
-  if (requestedFish === "k8s" || requestedFish === "k8sfish") return K8S_FISH_ROUTE;
+  switch (legacyFishRouteKey(requestedFish)) {
+    case "gofish": return GO_FISH_ROUTE;
+    case "dockerwhale": return DOCKER_WHALE_ROUTE;
+    case "cssfish": return CSS_FISH_ROUTE;
+    case "k8sfish": return K8S_FISH_ROUTE;
+  }
   return DEFAULT_ROUTE;
 };

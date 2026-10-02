@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveFishingRoute } from "./fishing-route.js";
+import { LEGACY_FISH_ROUTE_ALIASES } from "../fishing-routes.js";
 
 test("public fish routes select only the initial species", () => {
   assert.deepEqual(resolveFishingRoute("/gofish"), {
@@ -27,11 +28,11 @@ test("docker is a compatibility alias and the old query links remain usable", ()
 });
 
 test("fish path aliases select the requested initial species",()=>{
-  assert.equal(resolveFishingRoute("/fish=cssfish").initialFishId,"css-001");
+  for (const [alias, routeKey] of Object.entries(LEGACY_FISH_ROUTE_ALIASES)) {
+    assert.equal(resolveFishingRoute(`/fish=${alias}`).key, routeKey);
+    assert.equal(resolveFishingRoute("/", alias).key, routeKey);
+  }
   assert.equal(resolveFishingRoute("/fish=cssfish/").initialFishId,"css-001");
-  assert.equal(resolveFishingRoute("/fish=go").initialFishId,"fish-001");
-  assert.equal(resolveFishingRoute("/fish=docker").initialFishId,"whale-001");
-  assert.equal(resolveFishingRoute("/fish=k8s").initialFishId,"k8s-001");
 });
 
 test("unknown paths keep the default fishing route", () => {
