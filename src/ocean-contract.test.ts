@@ -34,3 +34,20 @@ test("wire validation rejects incomplete and malformed snapshots", () => {
   }), false);
   assert.equal(isOceanMessage({ ...message, state: { ...message.state, serverOnlyFlag: true } }), false);
 });
+
+test("frontend accepts and strips private fields from the previous server during split deployment", () => {
+  const message = makeMessage();
+  const legacyMessage = {
+    ...message,
+    state: { ...message.state, initialDistance: 32, biteRemaining: 0 },
+  };
+
+  assert.equal(isOceanMessage(legacyMessage), true);
+  const parsed = oceanMessageSchema.parse(legacyMessage);
+  assert.equal("initialDistance" in parsed.state, false);
+  assert.equal("biteRemaining" in parsed.state, false);
+  assert.equal(isOceanMessage({
+    ...legacyMessage,
+    state: { ...legacyMessage.state, initialDistance: Number.NaN },
+  }), false);
+});

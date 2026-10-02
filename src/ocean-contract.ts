@@ -77,6 +77,14 @@ const authoritativeOceanStateSchema = oceanStateFieldsSchema.extend({
 });
 export type AuthoritativeOceanState = z.infer<typeof authoritativeOceanStateSchema>;
 
+// The API/WebSocket server can be deployed separately from the Vercel client.
+// Accept and discard the two private fields sent by the previous server build
+// so a frontend-first rollout does not reject every otherwise valid snapshot.
+const compatibleOceanStateSchema = authoritativeOceanStateSchema.extend({
+  initialDistance: finite.min(0).optional(),
+  biteRemaining: finite.min(0).optional(),
+}).transform(({ initialDistance: _initialDistance, biteRemaining: _biteRemaining, ...state }) => state);
+
 /** Temporary UI state can exist before the first server fish snapshot. */
 export type OceanClientState = Omit<AuthoritativeOceanState, "fish"> & {
   fish?: FishMotionSnapshot;
@@ -84,7 +92,7 @@ export type OceanClientState = Omit<AuthoritativeOceanState, "fish"> & {
 
 export const oceanMessageSchema = z.object({
   type: z.literal("ocean"),
-  state: authoritativeOceanStateSchema,
+  state: compatibleOceanStateSchema,
   rodStroke: z.number().int().nonnegative(),
   serverNow: finite,
   controllers: z.number().int().nonnegative(),
