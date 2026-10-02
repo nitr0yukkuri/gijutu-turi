@@ -203,13 +203,6 @@ export function App() {
   const tension = Math.round((state.tension || 0) * 100);
   const tensionColor = tension > 80 ? "#ef9c80" : tension < 12 ? "#a9bfcb" : "#a6e4e7";
   const phoneCastLabel = state.phase === "idle" ? "タッチで投げる" : fighting ? (reelHeld ? "巻いている — 離すと緩む" : "押して巻く / 離して緩める") : phaseLabels[state.phase];
-  const fightCue = biting
-    ? state.criticalWindow ? "今、合わせる！" : "ウキが沈んだ。今、押す"
-    : tension <= 8
-      ? "糸が緩んでいます。少し巻いて張りを戻す"
-    : state.canReel
-      ? "今なら巻ける。少しずつ巻く"
-      : "魚が走っています。巻かずに待つ";
   const isLocalDevelopment = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
 
   useEffect(() => { document.title = isPhone ? "釣り竿 — 技術釣り" : fishingRoute.title; }, [fishingRoute.title, isPhone]);
@@ -255,7 +248,6 @@ export function App() {
         <div id="cast-reticle" aria-hidden="true" style={reticle ? { left: reticle.x, top: reticle.y } : undefined} />
         <section id="fight-ui" className="fight-ui" hidden={!fighting && !biting} aria-label="魚との駆け引き" data-tension={tension} data-mode={state.mode}>
           {hookFeedback && <p className="hook-critical-status" role="status">ナイスフッキング！</p>}
-          <p id="fight-cue" role="status">{fightCue}</p>
           <div className="tension-track" role="meter" aria-label="糸の張り" aria-valuemin={0} aria-valuemax={100} aria-valuenow={tension} aria-valuetext={`${tension}%`} style={{ "--tension-color": tensionColor } as CSSProperties}><span id="tension-fill" style={{ width: `${tension}%` }} /><i /></div>
           <button id="fight-button" className={`fight-button${reelHeld ? " is-held" : ""}${biting ? " is-hook" : ""}${biting && state.criticalWindow ? " is-critical-window" : ""}`} aria-label={biting ? state.criticalWindow ? "今が狙いどき。合わせる" : "合わせる。ウキが沈んだら押す" : reelHeld ? "巻いています。離して止める" : "巻く。押して巻く"} disabled={!online || renderFailed} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>
             <span className="fight-button-label">{fightButtonLabel}</span><small className="fight-button-help">{fightButtonHint}</small>
