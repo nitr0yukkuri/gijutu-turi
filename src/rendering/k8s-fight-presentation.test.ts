@@ -35,12 +35,12 @@ test('K8S echo copies are faint at range, fan out on surges, then gather on warn
   assert.ok(closeSplit.wakeGain > closeSurge.wakeGain, 'the surface lunge makes the strongest trace');
 });
 
-test('K8S replicas stay absent before the fight and preserve a compact landing pose', () => {
+test('K8S replicas stay absent before the fight and clear for the catch portrait', () => {
   const waiting = k8sFightPresentation('waiting', 20, 'rest');
   const caught = k8sFightPresentation('caught', 2, 'warning');
 
   assert.equal(waiting.echoVisibility, 0);
   assert.equal(caught.bodyVisibility, 1);
-  assert.ok(caught.echoVisibility > 0);
+  assert.equal(caught.echoVisibility, 0);
   assert.equal(caught.echoSpread, .56);
 });

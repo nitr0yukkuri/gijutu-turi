@@ -211,13 +211,30 @@ const CSS_FISH_PROFILE: FishFightProfile = {
   modeAt: cssFishModeAt,
 };
 
+const K8S_PULSE_PERIOD = 7.2;
+const K8S_PULSE_OFFSET = 2.4;
+const K8S_LUNGE_START = .95;
+const K8S_LUNGE_END = 2.35;
+const k8sPulseAt = (fightTime: number): number =>
+  ((fightTime - K8S_PULSE_OFFSET) % K8S_PULSE_PERIOD + K8S_PULSE_PERIOD) % K8S_PULSE_PERIOD;
+
+/** One server-clocked breach arc shared by fish depth and surface cues. */
+export function k8sSurfaceLungeProgress(fightTime: number): number {
+  if (!Number.isFinite(fightTime) || fightTime < 0) return 0;
+  const pulse = k8sPulseAt(fightTime);
+  if (pulse < K8S_LUNGE_START || pulse >= K8S_LUNGE_END) return 0;
+  const progress = (pulse - K8S_LUNGE_START) / (K8S_LUNGE_END - K8S_LUNGE_START);
+  const arch = Math.sin(Math.PI * progress);
+  return arch * arch;
+}
+
 const k8sModeAt = (fightTime: number, finale: number): { mode: FishFightMode; school: number } => {
   // Follow the opening with a readable split beat, then repeat the cycle so
   // the fight does not sit in the same low-energy state for too long.
   if (finale >= 0 && finale < .9) return { mode: "warning", school: 1 };
   if (fightTime < .95) return { mode: "surge", school: 1 };
-  const pulse = ((fightTime - 2.4) % 7.2 + 7.2) % 7.2;
-  const mode: FishFightMode = pulse < .95 ? "surge" : pulse < 2.35 ? "split" : "rest";
+  const pulse = k8sPulseAt(fightTime);
+  const mode: FishFightMode = pulse < K8S_LUNGE_START ? "surge" : pulse < K8S_LUNGE_END ? "split" : "rest";
   return { mode, school: 1 };
 };
 

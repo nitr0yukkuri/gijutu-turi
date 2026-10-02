@@ -38,7 +38,14 @@ export const fishVisibilityTarget = (phase: string, progress: number, fishId?: F
     const reveal = easeFishApproach((amount - WAIT_APPROACH_FRACTION) / (1 - WAIT_APPROACH_FRACTION));
     return profile.waitingMax + reveal * (profile.bitingMax - profile.waitingMax);
   }
-  // Escape presentation owns its own timed fade. Returning 1 here would keep
-  // the fish opaque until the group is hidden at the end of the animation.
+  // Escaped scenes freeze their entry visibility and use escapeFishVisibility
+  // for the terminal fade instead of damping toward this generic target.
   return phase === "fighting" || phase === "caught" ? 1 : 0;
+};
+
+/** Keep the last readable silhouette visible until the escape fade completes. */
+export const escapeFishVisibility = (visibilityAtEscape: number, fade: number): number => {
+  const visible = Math.max(0, Math.min(1, visibilityAtEscape));
+  const remaining = Math.max(0, Math.min(1, fade));
+  return visible * remaining;
 };

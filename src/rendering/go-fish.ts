@@ -301,9 +301,9 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
     ? new THREE.MeshStandardMaterial({ color: 0x71847a, emissive: 0x080f0d, emissiveIntensity: .18, roughness: .72, metalness: .06 })
     : new THREE.MeshBasicMaterial({ color: new THREE.Color(.055, 2.5, 3.4), toneMapped: false }), uniforms, 'light', cssStyle, clusterStyle);
   const subtle = animateMaterial(new THREE.MeshStandardMaterial({ color: clusterStyle ? 0x485a53 : 0x43b9cd, emissive: clusterStyle ? 0x080f0d : 0x04758e, emissiveIntensity: clusterStyle ? .12 : .35, roughness: clusterStyle ? .72 : .33, metalness: clusterStyle ? .08 : .65 }), uniforms, 'plain', cssStyle, clusterStyle);
-  const dark = animateMaterial(new THREE.MeshPhysicalMaterial({ color: clusterStyle ? 0x090f0e : 0x010810, roughness: .2, metalness: 0, clearcoat: clusterStyle ? .12 : .45, envMapIntensity: .08 }), uniforms, 'plain', cssStyle, clusterStyle);
+  const dark = animateMaterial(new THREE.MeshPhysicalMaterial({ color: clusterStyle ? 0x090f0e : 0x010810, roughness: clusterStyle ? .38 : .2, metalness: 0, clearcoat: clusterStyle ? .06 : .45, envMapIntensity: .08 }), uniforms, 'plain', cssStyle, clusterStyle);
   const scuteMaterial = clusterStyle
-    ? animateMaterial(new THREE.MeshPhysicalMaterial({ color: 0x75847a, roughness: .78, metalness: .04, clearcoat: .12 }), uniforms, 'plain', false, true)
+    ? animateMaterial(new THREE.MeshPhysicalMaterial({ color: 0x46544e, roughness: .9, metalness: .02, clearcoat: .04 }), uniforms, 'plain', false, true)
     : null;
   function tube(points, radius, mat, name, fin = 0) {
     return add(new THREE.TubeGeometry(curve(points.map(p => p.isVector3 ? p.toArray() : p)), low ? 30 : 64, radius, 5, false), mat, name, fin);
@@ -346,7 +346,7 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
       }
     }
   }
-  const eyeScale = cssStyle ? 1.04 : 1;
+  const eyeScale = clusterStyle ? .82 : cssStyle ? 1.04 : 1;
   for (const sign of [-1, 1]) {
     const x = clusterStyle ? -1.50 : -1.455, y = .112, z = (clusterStyle ? .205 : .196) * sign;
     const eyeball = new THREE.SphereGeometry(1, 28, 22); eyeball.scale(.153*eyeScale,.157*eyeScale,.088*eyeScale); eyeball.translate(x,y,z);
@@ -408,11 +408,11 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
     // Small overlapping scutes reinforce an armored, deep-water silhouette;
     // they sit on the comparatively rigid forward third of the body.
     for (const sign of [-1, 1]) {
-      for (const [t, size] of [[.20, .115], [.29, .135], [.39, .125], [.49, .105]]) {
+      for (const [t, size] of [[.20, .055], [.29, .065], [.39, .060], [.49, .050]]) {
         const p = bodySurface(t, sign > 0 ? -.18 : Math.PI + .18, .022);
         const scute = new THREE.SphereGeometry(1, low ? 8 : 12, low ? 6 : 9);
-        scute.scale(size * 1.35, size, .027);
-        scute.translate(p.x, p.y, p.z + sign * .008);
+        scute.scale(size * 1.5, size * .48, .008);
+        scute.translate(p.x, p.y, p.z + sign * .003);
         add(scute, scuteMaterial, 'armored-scute');
       }
     }

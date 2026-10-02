@@ -9,12 +9,14 @@ import { isPlayerId } from './collection-db.js';
 import { RequestRateLimiter } from './request-rate-limit.js';
 import { OceanFishingGame, type OceanAction } from './ocean-game.js';
 import { isFishSpeciesId, randomActiveFishSpeciesId, type FishSpeciesId } from './fish-species.js';
+import type { OceanMessage } from './ocean-contract.js';
 export type { OceanState } from './ocean-game.js';
 
 const actionSchema=z.discriminatedUnion('action',[
   z.object({action:z.literal('cast'),strength:z.number().finite().min(0).max(1),aim:z.number().finite().min(-1).max(1)}),
   z.object({action:z.literal('retrieve')}),z.object({action:z.literal('hook')}),
   z.object({action:z.literal('reset')}),z.object({action:z.literal('reel'),held:z.boolean()}),
+  z.object({action:z.literal('rod-pump')}),
 ]);
 
 const isLoopbackHost=(host:string)=>host==='localhost'||host==='127.0.0.1'||host==='[::1]';
@@ -44,8 +46,8 @@ export const isAllowedWebSocketOrigin=(origin:string|undefined,requestHost:strin
 };
 
 export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eventKey:string,fishId:FishSpeciesId)=>void}={}){
-  type Client={role:'display'|'controller';reelUntil:number;windowAt:number;messages:number};
-  type Room={game:OceanFishingGame;clients:Map<WebSocket,Client>;commands:OceanAction[];lastActive:number;playerId:string};
+  type Client={role:'display'|'controller';reelUntil:number;lastRodPumpAt:number;windowAt:number;messages:number};
+  type Room={game:OceanFishingGame;clients:Map<WebSocket,Client>;commands:OceanAction[];lastActive:number;playerId:string;rodStroke:number};
   const rooms=new Map<string,Room>();
   const sessionCreationLimiter=new RequestRateLimiter();
   const onCatch=options.onCatch??(()=>{});
@@ -56,7 +58,8 @@ export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eve
   // the same fishing action.
   const canControl=(room:Room,client:Client)=>client.role==='controller'||client.role==='display'&&count(room,'controller')===0;
   const broadcast=(room:Room)=>{
-    const data=JSON.stringify({type:'ocean',state:room.game.snapshot(),serverNow:Date.now(),controllers:count(room,'controller'),displays:count(room,'display')});
+    const message:OceanMessage={type:'ocean',state:room.game.snapshot(),rodStroke:room.rodStroke,serverNow:Date.now(),controllers:count(room,'controller'),displays:count(room,'display')};
+    const data=JSON.stringify(message);
     for(const client of room.clients.keys())if(client.readyState===WebSocket.OPEN&&client.bufferedAmount<64_000)client.send(data);
   };
   app.post('/api/ocean-sessions',async c=>{
@@ -78,7 +81,7 @@ export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eve
     const pinnedFishId=isFishSpeciesId(parsed.data.fishId)?parsed.data.fishId:undefined;
     const fishId=pinnedFishId??randomActiveFishSpeciesId();
     const fishSelectionMode=pinnedFishId?'fixed':'rotate';
-    rooms.set(id,{game:new OceanFishingGame(Math.random,fishId,fishSelectionMode),clients:new Map(),commands:[],lastActive:Date.now(),playerId:parsed.data.playerId});
+    rooms.set(id,{game:new OceanFishingGame(Math.random,fishId,fishSelectionMode),clients:new Map(),commands:[],lastActive:Date.now(),playerId:parsed.data.playerId,rodStroke:0});
     c.header('Cache-Control','no-store');return c.json({id,host:accessHost(c.req.url)},201);
   });
   const upgrade=(request:IncomingMessage,socket:Duplex,head:Buffer):boolean=>{
@@ -88,7 +91,7 @@ export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eve
     const controllerTaken=role==='controller'&&room&&count(room,'controller')>=1;
     if(!room||(role!=='display'&&role!=='controller')||!validOrigin||room.clients.size>=8||controllerTaken){socket.destroy();return true;}
     sockets.handleUpgrade(request,socket,head,client=>{
-      const entry:Client={role,reelUntil:0,windowAt:Date.now(),messages:0};
+      const entry:Client={role,reelUntil:0,lastRodPumpAt:0,windowAt:Date.now(),messages:0};
       room.clients.set(client,entry);room.lastActive=Date.now();broadcast(room);
       client.on('error',()=>client.close());
       client.on('message',raw=>{
@@ -96,6 +99,10 @@ export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eve
         let json:unknown;try{json=JSON.parse(raw.toString());}catch{return;}
         const parsed=actionSchema.safeParse(json);if(!parsed.success)return;
         const input=parsed.data;
+        if(input.action==='rod-pump'){
+          if(!canControl(room,entry)||!count(room,'display')||room.game.state.phase!=='fighting'||now-entry.lastRodPumpAt<300)return;
+          entry.lastRodPumpAt=now;room.rodStroke++;broadcast(room);return;
+        }
         if(input.action==='reel'){
           if(!canControl(room,entry))return;
           entry.reelUntil=input.held&&room.game.state.phase==='fighting'?now+400:0;

@@ -1,40 +1,8 @@
 import type { FishSpeciesId } from "../fish-species.js";
-
-export type OceanPhase = "idle" | "casting" | "waiting" | "biting" | "fighting" | "caught" | "escaped" | "retrieving";
-export type OceanMode = "rest" | "surge" | "warning" | "split";
+import type { OceanWireState } from "../ocean-contract.js";
+export type OceanState = OceanWireState;
+export type { OceanMessage, OceanMode, OceanPhase } from "../ocean-contract.js";
 export type { FishSpeciesId } from "../fish-species.js";
-
-export type OceanState = {
-  phase: OceanPhase;
-  strength: number;
-  aim: number;
-  revision: number;
-  castAt: number;
-  retrieveAt: number;
-  tension: number;
-  distance: number;
-  reeling: boolean;
-  mode: OceanMode;
-  stamina?: number;
-  canReel?: boolean;
-  approach: number;
-  catches: number;
-  reason: "" | "missed" | "line" | "slack" | "distance";
-  resultAt: number;
-  fish?: unknown;
-  fishId: FishSpeciesId;
-  fishX?: number;
-  fishSpeed?: number;
-  school?: number;
-};
-
-export type OceanMessage = {
-  type: "ocean";
-  state: OceanState;
-  serverNow: number;
-  controllers: number;
-  displays: number;
-};
 
 export type CollectionEntry = {
   id: string;
@@ -62,6 +30,7 @@ export type Collection = {
 
 export type OceanSceneController = {
   setState: (state: OceanState, serverNow?: number) => void;
+  rodStroke?: () => void;
   setCharge: (amount: number, aim?: number) => void;
   aimScreen: (aim?: number, strength?: number) => { x: number; y: number };
   setOverlayOpen?: (open: boolean) => void;

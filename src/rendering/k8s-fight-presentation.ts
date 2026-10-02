@@ -25,9 +25,13 @@ export function k8sFightPresentation(
   phase: OceanPhase,
   distance: number,
   mode: OceanMode,
+  surfaceLunge = 0,
 ): K8sFightPresentation {
   if (phase === 'caught') {
-    return { bodyVisibility: 1, echoVisibility: .68, echoSpread: .56, wakeGain: 0 };
+    // The result card is a portrait of the landed animal, not another school
+    // shot. Hiding the full-size copies avoids stacking several bodies in the
+    // close-up catch composition.
+    return { bodyVisibility: 1, echoVisibility: 0, echoSpread: .56, wakeGain: 0 };
   }
 
   if (phase !== 'fighting') {
@@ -38,19 +42,20 @@ export function k8sFightPresentation(
   // the same fish even after reconnecting or receiving a late snapshot.
   const distanceProgress = clamp01((44 - Math.max(0, distance)) / (44 - 8));
   const approach = smoothstep(distanceProgress);
+  const breach = clamp01(surfaceLunge);
   const modeGain = mode === 'surge' ? .96 : mode === 'split' ? 1.12 : mode === 'warning' ? .34 : .18;
-  const echoVisibility = (.012 + .72 * approach) * modeGain;
+  const echoVisibility = (.012 + .72 * approach) * modeGain * (1 - breach * .84);
   const echoSpread = mode === 'warning'
     ? .52
     : mode === 'surge'
       ? 1.8
       : mode === 'split'
-        ? 2.25
+        ? 2.25 - breach * 1.45
         : .72 + .18 * approach;
-  const wakeGain = approach * (mode === 'surge' ? 1.4 : mode === 'split' ? 1.8 : mode === 'warning' ? .75 : .25);
+  const wakeGain = approach * (mode === 'surge' ? 1.4 : mode === 'split' ? 1.8 : mode === 'warning' ? .75 : .25) + breach * 1.5;
 
   return {
-    bodyVisibility: .48 + .52 * approach,
+    bodyVisibility: Math.max(.48 + .52 * approach, .58 + .42 * breach),
     echoVisibility,
     echoSpread,
     wakeGain,

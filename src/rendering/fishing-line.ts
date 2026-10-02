@@ -1,4 +1,5 @@
 export type FishingLinePoint = Readonly<{x:number;y:number;z:number}>;
+export type MutableFishingLinePoint = {x:number;y:number;z:number};
 
 export type FishingLineBuffer = Readonly<{
   positions:Float32Array;
@@ -11,17 +12,91 @@ export type FishingLineSplit = Readonly<{
   waterVisible:boolean;
 }>;
 
+export type FishingLinePointProjector = (point:MutableFishingLinePoint)=>void;
+
 const clamp=(value:number,min=0,max=1)=>Math.max(min,Math.min(max,value));
 const smoothstep=(value:number)=>value*value*(3-2*value);
 
-function lineHeightAt(start:FishingLinePoint,end:FishingLinePoint,fraction:number):number {
-  return start.y+(end.y-start.y)*fraction;
+function setLinePoint(
+  start:FishingLinePoint,
+  end:FishingLinePoint,
+  fraction:number,
+  airSag:number,
+  waterSag:number,
+  surfaceHeight:(x:number,z:number)=>number,
+  maxSag:number,
+  result:MutableFishingLinePoint,
+):MutableFishingLinePoint {
+  const x=start.x+(end.x-start.x)*fraction;
+  const z=start.z+(end.z-start.z)*fraction;
+  const baseY=start.y+(end.y-start.y)*fraction;
+  const depth=surfaceHeight(x,z)-baseY;
+  // Blend the two media around the surface instead of starting a new sag curve
+  // at the crossing. This keeps both the line position and tangent continuous.
+  const wet=smoothstep(clamp((depth+.12)/.24));
+  const requestedSag=airSag+(waterSag-airSag)*wet;
+  const sag=Math.min(Math.max(0,requestedSag),maxSag);
+  const bow=16*fraction*fraction*(1-fraction)*(1-fraction);
+  result.x=x;
+  result.y=baseY-sag*bow;
+  result.z=z;
+  return result;
+}
+
+function signedSurfaceDistance(
+  start:FishingLinePoint,
+  end:FishingLinePoint,
+  fraction:number,
+  airSag:number,
+  waterSag:number,
+  surfaceHeight:(x:number,z:number)=>number,
+  maxSag:number,
+  point:MutableFishingLinePoint,
+):number {
+  setLinePoint(start,end,fraction,airSag,waterSag,surfaceHeight,maxSag,point);
+  return point.y-surfaceHeight(point.x,point.z);
+}
+
+function findSurfaceCrossing(
+  start:FishingLinePoint,
+  end:FishingLinePoint,
+  airSag:number,
+  waterSag:number,
+  surfaceHeight:(x:number,z:number)=>number,
+  maxSag:number,
+  startsUnderwater:boolean,
+  startDelta:number,
+  endDelta:number,
+  point:MutableFishingLinePoint,
+):number|null {
+  let previous=0,previousDelta=startDelta;
+  for(let sample=1;sample<=48;sample++){
+    const fraction=sample/48;
+    const delta=signedSurfaceDistance(start,end,fraction,airSag,waterSag,surfaceHeight,maxSag,point);
+    const crosses=startsUnderwater?previousDelta<=0&&delta>0:previousDelta>0&&delta<=0;
+    if(crosses){
+      let low=previous,high=fraction;
+      for(let step=0;step<14;step++){
+        const middle=(low+high)*.5;
+        const middleDelta=signedSurfaceDistance(start,end,middle,airSag,waterSag,surfaceHeight,maxSag,point);
+        if(startsUnderwater ? middleDelta<=0 : middleDelta>0)low=middle;
+        else high=middle;
+      }
+      return (low+high)*.5;
+    }
+    previous=fraction;
+    previousDelta=delta;
+  }
+  // A float attachment can sit just above the moving surface; retain the
+  // existing visual-contact behavior without inventing a short wet segment.
+  if(!startsUnderwater&&endDelta>=0&&endDelta<.06)return 1;
+  return null;
 }
 
 /**
- * Writes the line into separate dry and submerged buffers. Both parts share
- * the same computed surface contact, so there is no visual gap at the water.
- * Buffers are mutated in place to avoid allocating geometry data per frame.
+ * Builds one continuous sagging leader, then samples that same curve into dry
+ * and submerged buffers at its actual water crossing. Buffers are mutated in
+ * place so the render loop does not allocate geometry data per frame.
  */
 export function updateFishingLineBuffers(
   start:FishingLinePoint,
@@ -32,134 +107,92 @@ export function updateFishingLineBuffers(
   airSag:number,
   waterSag:number,
   load:number,
+  projectSubmergedPoint?:FishingLinePointProjector,
 ):FishingLineSplit {
-  const startDelta=start.y-surfaceHeight(start.x,start.z);
-  const endDelta=end.y-surfaceHeight(end.x,end.z);
-  const startsUnderwater=startDelta<=0;
-  let waterFraction:number|null=null;
-
-  if(startsUnderwater){
-    if(endDelta<=0){
-      writeCurve(water,start,end,0,1,waterSag,clamp(load),true,false,surfaceHeight);
-      clearCurve(air,start);
-      return {waterFraction:null,airVisible:false,waterVisible:true};
-    }
-    else{
-      let previous=0,previousDelta=startDelta;
-      for(let sample=1;sample<=48;sample++){
-        const fraction=sample/48,x=start.x+(end.x-start.x)*fraction,z=start.z+(end.z-start.z)*fraction;
-        const delta=lineHeightAt(start,end,fraction)-surfaceHeight(x,z);
-        if(previousDelta<=0&&delta>0){
-          let low=previous,high=fraction;
-          for(let step=0;step<12;step++){
-            const middle=(low+high)*.5,mx=start.x+(end.x-start.x)*middle,mz=start.z+(end.z-start.z)*middle;
-            if(lineHeightAt(start,end,middle)-surfaceHeight(mx,mz)>0)high=middle;else low=middle;
-          }
-          waterFraction=high;break;
-        }
-        previous=fraction;previousDelta=delta;
-      }
-    }
-  }else{
-    let previous=0,previousDelta=startDelta;
-    for(let sample=1;sample<=48;sample++){
-      const fraction=sample/48,x=start.x+(end.x-start.x)*fraction,z=start.z+(end.z-start.z)*fraction;
-      const delta=lineHeightAt(start,end,fraction)-surfaceHeight(x,z);
-      if(previousDelta>0&&delta<=0){
-        let low=previous,high=fraction;
-        for(let step=0;step<12;step++){
-          const middle=(low+high)*.5,mx=start.x+(end.x-start.x)*middle,mz=start.z+(end.z-start.z)*middle;
-          if(lineHeightAt(start,end,middle)-surfaceHeight(mx,mz)>0)low=middle;else high=middle;
-        }
-        waterFraction=high;break;
-      }
-      previous=fraction;previousDelta=delta;
-    }
-    // A float attachment can sit a few centimetres above the moving surface.
-    // Treat that endpoint as contact, but don't create a zero-length wet line.
-    if(waterFraction===null&&endDelta>=0&&endDelta<.06)waterFraction=1;
-  }
-
+  const point:MutableFishingLinePoint={x:0,y:0,z:0};
+  const length=Math.hypot(end.x-start.x,end.y-start.y,end.z-start.z);
+  const maxSag=length*.12;
   const normalizedLoad=clamp(load);
-  if(waterFraction===null){
-    if(startsUnderwater){
-      writeCurve(water,start,end,0,1,waterSag,normalizedLoad,true,false,surfaceHeight);
-      clearCurve(air,start);
-      return {waterFraction:null,airVisible:false,waterVisible:true};
-    }
-    writeCurve(air,start,end,0,1,airSag,normalizedLoad,false,false,surfaceHeight);
-    clearCurve(water,start);
-    return {waterFraction:null,airVisible:true,waterVisible:false};
-  }
+  const startDelta=signedSurfaceDistance(start,end,0,airSag,waterSag,surfaceHeight,maxSag,point);
+  const endDelta=signedSurfaceDistance(start,end,1,airSag,waterSag,surfaceHeight,maxSag,point);
+  const startsUnderwater=startDelta<=0;
+  const waterFraction=findSurfaceCrossing(
+    start,end,airSag,waterSag,surfaceHeight,maxSag,startsUnderwater,startDelta,endDelta,point,
+  );
 
-  const airVisible=startsUnderwater?waterFraction<.999:waterFraction>.001;
-  const waterVisible=startsUnderwater?waterFraction>.001:waterFraction<.999;
-  if(airVisible&&startsUnderwater)writeCurve(air,start,end,waterFraction,1,airSag,normalizedLoad,false,true,surfaceHeight);
-  else if(airVisible)writeCurve(air,start,end,0,waterFraction,airSag,normalizedLoad,false,true,surfaceHeight);
-  else clearCurve(air,start);
-  if(waterVisible&&startsUnderwater)writeCurve(water,start,end,0,waterFraction,waterSag,normalizedLoad,true,true,surfaceHeight);
-  else if(waterVisible)writeCurve(water,start,end,waterFraction,1,waterSag,normalizedLoad,true,true,surfaceHeight);
-  else clearCurve(water,end);
+  const airVisible=waterFraction===null?!startsUnderwater:startsUnderwater?waterFraction<.999:waterFraction>.001;
+  const waterVisible=waterFraction===null?startsUnderwater:startsUnderwater?waterFraction>.001:waterFraction<.999;
+  writeSharedCurve(
+    air,water,start,end,airSag,waterSag,normalizedLoad,waterFraction,startsUnderwater,
+    airVisible,waterVisible,surfaceHeight,maxSag,point,projectSubmergedPoint,
+  );
   return {waterFraction,airVisible,waterVisible};
 }
 
-function writeCurve(
-  buffer:FishingLineBuffer,
+function writeSharedCurve(
+  air:FishingLineBuffer,
+  water:FishingLineBuffer,
   start:FishingLinePoint,
   end:FishingLinePoint,
-  from:number,
-  to:number,
-  requestedSag:number,
+  airSag:number,
+  waterSag:number,
   load:number,
-  submerged:boolean,
-  fadesAtSurface:boolean,
+  surfaceFraction:number|null,
+  startsUnderwater:boolean,
+  airVisible:boolean,
+  waterVisible:boolean,
   surfaceHeight:(x:number,z:number)=>number,
+  maxSag:number,
+  point:MutableFishingLinePoint,
+  projectSubmergedPoint?:FishingLinePointProjector,
 ):void {
-  const count=Math.min(Math.floor(buffer.positions.length/3),Math.floor(buffer.rgba.length/4));
-  const span=to-from;
-  const dx=(end.x-start.x)*span,dy=(end.y-start.y)*span,dz=(end.z-start.z)*span;
-  const length=Math.hypot(dx,dy,dz);
-  const sag=Math.min(Math.max(0,requestedSag),length*.12);
+  const count=Math.min(
+    Math.floor(air.positions.length/3),Math.floor(air.rgba.length/4),
+    Math.floor(water.positions.length/3),Math.floor(water.rgba.length/4),
+  );
+  const last=count-1;
+  const crossingIndex=surfaceFraction===null||surfaceFraction<=0||surfaceFraction>=1
+    ? -1
+    : Math.max(1,Math.min(last-1,Math.round(surfaceFraction*last)));
   const airAlpha=.48+.30*load,waterAlpha=.34+.14*load;
-  const endpointDepth=submerged?Math.max(
-    0,
-    surfaceHeight(start.x,start.z)-start.y,
-    surfaceHeight(end.x,end.z)-end.y,
-  ):0;
+  const endpointDepth=Math.max(0,surfaceHeight(start.x,start.z)-start.y,surfaceHeight(end.x,end.z)-end.y);
 
   for(let index=0;index<count;index++){
-    const q=count<=1?0:index/(count-1),fraction=from+span*q;
-    const x=start.x+(end.x-start.x)*fraction;
-    const z=start.z+(end.z-start.z)*fraction;
-    const bow=16*q*q*(1-q)*(1-q);
-    const y=start.y+(end.y-start.y)*fraction-sag*bow;
+    const q=last<=0?0:index/last;
+    const fraction=crossingIndex<0
+      ? q
+      : index===crossingIndex
+        ? surfaceFraction!
+        : index<crossingIndex
+          ? surfaceFraction!*index/crossingIndex
+          : surfaceFraction!+(1-surfaceFraction!)*(index-crossingIndex)/(last-crossingIndex);
+    setLinePoint(start,end,fraction,airSag,waterSag,surfaceHeight,maxSag,point);
+    const physicalDepth=Math.max(0,surfaceHeight(point.x,point.z)-point.y);
+    if(projectSubmergedPoint&&index!==crossingIndex)projectSubmergedPoint(point);
     const positionOffset=index*3,colorOffset=index*4;
-    buffer.positions[positionOffset]=x;
-    buffer.positions[positionOffset+1]=y;
-    buffer.positions[positionOffset+2]=z;
-    buffer.rgba[colorOffset]=1;
-    buffer.rgba[colorOffset+1]=1;
-    buffer.rgba[colorOffset+2]=1;
-    if(submerged){
-      const depthFade=Math.exp(-endpointDepth*q*.12);
-      buffer.rgba[colorOffset+3]=waterAlpha*depthFade*(1-.16*q);
-    }else{
-      const surfaceFade=fadesAtSurface?smoothstep(clamp((q-.72)/.28))*.24:0;
-      buffer.rgba[colorOffset+3]=airAlpha*(1-surfaceFade);
-    }
-  }
-}
-
-function clearCurve(buffer:FishingLineBuffer,point:FishingLinePoint):void {
-  const count=Math.min(Math.floor(buffer.positions.length/3),Math.floor(buffer.rgba.length/4));
-  for(let index=0;index<count;index++){
-    const positionOffset=index*3,colorOffset=index*4;
-    buffer.positions[positionOffset]=point.x;
-    buffer.positions[positionOffset+1]=point.y;
-    buffer.positions[positionOffset+2]=point.z;
-    buffer.rgba[colorOffset]=1;
-    buffer.rgba[colorOffset+1]=1;
-    buffer.rgba[colorOffset+2]=1;
-    buffer.rgba[colorOffset+3]=0;
+    const blend=surfaceFraction===null?0:smoothstep(clamp((fraction-(surfaceFraction!-.025))/.05));
+    const airWeight=surfaceFraction===null
+      ? (startsUnderwater?0:1)
+      : !airVisible?0:!waterVisible?1:startsUnderwater?blend:1-blend;
+    const waterWeight=surfaceFraction===null
+      ? (startsUnderwater?1:0)
+      : !waterVisible?0:!airVisible?1:1-airWeight;
+    const submergedProgress=surfaceFraction===null
+      ? q
+      : startsUnderwater
+        ? clamp(fraction/Math.max(surfaceFraction!,1e-6))
+        : clamp((fraction-surfaceFraction!)/Math.max(1-surfaceFraction!,1e-6));
+    const depthFade=Math.exp(-Math.max(endpointDepth,physicalDepth)*submergedProgress*.12);
+    const pointX=point.x,pointY=point.y,pointZ=point.z;
+    air.positions[positionOffset]=pointX;
+    air.positions[positionOffset+1]=pointY;
+    air.positions[positionOffset+2]=pointZ;
+    air.rgba[colorOffset]=1;air.rgba[colorOffset+1]=1;air.rgba[colorOffset+2]=1;
+    air.rgba[colorOffset+3]=airWeight*airAlpha;
+    water.positions[positionOffset]=pointX;
+    water.positions[positionOffset+1]=pointY;
+    water.positions[positionOffset+2]=pointZ;
+    water.rgba[colorOffset]=1;water.rgba[colorOffset+1]=1;water.rgba[colorOffset+2]=1;
+    water.rgba[colorOffset+3]=waterWeight*waterAlpha*depthFade*(1-.16*submergedProgress);
   }
 }
