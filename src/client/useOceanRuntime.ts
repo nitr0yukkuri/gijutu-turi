@@ -4,6 +4,7 @@ import { FishingAudioController } from "../audio/fishing-audio.js";
 import { castStrengthFromMotion, isCastMotionReleased, isCastMotionStart, isReelMotionStart, isReelMotionStop, reelAngularSignal } from "./cast-motion.js";
 import { RodStrokeMotion } from "./rod-stroke-motion.js";
 import { isFirstCatch } from "./catch-discovery.js";
+import { fetchCollection, type CollectionLoadResult } from "./collection-response.js";
 import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH } from "../cast-distance.js";
 import { FISH_SPECIES, type FishSpeciesId } from "../fish-species.js";
 import type { Collection, CollectionEntry, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
@@ -11,6 +12,7 @@ import type { Collection, CollectionEntry, Feedback, OceanMessage, OceanSceneCon
 const configuredBackendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim().replace(/\/+$/, "");
 const backendUrl = (path: string): string => configuredBackendUrl ? `${configuredBackendUrl}${path}` : path;
 const roomFishStorageKey = "gijutu.ocean-room-fish";
+const COLLECTION_LOAD_ERROR_MESSAGE = "図鑑を読み込めません。DBとの接続を確認してください。";
 
 class OceanRoomRateLimitError extends Error {
   constructor(readonly retryAfterSeconds: number) {
@@ -203,19 +205,14 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     if (next) getFishingAudio().sync(stateRef.current, stateRef.current);
   }, [getFishingAudio]);
 
-  const loadCollection = useCallback(async (): Promise<Collection | null> => {
-    try {
-      const response = await fetch(`${backendUrl("/api/collection")}?playerId=${encodeURIComponent(playerIdRef.current)}`, { cache: "no-store" });
-      if (!response.ok) throw new Error("collection");
-      const loaded = await response.json() as Collection;
-      collectionRef.current = loaded;
-      setCollection(loaded);
-      return loaded;
-    } catch {
-      showToast("図鑑を読み込めません。DBとの接続を確認してください。");
-      return null;
+  const loadCollection = useCallback(async (): Promise<CollectionLoadResult> => {
+    const result = await fetchCollection(`${backendUrl("/api/collection")}?playerId=${encodeURIComponent(playerIdRef.current)}`);
+    if (result.ok) {
+      collectionRef.current = result.value;
+      setCollection(result.value);
     }
-  }, [showToast]);
+    return result;
+  }, []);
 
   const send = useCallback((action: object): boolean => {
     if (!onlineRef.current || socketRef.current?.readyState !== WebSocket.OPEN) {
@@ -321,8 +318,9 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
           // The display only reloads the read model; it must not submit a
           // second catch command from the browser.
           const previousCatches = collectionRef.current.entries.find(entry => entry.id === next.fishId)?.catches ?? 0;
-          void loadCollection().then(loaded => {
-            if (!loaded) return;
+          void loadCollection().then(result => {
+            if (!result.ok) { showToast(COLLECTION_LOAD_ERROR_MESSAGE); return; }
+            const loaded = result.value;
             const currentCatches = loaded.entries.find(entry => entry.id === next.fishId)?.catches ?? previousCatches;
             const firstCatch = isFirstCatch(previousCatches, currentCatches);
             setNewEncounter(firstCatch);
@@ -464,7 +462,11 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     };
   }, [cancelCharge, connect, setConnected, stopReel]);
 
-  useEffect(() => { void loadCollection(); }, [loadCollection]);
+  useEffect(() => {
+    void loadCollection().then(result => {
+      if (!result.ok) showToast(COLLECTION_LOAD_ERROR_MESSAGE);
+    });
+  }, [loadCollection, showToast]);
 
   useEffect(() => {
     const pointerMove = (event: globalThis.PointerEvent) => {
