@@ -19,9 +19,14 @@ export function whaleSection(t) {
   const p=sectionCurve.getPoint(clamp(t,0,1)), c=centerCurve.getPoint(clamp(t,0,1));
   return {x:p.x,height:p.y,width:p.z,center:c.y};
 }
-function surface(t,a,offset=0) {
+function surface(t,a,offset=0,target=new THREE.Vector3()) {
   const p=whaleSection(t);
-  return new THREE.Vector3(p.x,p.center+Math.sin(a)*(p.height+offset),Math.cos(a)*(p.width+offset));
+  return target.set(p.x,p.center+Math.sin(a)*(p.height+offset),Math.cos(a)*(p.width+offset));
+}
+
+/** Place the leader on the camera-facing Docker-whale lip, just outside its mouth fold. */
+export function setDockerWhaleMouthAnchor(target,side=1) {
+  return surface(.06,side>=0?-.24:Math.PI+.24,.055,target);
 }
 function geometry(positions,uvs,indices) {
   const g=new THREE.BufferGeometry();

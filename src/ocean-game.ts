@@ -1,9 +1,10 @@
 import { FishLocomotion, magnitude, normalise, scale, type FishMotionSnapshot, type Vec3 } from './fish.js';
 import { BITE_APPROACH_SECONDS, PRE_BITE_APPROACH_SECONDS, WAIT_APPROACH_FRACTION, easeFishApproach } from './fish-approach.js';
-import { getFishFightProfile } from './fish-behavior.js';
+import { getFishFightProfile, k8sSurfaceLungeProgress } from './fish-behavior.js';
 import { DEFAULT_FISH_SPECIES_ID, nextFishSpeciesId, type FishSpeciesId } from './fish-species.js';
 import { RETRIEVE_DURATION_SECONDS } from './ocean-timing.js';
 import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH, castDistanceForStrength } from './cast-distance.js';
+import { getHookResult, isCriticalHookWindow, type HookResult } from './hook-timing.js';
 
 export type OceanPhase = 'idle' | 'casting' | 'waiting' | 'biting' | 'fighting' | 'caught' | 'escaped' | 'retrieving';
 export type OceanAction = {action:'cast';strength:number;aim:number} | {action:'hook'|'retrieve'|'reset'};
@@ -13,6 +14,7 @@ export type OceanState = {
   tension:number; distance:number; initialDistance:number; reeling:boolean; biteRemaining:number;
   fightTime:number; mode:'rest'|'surge'|'warning'|'split'; school:number; resultAt:number; approach:number;
   stamina:number; canReel:boolean;
+  criticalWindow:boolean; hookResult:HookResult|null;
   reason:''|'missed'|'line'|'slack'|'distance'; catches:number; fishX:number; fishSpeed:number;
   fishId:FishSpeciesId;
   fish:FishMotionSnapshot;
@@ -27,7 +29,7 @@ const SLACK_TENSION_THRESHOLD=.06;
 const SLACK_ESCAPE_SECONDS=5.5;
 const MAX_FIGHT_DISTANCE_METERS=50;
 const clamp=(x:number,min:number,max:number)=>Math.max(min,Math.min(max,x));
-const fresh=(fish:FishMotionSnapshot,fishId:FishSpeciesId):OceanState=>({phase:'idle',strength:.65,aim:0,revision:0,castAt:0,retrieveAt:0,tension:0,distance:0,initialDistance:0,reeling:false,biteRemaining:0,fightTime:0,mode:'rest',school:1,resultAt:0,approach:0,stamina:1,canReel:false,reason:'',catches:0,fishX:0,fishSpeed:0,fishId,fish});
+const fresh=(fish:FishMotionSnapshot,fishId:FishSpeciesId):OceanState=>({phase:'idle',strength:.65,aim:0,revision:0,castAt:0,retrieveAt:0,tension:0,distance:0,initialDistance:0,reeling:false,biteRemaining:0,fightTime:0,mode:'rest',school:1,resultAt:0,approach:0,stamina:1,canReel:false,criticalWindow:false,hookResult:null,reason:'',catches:0,fishX:0,fishSpeed:0,fishId,fish});
 
 /** Authoritative sea game: hold intent is sampled at a fixed server cadence.
  * Network message frequency never determines reel strength or catch outcome. */
@@ -78,6 +80,8 @@ export class OceanFishingGame {
       this.syncFishSnapshot();return true;
     }
     if(input.action==='hook'&&s.phase==='biting'){
+      s.hookResult=getHookResult(this.age);
+      s.criticalWindow=false;
       s.fishX=s.fish.position.x;s.distance=Math.max(1.7,-s.fish.position.z);this.fishDepth=s.fish.position.y;
       s.phase='fighting';s.tension=getFishFightProfile(s.fishId).initialTension;s.biteRemaining=0;s.mode='surge';s.stamina=1;s.canReel=false;this.age=0;
       this.lineVelocity=s.fishId==='whale-001'||s.fishId==='k8s-001'?.9:0;
@@ -143,7 +147,7 @@ export class OceanFishingGame {
     if(s.phase==='casting'&&this.age>=1.28){s.phase='waiting';this.age=0;}
     else if(s.phase==='retrieving'&&this.age>=RETRIEVE_DURATION_SECONDS)this.reset();
     else if(s.phase==='waiting'){
-      if(this.age>=this.waitDuration){s.phase='biting';s.biteRemaining=BITE_DURATION_SECONDS;this.age=0;}
+      if(this.age>=this.waitDuration){s.phase='biting';s.biteRemaining=BITE_DURATION_SECONDS;s.criticalWindow=false;s.hookResult=null;this.age=0;}
       else{
         const approachStart=Math.max(0,this.waitDuration-PRE_BITE_APPROACH_SECONDS);
         const p=clamp((this.age-approachStart)/PRE_BITE_APPROACH_SECONDS,0,1);
@@ -152,6 +156,7 @@ export class OceanFishingGame {
       }
     }
     else if(s.phase==='biting'){
+      s.criticalWindow=isCriticalHookWindow(this.age);
       // After the float dips, finish the same server-owned approach instead
       // of revealing a fish that was already parked beneath the bait.
       const p=clamp(this.age/BITE_APPROACH_SECONDS,0,1);
@@ -245,15 +250,20 @@ export class OceanFishingGame {
       s.stamina=clamp(s.stamina-fatigueRate*fatigueMode*dt+recoveryRate*dt,0,1);
       s.canReel=(profile.canReelDuringSurge&&surge&&!opening)||(!opening&&!surge)||s.stamina<.34;
       s.fishX+=this.lateralVelocity*dt;
-      // Body, tall fins and tail must remain below the wave troughs. These
-      // depths affect presentation only: tension, distance and timers above
-      // retain the exact same catch/difficulty calculations.
+      // Server-owned depth drives the body and its waterline crossings. K8S
+      // gets one short breach arc; it changes presentation only, not tension,
+      // distance, timers, or catch difficulty.
       const k8sSurfaceLunge=s.fishId==='k8s-001'&&s.mode==='split';
-      const targetDepth=k8sSurfaceLunge?-1.05:s.mode==='split'?-1.65:s.mode==='surge'?-1.8:warning?-2.05:-2.4;
+      const surfaceLunge=k8sSurfaceLunge?k8sSurfaceLungeProgress(t):0;
+      // Lift the leviathan far enough that its body clears the waterline when
+      // the renderer pitches it nose-up for the breach, not just its dorsal fin.
+      const targetDepth=k8sSurfaceLunge?-2.4+3.55*surfaceLunge:s.mode==='split'?-1.65:s.mode==='surge'?-1.8:warning?-2.05:-2.4;
+      const k8sSurfaceRecovery=s.fishId==='k8s-001'&&this.fishDepth>-2.4;
+      const k8sFastVerticalMotion=k8sSurfaceLunge||k8sSurfaceRecovery;
       const horizontalTravel=Math.hypot(s.fishX-previousFishX,s.distance-previousDistance);
-      const diveResponse=k8sSurfaceLunge?3.2:profile.depthResponse??1.2;
+      const diveResponse=k8sFastVerticalMotion?7:profile.depthResponse??1.2;
       const diveStep=(targetDepth-this.fishDepth)*Math.min(1,dt*diveResponse);
-      const verticalLimit=k8sSurfaceLunge?dt*.95:horizontalTravel*.18;
+      const verticalLimit=k8sFastVerticalMotion?dt*5.2:horizontalTravel*.18;
       this.fishDepth+=clamp(diveStep,-verticalLimit,verticalLimit);
       const velocity:Vec3={x:(s.fishX-previousFishX)/dt,y:(this.fishDepth-previousDepth)/dt,z:-(s.distance-previousDistance)/dt};
       const previousYaw=this.swimYaw;

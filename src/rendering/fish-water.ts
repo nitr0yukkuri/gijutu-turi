@@ -29,7 +29,15 @@ ${waterHeightGLSL}
 // Art-directed coherent refraction, not a full refracted-ray renderer. The
 // grazing-angle floor deliberately preserves Go's body/tail silhouette. Wave
 // facets mask the radiance below; they must never deform the animal like cloth.
-export function fishApparentPoint(world,center,eye) {
+export type FishWaterPoint = Readonly<{x:number;y:number;z:number}>;
+export type MutableFishWaterPoint = {x:number;y:number;z:number};
+
+export function fishApparentPoint(
+  world:FishWaterPoint,
+  center:FishWaterPoint,
+  eye:FishWaterPoint,
+  result:MutableFishWaterPoint={x:0,y:0,z:0},
+):MutableFishWaterPoint {
   const depth=Math.max(0,-center.y);
   let apparentY=center.y;
   for(let i=0;i<3;i++){
@@ -38,7 +46,10 @@ export function fishApparentPoint(world,center,eye) {
     apparentY=-depth*Math.max(.55,cosAir/(1.333*cosWater));
   }
   const wet=Math.max(0,Math.min(1,-world.y/.25)),mix=wet*wet*(3-2*wet);
-  return {x:world.x,y:world.y+(apparentY+(world.y-center.y)*.72-world.y)*mix,z:world.z};
+  result.x=world.x;
+  result.y=world.y+(apparentY+(world.y-center.y)*.72-world.y)*mix;
+  result.z=world.z;
+  return result;
 }
 
 const refraction = `
@@ -176,7 +187,7 @@ vec3 throughWater(vec3 fishColor) {
   // background untouched and the fish vanished. Keep some wave texture over
   // the body, but give the solid mesh its own bounded contrast contribution.
    float rangeVisibility=1.0-smoothstep(${profile.near.toFixed(1)},${profile.far.toFixed(1)},max(t,0.0))*${profile.rangeLoss};
-   float depthVisibility=exp(-max(0.0,depth-${profile.clearDepth})*${profile.falloff});
+   float depthVisibility=exp(-max(0.0,depth-${profile.clearDepth.toFixed(1)})*${profile.falloff});
     float partCoverage=uWaterPart<.5?1.0:uWaterPart<1.5?${profile.fin}:uWaterPart<2.5?${profile.light}:uWaterPart<3.5?${profile.detail}:uWaterPart<4.5?0.0:${profile.cargo};
    float coverage=(${profile.floor}+${profile.surface}*transmission)*depthVisibility*rangeVisibility*partCoverage;
   // Give the hooked body a little more direct radiance than the approach

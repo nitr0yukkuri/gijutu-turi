@@ -28,6 +28,22 @@ test('minimum cast strength starts the float at ten metres',()=>{
   assert.equal(game.state.distance,10);
 });
 
+test('float critical window is server-timed, while late hooks remain valid',()=>{
+  const early=setup();
+  assert.equal(early.game.state.criticalWindow,false);
+  for(let i=0;i<14;i++)early.step();
+  assert.equal(early.game.state.criticalWindow,true);
+  assert.equal(early.game.action({action:'hook'},early.now()),true);
+  assert.equal(early.game.state.hookResult,'critical');
+  assert.equal(early.game.state.criticalWindow,false);
+
+  const late=setup();
+  for(let i=0;i<36;i++)late.step();
+  assert.equal(late.game.state.criticalWindow,false);
+  assert.equal(late.game.action({action:'hook'},late.now()),true);
+  assert.equal(late.game.state.hookResult,'normal');
+});
+
 test('retrieve is an explicit timed phase before returning to idle',()=>{
   const game=new OceanFishingGame(()=>0);let now=1000;
   game.action({action:'cast',strength:.5,aim:0},now);
@@ -213,7 +229,7 @@ test('K8s leviathan keeps one hooked body while its timed surges remain catchabl
   for(let i=0;i<3000&&phase()==='fighting';i++){
     sawMidFightSurge ||= game.state.fightTime>2&&game.state.mode==='surge';
     sawSplit ||= game.state.mode==='split';
-    sawSurfaceLunge ||= game.state.mode==='split'&&game.state.fish.position.y>-1.35;
+    sawSurfaceLunge ||= game.state.mode==='split'&&game.state.fish.position.y>.35;
     step(game.state.mode==='rest'&&game.state.tension<.62);
     assert.equal(game.state.school,1);
   }
@@ -222,7 +238,7 @@ test('K8s leviathan keeps one hooked body while its timed surges remain catchabl
   assert.equal(game.state.fishId,'k8s-001');
   assert.ok(sawMidFightSurge);
   assert.ok(sawSplit);
-  assert.ok(sawSurfaceLunge,'the server-owned split beat should bring the dorsal fin to the surface');
+  assert.ok(sawSurfaceLunge,'the server-owned breach should lift the leviathan body clear of the waterline');
 });
 
 test('fish-specific routes keep the selected species after a catch',()=>{

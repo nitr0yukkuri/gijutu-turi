@@ -3,13 +3,13 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three.module.js';
 import {createGoFish} from './rendering/go-fish.js';
-import {createDockerWhale,whaleSection} from './rendering/docker-whale.js';
+import {createDockerWhale,setDockerWhaleMouthAnchor,whaleSection} from './rendering/docker-whale.js';
 import {fishOrientation} from './rendering/ocean-scene.js';
 import {OceanFishingGame} from './ocean-game.js';
 import {applyFishWater,fishApparentPoint,fishWaterCoverage,DOCKER_WHALE_WATER_PROFILE,CSS_FISH_WATER_PROFILE} from './rendering/fish-water.js';
 import {fishFightCues} from './rendering/fish-fight-cues.js';
 import {FishLocomotion} from './fish.js';
-import {fishVisibilityTarget} from './fish-approach.js';
+import {escapeFishVisibility,fishVisibilityTarget} from './fish-approach.js';
 import {DOCKER_WHALE_PREVIEW_CYCLE_SECONDS,dockerWhalePreviewMotionAt} from './rendering/docker-whale-motion.js';
 
 test('fish visibility progresses from hidden wait to shadow, reveal, then full fight visibility',()=>{
@@ -24,8 +24,23 @@ test('fish visibility progresses from hidden wait to shadow, reveal, then full f
   assert.equal(biteEntry,preBiteShadow,'the float dip does not pop the fish brighter');
   assert.ok(approaching>biteEntry&&approaching<nearBait,'the fish clarifies smoothly as it closes in');
   assert.equal(fishVisibilityTarget('fighting',.46),1);
-  assert.equal(fishVisibilityTarget('escaped',1),0,'escape fade owns the final visibility');
   assert.ok(fishVisibilityTarget('waiting',.46,'whale-001')>preBiteShadow,'Docker gets a species-specific silhouette budget');
+});
+
+test('escape keeps the entry silhouette and only fades it during the terminal fade',()=>{
+  assert.equal(escapeFishVisibility(.82,1),.82,'the fish remains visible during its escape burst');
+  assert.equal(escapeFishVisibility(.82,.5),.41,'the terminal fade scales the entry visibility');
+  assert.equal(escapeFishVisibility(.82,0),0,'the fish is hidden when the fade completes');
+  assert.equal(escapeFishVisibility(0,1),0,'an empty entry visibility stays hidden');
+});
+
+test('Docker leader anchor sits on the visible-side mouth fold, not the nose center',()=>{
+  const nearSide=new THREE.Vector3(),farSide=new THREE.Vector3();
+  assert.equal(setDockerWhaleMouthAnchor(nearSide,1),nearSide);
+  assert.equal(setDockerWhaleMouthAnchor(farSide,-1),farSide);
+  assert.ok(nearSide.x>-5.8&&nearSide.x<-5.3,'the anchor sits just behind the tapered nose tip');
+  assert.ok(nearSide.z>0&&farSide.z<0,'the anchor follows either visible-side mouth fold');
+  assert.ok(Math.abs(nearSide.y-farSide.y)<1e-6,'the two lip points remain symmetric');
 });
 
 test('Docker renderer consumes authoritative body waves and a reusable whale water profile',()=>{

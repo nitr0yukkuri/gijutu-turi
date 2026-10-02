@@ -1,7 +1,7 @@
 import type { FishSpeciesId } from "../fish-species.js";
 import type { OceanPhase, OceanState } from "../client/types.js";
 
-export type FishingAudioEvent = "cast" | "splash" | "bite" | "catch" | "escape" | "retrieve";
+export type FishingAudioEvent = "cast" | "splash" | "bite" | "hook-critical" | "catch" | "escape" | "retrieve";
 
 export type FishAudioTuning = {
   reelFrequency: number;
@@ -112,6 +112,9 @@ export class FishingAudioController {
       const event = eventByPhase[next.phase];
       if (event) this.play(event);
     }
+    if (previous.phase === "biting" && next.phase === "fighting" && next.hookResult === "critical") {
+      this.play("hook-critical");
+    }
     this.syncLoops(next, (next.phase === "fighting" && next.reeling) || next.phase === "retrieving");
   }
 
@@ -143,6 +146,10 @@ export class FishingAudioController {
       // Replace the alert-like rising beeps with a muted bobber/plop cue.
       this.playNoise(now, .082, 560, .027, 310, .004);
       this.playTone(now, 205, 148, .11, .013, "sine", .006);
+    } else if (event === "hook-critical") {
+      // A short, soft line-pluck marks a well-timed hook without stacking a loud splash.
+      this.playTone(now, 520, 390, .12, .016, "triangle", .004);
+      this.playNoise(now, .055, 1180, .009, 720, .003);
     } else if (event === "catch") {
       // A warm, simultaneous two-note resolution avoids the arcade scale cue.
       this.playTone(now, 330, 330, .27, .019, "sine", .035);
