@@ -1,4 +1,5 @@
-export type HookResult = "normal" | "critical";
+export const HOOK_RESULTS = ["normal", "critical"] as const;
+export type HookResult = typeof HOOK_RESULTS[number];
 
 // The fish approaches the bait for .9s after the float dips. Center a forgiving
 // timing window around that visible arrival, with room for touch/network latency.

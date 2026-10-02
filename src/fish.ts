@@ -1,4 +1,4 @@
-import type { BodyWaveSnapshot, FishGait } from "./protocol.js";
+import type { BodyWaveSnapshot, FishGait } from "./fish-contract.js";
 
 export type Vec3 = { x: number; y: number; z: number };
 
@@ -43,7 +43,12 @@ const GAIT_PROFILES: Record<FishGait, GaitProfile> = {
   // become violent without borrowing Go's light, school-like burst.
   heavy_start: { acceleration: 3.6, drag: 0.42, amplitude: 0.16, frequency: 2.4, wavelength: 0.68 },
   heavy_surge: { acceleration: 5.1, drag: 0.3, amplitude: 0.25, frequency: 4.1, wavelength: 0.62 },
+  heavy_lunge: { acceleration: 5.4, drag: 0.28, amplitude: 0.32, frequency: 2.8, wavelength: 0.58 },
   heavy_glide: { acceleration: 0.9, drag: 0.42, amplitude: 0.1, frequency: 0.78, wavelength: 0.94 },
+  // Low-speed heavy swimming keeps a visible wave in the flexible rear body
+  // without borrowing the fast fight surge or bending the armored head.
+  heavy_cruise: { acceleration: 1.4, drag: 0.55, amplitude: 0.14, frequency: 1.2, wavelength: 0.84 },
+  heavy_station: { acceleration: 0.8, drag: 0.58, amplitude: 0.18, frequency: 1.1, wavelength: 0.9 },
   exhausted: { acceleration: 1, drag: 1.25, amplitude: 0.025, frequency: 0.6, wavelength: 1 },
 };
 

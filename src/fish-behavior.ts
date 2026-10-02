@@ -1,5 +1,5 @@
 import type { FishSpeciesId } from "./fish-species.js";
-import type { FishGait } from "./protocol.js";
+import type { FishGait } from "./fish-contract.js";
 
 export type FishFightMode = "rest" | "surge" | "warning" | "split";
 
@@ -63,7 +63,8 @@ const cssFishGait = ({ mode, opening, reeling }: { mode: FishFightMode; opening:
 
 const heavyFishGait = ({ mode, opening }: { mode: FishFightMode; opening: boolean; reeling: boolean }): FishGait => {
   if (opening) return "heavy_start";
-  return mode === "surge" ? "heavy_surge" : "heavy_glide";
+  if (mode === "surge") return "heavy_surge";
+  return mode === "split" ? "heavy_lunge" : "heavy_glide";
 };
 
 const goModeAt = (fightTime: number, finale: number): { mode: FishFightMode; school: number } => {
@@ -256,12 +257,12 @@ const K8S_LEVIATHAN_PROFILE: FishFightProfile = {
   surgeRetreatSpeed: .95,
   surgeReelSpeed: .62,
   surgeEffort: .96,
-  surgeLateralAmplitude: .72,
+  surgeLateralAmplitude: .82,
   lateralLimit: 1.5,
-  lateralAcceleration: .88,
-  turnRate: .78,
+  lateralAcceleration: 1.2,
+  turnRate: .96,
   lineResponse: 1.55,
-  strokePush: .18,
+  strokePush: .26,
   depthResponse: .62,
   restEffort: .38,
   reelingEffort: .58,

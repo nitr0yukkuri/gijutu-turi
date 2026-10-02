@@ -167,6 +167,22 @@ test('Docker whale starts heavy, settles into a steady pull, and remains catchab
   assert.equal(sawHeavySurge,true,'Docker should have a short violent mid-fight burst');
 });
 
+test('K8S keeps a visible rear-body wave while approaching and station-keeping by the bait',()=>{
+  const game=new OceanFishingGame(()=>.5,'k8s-001');let now=1000;
+  const step=()=>{now+=50;game.step(.05,false,now);};
+  game.action({action:'cast',strength:.5,aim:0},now);
+  while(game.state.phase!=='biting')step();
+  assert.equal(game.state.fish.gait,'heavy_cruise','K8S uses its heavy approach gait');
+  assert.ok(game.state.fish.bodyWave.amplitude>.045,'the approach wave remains visible at a distance');
+
+  while(game.state.phase==='biting'&&game.state.approach<1)step();
+  for(let i=0;i<12;i++)step();
+  assert.equal(game.state.phase,'biting');
+  assert.equal(game.state.fish.gait,'heavy_station','K8S keeps swimming after reaching the bait');
+  assert.ok(game.state.fish.bodyWave.frequency>1,'station-keeping does not settle into the slow coast gait');
+  assert.ok(game.state.fish.bodyWave.amplitude>.055,'the rear-body wave remains visible while holding near the bait');
+});
+
 test('CSS fish changes style states while keeping one readable, catchable body',()=>{
   const profile=getFishFightProfile('css-001');
   assert.equal(profile.initialTension,.30,'CSS fish starts with a light line load');
@@ -219,17 +235,27 @@ test('K8s leviathan keeps one hooked body while its timed surges remain catchabl
   assert.equal(profile.modeAt(1.5,-1).mode,'rest','the opening burst has a recovery window');
   assert.equal(profile.modeAt(2.5,-1).mode,'surge','a short cluster pulse fans the shadows out');
   assert.equal(profile.modeAt(3.5,-1).mode,'split','the surface lunge must reach the visual formation');
-  const game=new OceanFishingGame(()=>.5,'k8s-001','fixed');let now=1000,sawMidFightSurge=false,sawSplit=false,sawSurfaceLunge=false;
+  assert.equal(profile.gaitAt({mode:'split',opening:false,reeling:false}),'heavy_lunge','the surface lunge drives a distinct body kick');
+  const game=new OceanFishingGame(()=>.5,'k8s-001','fixed');let now=1000,sawMidFightSurge=false,sawSplit=false,sawSurfaceLunge=false,maxSurfaceLungeY=Number.NEGATIVE_INFINITY;
   const step=(held=false)=>{now+=50;game.step(.05,held,now);};
   const phase=()=>game.state.phase;
   game.action({action:'cast',strength:.5,aim:0},now);
   while(phase()!=='biting')step();
+  const approachHeading={...game.state.fish.heading};
   game.action({action:'hook'},now);
   assert.equal(game.state.fishId,'k8s-001');
+  const hookedHeading=game.state.fish.heading;
+  assert.ok(approachHeading.x*hookedHeading.x+approachHeading.y*hookedHeading.y+approachHeading.z*hookedHeading.z>.999,'hooking should preserve the approach heading instead of snapping sideways');
+  step();
+  const settledHookHeading=game.state.fish.heading;
+  assert.ok(hookedHeading.x*settledHookHeading.x+hookedHeading.y*settledHookHeading.y+hookedHeading.z*settledHookHeading.z>.98,'the first fight step should turn gradually');
   for(let i=0;i<3000&&phase()==='fighting';i++){
     sawMidFightSurge ||= game.state.fightTime>2&&game.state.mode==='surge';
     sawSplit ||= game.state.mode==='split';
-    sawSurfaceLunge ||= game.state.mode==='split'&&game.state.fish.position.y>.35;
+    if(game.state.mode==='split'){
+      maxSurfaceLungeY=Math.max(maxSurfaceLungeY,game.state.fish.position.y);
+      sawSurfaceLunge ||= game.state.fish.position.y>-.45&&game.state.fish.position.y<.45;
+    }
     step(game.state.mode==='rest'&&game.state.tension<.62);
     assert.equal(game.state.school,1);
   }
@@ -238,7 +264,8 @@ test('K8s leviathan keeps one hooked body while its timed surges remain catchabl
   assert.equal(game.state.fishId,'k8s-001');
   assert.ok(sawMidFightSurge);
   assert.ok(sawSplit);
-  assert.ok(sawSurfaceLunge,'the server-owned breach should lift the leviathan body clear of the waterline');
+  assert.ok(sawSurfaceLunge,'the server-owned lunge should skim through the waterline without launching upright');
+  assert.ok(maxSurfaceLungeY<.45,`the lunge should not leap high above the surface (max y=${maxSurfaceLungeY})`);
 });
 
 test('fish-specific routes keep the selected species after a catch',()=>{

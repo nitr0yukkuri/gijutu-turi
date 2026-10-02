@@ -1,20 +1,17 @@
 import { FishLocomotion, magnitude, normalise, scale, type FishMotionSnapshot, type Vec3 } from './fish.js';
+import { getFishApproachMotionProfile } from './fish-approach-motion.js';
 import { BITE_APPROACH_SECONDS, PRE_BITE_APPROACH_SECONDS, WAIT_APPROACH_FRACTION, easeFishApproach } from './fish-approach.js';
 import { getFishFightProfile, k8sSurfaceLungeProgress } from './fish-behavior.js';
 import { DEFAULT_FISH_SPECIES_ID, nextFishSpeciesId, type FishSpeciesId } from './fish-species.js';
 import { RETRIEVE_DURATION_SECONDS } from './ocean-timing.js';
 import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH, castDistanceForStrength } from './cast-distance.js';
 import { getHookResult, isCriticalHookWindow } from './hook-timing.js';
-import type { OceanWireState } from './ocean-contract.js';
+import type { AuthoritativeOceanState } from './ocean-contract.js';
 
 export type { OceanMode, OceanPhase } from './ocean-contract.js';
 export type OceanAction = {action:'cast';strength:number;aim:number} | {action:'hook'|'retrieve'|'reset'};
 export type FishSelectionMode = 'rotate' | 'fixed';
-export type OceanState = OceanWireState & {
-  initialDistance:number; biteRemaining:number; fightTime:number;
-  stamina:number; canReel:boolean; school:number; fishX:number; fishSpeed:number;
-  fish:FishMotionSnapshot;
-};
+export type OceanState = AuthoritativeOceanState & { initialDistance:number; biteRemaining:number };
 export const ESCAPE_ANIMATION_MS=2000;
 const ESCAPE_ANIMATION_SECONDS=ESCAPE_ANIMATION_MS/1000;
 // Give the player a readable reaction window after the float visibly sinks.
@@ -81,7 +78,9 @@ export class OceanFishingGame {
       s.fishX=s.fish.position.x;s.distance=Math.max(1.7,-s.fish.position.z);this.fishDepth=s.fish.position.y;
       s.phase='fighting';s.tension=getFishFightProfile(s.fishId).initialTension;s.biteRemaining=0;s.mode='surge';s.stamina=1;s.canReel=false;this.age=0;
       this.lineVelocity=s.fishId==='whale-001'||s.fishId==='k8s-001'?.9:0;
-      this.locomotion.triggerCStart({x:.3,y:0,z:-1});this.syncFishSnapshot();return true;
+      const hookHeading=normalise(s.fish.heading);
+      this.swimYaw=Math.atan2(hookHeading.x,-hookHeading.z);
+      this.locomotion.triggerCStart(hookHeading);this.syncFishSnapshot();return true;
     }
     if(input.action==='retrieve'&&s.phase==='waiting'){
       s.phase='retrieving';s.retrieveAt=now;this.age=0;return true;
@@ -121,17 +120,19 @@ export class OceanFishingGame {
   }
   private advanceApproach(progress:number,dt:number):void{
     const s=this.state,from=this.approachStart,to=this.approachEnd,eased=clamp(progress,0,1);
+    const motion=getFishApproachMotionProfile(s.fishId).approach;
     const previous=s.fish.position;
     const position={x:from.x+(to.x-from.x)*eased,y:from.y+(to.y-from.y)*eased,z:from.z+(to.z-from.z)*eased};
     const velocity={x:(position.x-previous.x)/Math.max(dt,.001),y:(position.y-previous.y)/Math.max(dt,.001),z:(position.z-previous.z)/Math.max(dt,.001)};
-    this.locomotion.update(dt,{direction:this.approachDirection,speed:1.05,gait:'cruise'});
-    this.locomotion.setRootMotion(position,velocity,{velocity:scale(this.approachDirection,1.05),effort:.28,turn:0});
+    this.locomotion.update(dt,{direction:this.approachDirection,speed:motion.speed,gait:motion.gait});
+    this.locomotion.setRootMotion(position,velocity,{velocity:scale(this.approachDirection,motion.speed),effort:motion.effort,turn:0});
     this.fishDepth=position.y;this.syncFishSnapshot();
   }
   private holdNearBait(dt:number):void{
     const root={...this.state.fish.position},heading=this.state.fish.heading;
-    this.locomotion.update(dt,{direction:heading,speed:.16,gait:'coast'});
-    this.locomotion.setRootMotion(root,{x:0,y:0,z:0},{velocity:scale(heading,.16),effort:.12,turn:0});
+    const motion=getFishApproachMotionProfile(this.state.fishId).stationKeep;
+    this.locomotion.update(dt,{direction:heading,speed:motion.speed,gait:motion.gait});
+    this.locomotion.setRootMotion(root,{x:0,y:0,z:0},{velocity:scale(heading,motion.speed),effort:motion.effort,turn:0});
     this.syncFishSnapshot();
   }
   step(delta:number,reeling:boolean,now:number){
@@ -231,12 +232,15 @@ export class OceanFishingGame {
       // Continuous steering and bounded acceleration: changing fight mode no
       // longer jumps to another sine-wave phase or instantly reverses the fish.
       this.steeringPhase+=dt*(surge?1.65:warning?1.15:.72);
+      const k8sSurfaceLunge=s.fishId==='k8s-001'&&s.mode==='split';
+      const surfaceLunge=k8sSurfaceLunge?k8sSurfaceLungeProgress(t):0;
       const lateralAmplitude=opening
         ? profile.openingLateralAmplitude
         : surge
           ? profile.surgeLateralAmplitude??profile.baseLateralAmplitude
           : profile.baseLateralAmplitude;
-      const lateral=Math.sin(this.steeringPhase)*lateralAmplitude;
+      const lungeSide=-Math.sign(this.approachDirection.x||1);
+      const lateral=Math.sin(this.steeringPhase)*lateralAmplitude+lungeSide*.72*surfaceLunge;
       const wantedVelocity=clamp((lateral-s.fishX)*2.2,-profile.lateralLimit,profile.lateralLimit);
       const lateralAcceleration=profile.lateralAcceleration??4;
       this.lateralVelocity+=clamp(wantedVelocity-this.lateralVelocity,-dt*lateralAcceleration,dt*lateralAcceleration);
@@ -249,17 +253,14 @@ export class OceanFishingGame {
       // Server-owned depth drives the body and its waterline crossings. K8S
       // gets one short breach arc; it changes presentation only, not tension,
       // distance, timers, or catch difficulty.
-      const k8sSurfaceLunge=s.fishId==='k8s-001'&&s.mode==='split';
-      const surfaceLunge=k8sSurfaceLunge?k8sSurfaceLungeProgress(t):0;
-      // Lift the leviathan far enough that its body clears the waterline when
-      // the renderer pitches it nose-up for the breach, not just its dorsal fin.
-      const targetDepth=k8sSurfaceLunge?-2.4+3.55*surfaceLunge:s.mode==='split'?-1.65:s.mode==='surge'?-1.8:warning?-2.05:-2.4;
+      // Skim the surface with a low, forward lunge instead of launching the
+      // long armored body upright out of the water.
+      const targetDepth=k8sSurfaceLunge?-1.95+2*surfaceLunge:s.mode==='split'?-1.65:s.mode==='surge'?-1.8:warning?-2.05:-2.4;
       const k8sSurfaceRecovery=s.fishId==='k8s-001'&&this.fishDepth>-2.4;
-      const k8sFastVerticalMotion=k8sSurfaceLunge||k8sSurfaceRecovery;
       const horizontalTravel=Math.hypot(s.fishX-previousFishX,s.distance-previousDistance);
-      const diveResponse=k8sFastVerticalMotion?7:profile.depthResponse??1.2;
+      const diveResponse=k8sSurfaceLunge?7:k8sSurfaceRecovery?1.8:profile.depthResponse??1.2;
       const diveStep=(targetDepth-this.fishDepth)*Math.min(1,dt*diveResponse);
-      const verticalLimit=k8sFastVerticalMotion?dt*5.2:horizontalTravel*.18;
+      const verticalLimit=k8sSurfaceLunge?dt*4.5:k8sSurfaceRecovery?dt*1.8:horizontalTravel*.18;
       this.fishDepth+=clamp(diveStep,-verticalLimit,verticalLimit);
       const velocity:Vec3={x:(s.fishX-previousFishX)/dt,y:(this.fishDepth-previousDepth)/dt,z:-(s.distance-previousDistance)/dt};
       const previousYaw=this.swimYaw;
@@ -299,5 +300,34 @@ export class OceanFishingGame {
   snapshot():OceanState{
     this.syncFishSnapshot();
     return {...this.state,fish:this.locomotion.snapshot()};
+  }
+  wireSnapshot():AuthoritativeOceanState{
+    const state=this.snapshot();
+    return{
+      phase:state.phase,
+      strength:state.strength,
+      aim:state.aim,
+      revision:state.revision,
+      castAt:state.castAt,
+      retrieveAt:state.retrieveAt,
+      tension:state.tension,
+      distance:state.distance,
+      reeling:state.reeling,
+      mode:state.mode,
+      stamina:state.stamina,
+      canReel:state.canReel,
+      fightTime:state.fightTime,
+      criticalWindow:state.criticalWindow,
+      hookResult:state.hookResult,
+      approach:state.approach,
+      catches:state.catches,
+      reason:state.reason,
+      resultAt:state.resultAt,
+      fish:state.fish,
+      fishId:state.fishId,
+      fishX:state.fishX,
+      fishSpeed:state.fishSpeed,
+      school:state.school,
+    };
   }
 }
