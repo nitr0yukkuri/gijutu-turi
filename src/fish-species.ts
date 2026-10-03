@@ -1,7 +1,7 @@
 // `whale-001` is retained as the stable ID from the earlier preview catalog.
 // Reusing it lets existing SQLite files upgrade without losing references.
-export type FishSpeciesId = "fish-001" | "whale-001" | "css-001" | "k8s-001";
-export type FishSilhouetteKey = "go-school" | "docker-whale" | "css-fish" | "cluster-leviathan";
+export type FishSpeciesId = "fish-001" | "whale-001" | "css-001" | "k8s-001" | "rust-001" | "js-001";
+export type FishSilhouetteKey = "go-school" | "docker-whale" | "css-fish" | "cluster-leviathan" | "rust-striped-marlin" | "js-eel";
 
 export type FishSpeciesDefinition = {
   id: FishSpeciesId;
@@ -12,7 +12,7 @@ export type FishSpeciesDefinition = {
   description: string;
   habitat: string;
   rarity: string;
-  modelKey: "go-fish" | "docker-whale" | "css-fish" | "cluster-leviathan";
+  modelKey: "go-fish" | "docker-whale" | "css-fish" | "cluster-leviathan" | "rust-swordfish" | "js-eel";
   silhouetteKey: FishSilhouetteKey;
   unknownTitle: string;
   unknownHint: string;
@@ -96,6 +96,42 @@ export const FISH_SPECIES: readonly FishSpeciesDefinition[] = [
     catalogStatus: "active",
     randomEncounter: false,
   },
+  {
+    id: "rust-001",
+    number: 5,
+    name: "Rustカジキ",
+    classification: "OWNERSHIP SPECIES",
+    tagline: "ひとつの軌道を、最後まで所有する。",
+    description: "青い縦縞と長い吻を持つカジキ。一匹の本体が短い突進を決め、古い軌道を残さず向きを変える。Rustの所有権と移動を、鋭い引きとして体験する魚。",
+    habitat: "所有権の外洋",
+    rarity: "RARE",
+    // This key is already stored in catch records; keep it stable while the
+    // display identity and silhouette evolve to the striped marlin.
+    modelKey: "rust-swordfish",
+    silhouetteKey: "rust-striped-marlin",
+    unknownTitle: "青い縞をまとう魚影",
+    unknownHint: "長い丸い吻と高い背びれ、側面に走る青い縞が見える。",
+    traits: ["青い縦縞が側面に並ぶ", "長い丸い吻と高い背びれ", "短い突進を繰り返す"],
+    observation: "濃い青の背から銀白色の腹へ移る体に、青い縦縞が浮かぶ。",
+    catalogStatus: "active",
+  },
+  {
+    id: "js-001",
+    number: 6,
+    name: "JSうなぎ",
+    classification: "ASYNC SPECIES",
+    tagline: "ひとつの波が、最後までつながる。",
+    description: "頭から尾まで連続する波で進み、イベントを順番に渡していく。JavaScriptの非同期処理を、細長い全身の泳ぎとして体験するうなぎ。",
+    habitat: "イベントループ水路",
+    rarity: "UNCOMMON",
+    modelKey: "js-eel",
+    silhouetteKey: "js-eel",
+    unknownTitle: "くねり続ける細長い魚影",
+    unknownHint: "頭から尾へ波が伝わり、全身が一拍ずつ遅れて動く。",
+    traits: ["全身に波が伝わる", "頭が安定して進む", "尾ほど振幅が大きい"],
+    observation: "一本のイベントが、頭から尾へ遅延しながら走っている。",
+    catalogStatus: "active",
+  },
 ];
 
 export const DEFAULT_FISH_SPECIES_ID: FishSpeciesId = "fish-001";
@@ -118,5 +154,5 @@ export const getFishSpecies = (id: FishSpeciesId): FishSpeciesDefinition =>
 // species so failure does not unexpectedly change the lesson.
 export const nextFishSpeciesId = (current: FishSpeciesId, catches: number): FishSpeciesId =>
   catches > 0
-    ? ({ "fish-001": "whale-001", "whale-001": "fish-001", "css-001": "fish-001", "k8s-001": "fish-001" } as const)[current]
+    ? ({ "fish-001": "whale-001", "whale-001": "rust-001", "rust-001": "js-001", "js-001": "fish-001", "css-001": "fish-001", "k8s-001": "fish-001" } as const)[current]
     : current;

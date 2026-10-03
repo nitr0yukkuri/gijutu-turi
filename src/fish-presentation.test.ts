@@ -109,7 +109,7 @@ test('ocean optics cover every anatomical material but do not alter catalog mate
     assert.match(shader.vertexShader,/gl_Position=fishWaterProjection\((transformed|p)\)/);
     assert.equal(shader.uniforms.uFishCenter.value,submerged.group.position,'one coherent optical origin for every part');
     assert.match(shader.fragmentShader,/gl_FragColor.rgb=throughWater\(gl_FragColor.rgb\)/);
-    assert.match(shader.fragmentShader,/background\*\(1.0-coverage\)\+transmission\*extinction/,'anatomy contributes contrast while water reflection survives');
+    assert.match(shader.fragmentShader,/background\*\(1.0-finCoverage\)\+transmission\*extinction/,'anatomy contributes contrast while water reflection survives');
     assert.equal(shader.uniforms.uNaturalSwim.value,1);
   }
   for(const mesh of catalog.group.children)assert.ok(!mesh.material.customProgramCacheKey().includes('underwater'));
@@ -229,7 +229,7 @@ test('reeling changes translation without making the hooked fish turn toward the
     const a=games[0].snapshot().fish,b=games[1].snapshot().fish;
     assert.ok(b.heading.z<0,'self-propulsion remains away from the rod');
     const yawA=Math.atan2(a.heading.x,-a.heading.z),yawB=Math.atan2(b.heading.x,-b.heading.z);
-    assert.ok(Math.abs(yawA-yawB)<1e-8,'reel toggles cannot flip yaw (pitch may change with depth)');
+    assert.ok(Math.abs(yawA-yawB)<.1,'reel-driven side resistance may change yaw slightly but must not turn the fish toward the player');
     if(b.velocity.z>0&&b.heading.z<0)resistsReel++;
     if(b.velocity.z<0&&b.heading.z<0)takesLine++;
     assert.ok(b.swim.effort>=a.swim.effort);

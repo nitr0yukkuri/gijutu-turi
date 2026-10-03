@@ -1,9 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { K8S_ECHO_COUNT, k8sFightPresentation } from './k8s-fight-presentation.js';
+import { OCEAN_RENDER_DELAY_MS } from '../ocean-timing.js';
+import { K8S_ECHO_COUNT, k8sFightPresentation, k8sLungeForSnapshot } from './k8s-fight-presentation.js';
 
 test('K8S has two echoes, matching the species description', () => {
   assert.equal(K8S_ECHO_COUNT, 2);
+});
+
+test('K8S lunge cue uses the renderer delay and stays off for non-fight states', () => {
+  const snapshot={fishId:'k8s-001' as const,phase:'fighting' as const,mode:'split' as const,fightTime:3.8};
+  const inPhase=k8sLungeForSnapshot(snapshot);
+  const delayed=k8sLungeForSnapshot(snapshot,OCEAN_RENDER_DELAY_MS/1000);
+  assert.ok(inPhase>delayed&&delayed>0,'UI cue should follow the same 100ms render buffer as the fish and rod');
+  assert.equal(k8sLungeForSnapshot({...snapshot,phase:'caught'}),0);
+  assert.equal(k8sLungeForSnapshot({...snapshot,fishId:'fish-001'}),0);
+  assert.equal(k8sLungeForSnapshot({...snapshot,mode:'warning'}),0);
 });
 
 test('K8S reveal follows line distance without a visibility jump at the bite', () => {

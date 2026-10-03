@@ -141,13 +141,33 @@ function animate(material,uniforms,mode='plain') {
   return material;
 }
 
+// Cargo details do not use the whale-body deformation. They get their own
+// restrained, server-state-driven pulse when a heavy pull begins.
+function cargoPulseMaterial(material,mode,uniforms) {
+  const compile=material.onBeforeCompile;
+  material.onBeforeCompile=shader=>{
+    compile.call(material,shader);
+    shader.uniforms.uCargoPulse=uniforms.uCargoPulse;
+    if(mode==='glow'){
+      shader.uniforms.uGlow=uniforms.uGlow;
+      shader.fragmentShader='uniform float uCargoPulse; uniform float uGlow;\n'+shader.fragmentShader;
+      shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb*=uGlow*(1.0+1.15*uCargoPulse);');
+    }else{
+      shader.fragmentShader='uniform float uCargoPulse;\n'+shader.fragmentShader;
+      shader.fragmentShader=shader.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance+=vec3(.012,.11,.16)*uCargoPulse;');
+    }
+  };
+  material.customProgramCacheKey=()=>`docker-whale-cargo-${mode}-v1`;
+  return material;
+}
+
 export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   const low=detail==='low',group=new THREE.Group();group.name='Dockerクジラ';
   const habitatUniforms=waterUniforms?{...waterUniforms,uFishCenter:{value:group.position},uFishVisibility:{value:1}}:null;
   const uniforms={
     uWhalePhase:{value:phase},uWhaleFrequency:{value:.78},uWhaleWavelength:{value:.94},
     uWhaleAmplitude:{value:.1},uWhaleEffort:{value:.38},uWhaleTurn:{value:0},
-    uPower:{value:.45},uGlow:{value:1},
+    uPower:{value:.45},uGlow:{value:1},uCargoPulse:{value:0},
   };
   const geometries=new Set(),materials=new Set(),parts=[];
   // Cargo is a rigid load with its own inertial mount. Keeping the mount
@@ -162,9 +182,13 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   // container remain legible under the water blend without turning it into a
   // glowing billboard.
   const cargo=new THREE.MeshPhysicalMaterial({color:0x12617d,roughness:.56,metalness:.36,clearcoat:.22,clearcoatRoughness:.48,emissive:0x032332,emissiveIntensity:.18});
-  const cargoAccent=new THREE.MeshStandardMaterial({color:0x3e9caf,emissive:0x0d5367,emissiveIntensity:.42,roughness:.36,metalness:.58});
+  const cargoAccent=cargoPulseMaterial(new THREE.MeshStandardMaterial({color:0x3e9caf,emissive:0x0d5367,emissiveIntensity:.42,roughness:.36,metalness:.58}),'accent',uniforms);
+  cargoAccent.name='docker-cargo-accent';
+  const cargoGlow=cargoPulseMaterial(new THREE.MeshBasicMaterial({color:new THREE.Color(.04,1.65,2.8),toneMapped:false}),'glow',uniforms);
+  cargoGlow.name='docker-cargo-status-glow';
   const ribs=new THREE.MeshStandardMaterial({color:0x237596,roughness:.4,metalness:.6});
   const deck=new THREE.MeshStandardMaterial({color:0x061b29,roughness:.48,metalness:.65});
+  const finWaterSides=new Map();
   function add(g,m,name,parent=group){
     geometries.add(g);materials.add(m);const mesh=new THREE.Mesh(g,m);mesh.name=name;mesh.frustumCulled=false;parent.add(mesh);parts.push(mesh);return mesh;
   }
@@ -179,10 +203,12 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   const body=add(makeBody(low),skin,'sculpted-whale-body');
   const flippers=[],flukes=[];
   for(const sign of [-1,1]){
-    flippers.push(add(makeFin([[-2.5,-.6,1.4,.6,.23],[-1.8,-.9,2.1,.79,.19],[-.85,-1.34,3.05,.65,.12],[.1,-1.48,4.05,.33,.055],[.6,-1.38,4.55,.008,.008]],sign,low),skin,'pectoral-'+sign));
+    const pectoralSkin=skin.clone();pectoralSkin.name='pectoral-skin-'+sign;finWaterSides.set(pectoralSkin,sign);
+    const pectoralGlow=glow.clone();pectoralGlow.name='pectoral-rim-'+sign;finWaterSides.set(pectoralGlow,sign);
+    flippers.push(add(makeFin([[-2.5,-.6,1.4,.6,.23],[-1.8,-.9,2.1,.79,.19],[-.85,-1.34,3.05,.65,.12],[.1,-1.48,4.05,.33,.055],[.6,-1.38,4.55,.008,.008]],sign,low),pectoralSkin,'pectoral-'+sign));
     flukes.push(add(makeFin([[4.55,.6,0,.5,.19],[5.0,.65,.55,.8,.2],[5.45,.69,1.4,.86,.16],[5.95,.82,2.25,.56,.09],[6.4,1.0,2.8,.008,.008]],sign,low),skin,'horizontal-fluke-'+sign));
     tube([[4.3,.65,.23*sign],[4.5,.72,.62*sign],[4.72,.76,1.4*sign],[5.4,.9,2.25*sign],[6.4,1.0,2.8*sign]],.025,glow,'fluke-rim');
-    tube([[-2.8,-.5,1.7*sign],[-2.48,-.91,2.1*sign],[-1.42,-1.35,3.05*sign],[-.19,-1.47,4.05*sign],[.6,-1.38,4.55*sign]],.025,glow,'flipper-rim');
+    tube([[-2.8,-.5,1.7*sign],[-2.48,-.91,2.1*sign],[-1.42,-1.35,3.05*sign],[-.19,-1.47,4.05*sign],[.6,-1.38,4.55*sign]],.025,pectoralGlow,'flipper-rim-'+sign);
     // Mouth folds follow the head surface, and remain attached while swimming.
     tube(Array.from({length:22},(_,i)=>surface(.015+i/21*.28,sign>0?-.24:Math.PI+.24,.017)),.039,black,'mouth-fold');
     tube(Array.from({length:22},(_,i)=>surface(.04+i/21*.29,sign>0?-.30:Math.PI+.30,.022)),.012,trace,'jaw-light');
@@ -258,7 +284,7 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
       box(.025,h,.027,[x-w/2,y,z+side*(d/2+.04)],cargoAccent,'container-corner',false,cargoMount);
       box(.025,h,.027,[x+w/2,y,z+side*(d/2+.04)],cargoAccent,'container-corner',false,cargoMount);
       // Three tiny status windows, not text pasted onto the creature.
-      for(let i=0;i<3;i++)box(.082,.035,.018,[x-.16+i*.16,y-h*.33,z+side*(d/2+.065)],glow,'container-status',false,cargoMount);
+      for(let i=0;i<3;i++)box(.082,.035,.018,[x-.16+i*.16,y-h*.33,z+side*(d/2+.065)],cargoGlow,'container-status',false,cargoMount);
     }
     for(const side of [-1,1])for(const offset of [-.20,.20])box(.027,h*.76,.027,[x+side*(w/2+.038),y,z+offset],cargoAccent,'door-bar',false,cargoMount);
   }
@@ -280,14 +306,15 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   }
   if(habitatUniforms){
     for(const material of materials){
-       const part=material===skin?'body':material===glow?'light':material===cargo||material===cargoAccent?'cargo':'detail';
-      applyFishWater(material,habitatUniforms,part,DOCKER_WHALE_WATER_PROFILE);
+       const finSide=finWaterSides.get(material)??0;
+       const part=finSide!==0?'fin':material===skin?'body':material===glow||material===cargoGlow?'light':material===cargo||material===cargoAccent?'cargo':'detail';
+      applyFishWater(material,habitatUniforms,part,DOCKER_WHALE_WATER_PROFILE,finSide);
     }
   }
-  let disposed=false,cargoYaw=0,cargoRoll=0,cargoSide=0,cargoLift=.12;
+  let disposed=false,cargoYaw=0,cargoRoll=0,cargoSide=0,cargoLift=.12,cargoLag=0,cargoPulse=0,cargoMomentActive=false;
   return {
     group,body,flippers,flukes,cargoMount,containerCount:containers.length,waterUniforms:habitatUniforms,
-    update(time,{power=.45,glow=1,visibility=1,bodyPhase,bodyFrequency,bodyWavelength,effort=.38,turn=0,amplitude,tetherLoad=0,styleDelta=1/60}={}){
+    update(time,{power=.45,glow=1,visibility=1,bodyPhase,bodyFrequency,bodyWavelength,effort=.38,turn=0,amplitude,tetherLoad=0,cargoMoment=false,styleDelta=1/60}={}){
       const synced=Number.isFinite(bodyPhase)&&Number.isFinite(bodyFrequency)&&bodyFrequency>0;
       uniforms.uWhalePhase.value=synced?bodyPhase:time+phase;
       uniforms.uWhaleFrequency.value=synced?bodyFrequency:.78;
@@ -299,6 +326,11 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
       if(habitatUniforms)habitatUniforms.uFishVisibility.value=clamp(visibility,0,1);
       const dt=Number.isFinite(styleDelta)?clamp(styleDelta,0,.1):1/60;
       const load=clamp(tetherLoad??0,0,1),heavyTurn=clamp(turn,-1,1);
+      if(cargoMoment&&!cargoMomentActive)cargoPulse=1;
+      cargoMomentActive=!!cargoMoment;
+      cargoPulse*=Math.exp(-dt*3.8);
+      uniforms.uCargoPulse.value=cargoPulse;
+      cargoLag+=(.16*cargoPulse-cargoLag)*(1-Math.exp(-dt*9));
       const settle=1-Math.exp(-dt*1.8);
       // A heavy load resists yaw and settles down instead of bobbing like a
       // buoy. The root whale still owns the authoritative heading.
@@ -307,7 +339,7 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
       cargoRoll+=(-heavyTurn*.045-load*.018-cargoRoll)*settle;
       cargoLift+=((.12-load*.055)-cargoLift)*(1-Math.exp(-dt*1.45));
       cargoMount.rotation.set(0,cargoYaw,cargoRoll);
-      cargoMount.position.set(0,cargoLift,cargoSide);
+      cargoMount.position.set(cargoLag,cargoLift+.035*cargoPulse,cargoSide);
     },
     get stats(){return {meshes:group.children.length,triangles:[...geometries].reduce((sum,g)=>sum+(g.index?g.index.count:g.attributes.position.count)/3,0)};},
     dispose(){if(disposed)return;disposed=true;for(const g of geometries)g.dispose();for(const m of materials)m.dispose();contactShadowGeometry.dispose();contactShadowMaterial.dispose();group.clear();},

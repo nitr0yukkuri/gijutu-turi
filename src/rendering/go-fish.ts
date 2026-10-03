@@ -1,7 +1,7 @@
 // @ts-nocheck -- the procedural mesh uses the vendored Three.js runtime, whose JS distribution has no declarations.
 import * as THREE from '../../vendor/three.module.js';
 import { applyFishWater, CSS_FISH_WATER_PROFILE, K8S_LEVIATHAN_WATER_PROFILE } from './fish-water.js';
-import { K8S_LEVIATHAN_SWIM_VISUAL_PROFILE, STANDARD_FISH_SWIM_VISUAL_PROFILE } from './fish-swim-visual-profile.js';
+import { JS_EEL_SWIM_VISUAL_PROFILE, K8S_LEVIATHAN_SWIM_VISUAL_PROFILE, RUST_BILLFISH_SWIM_VISUAL_PROFILE, STANDARD_FISH_SWIM_VISUAL_PROFILE } from './fish-swim-visual-profile.js';
 import { cssFishRedStateStrength, getCssFishPalette, type CssFishVisualState } from '../css-fish-style.js';
 
 // Original procedural model. See docs/go-fish-design.md for study references.
@@ -37,6 +37,28 @@ const clusterProfile = [
   [.06, .49, .35, .025], [.48, .31, .22, .01],
   [.84, .155, .115, 0], [1.14, .07, .052, 0], [1.38, .044, .035, 0],
 ];
+// Striped marlin: a long, streamlined trunk with a narrow caudal peduncle.
+// The rounded spear-like bill and crescent tail are separate meshes so their
+// silhouette remains legible at the fight camera.
+const rustProfile = [
+  [-1.86, .022, .018, -.012], [-1.69, .16, .115, -.002],
+  [-1.42, .32, .19, .015], [-1.08, .43, .255, .032],
+  [-.68, .46, .285, .045], [-.24, .42, .265, .038],
+  [.20, .32, .205, .022], [.62, .19, .12, .008],
+  [1.02, .095, .064, 0], [1.42, .052, .038, 0], [1.72, .045, .032, 0],
+];
+// JS eel: a long, nearly uniform body with a continuous taper. The profile
+// deliberately leaves almost no caudal fin to keep propulsion readable as a
+// body wave instead of a conventional tail beat.
+const eelProfile = [
+  [-1.86, .018, .016, -.012], [-1.72, .12, .075, -.004],
+  [-1.48, .17, .105, .004], [-1.12, .19, .12, .012],
+  [-.72, .185, .116, .012], [-.30, .17, .108, .008],
+  [.14, .15, .096, .004], [.56, .125, .079, 0],
+  [.98, .095, .061, 0], [1.38, .071, .046, 0],
+  [1.76, .052, .034, 0], [2.12, .036, .024, 0],
+  [2.42, .019, .013, 0],
+];
 const makeShape = points => ({
   profileCurve: new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(p[0], p[1], p[2])), false, 'centripetal'),
   centerCurve: new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(p[0], p[3], 0)), false, 'centripetal'),
@@ -44,6 +66,8 @@ const makeShape = points => ({
 const goShape = makeShape(profile);
 const cssShape = makeShape(cssProfile);
 const clusterShape = makeShape(clusterProfile);
+const rustShape = makeShape(rustProfile);
+const eelShape = makeShape(eelProfile);
 const clamp = THREE.MathUtils.clamp;
 const vector = p => new THREE.Vector3(...p);
 const curve = points => new THREE.CatmullRomCurve3(points.map(vector), false, 'centripetal');
@@ -169,19 +193,19 @@ vec3 swimNormal(vec3 p, vec3 n, float fin) {
   return deformed / max(length(deformed), .00001);
 }`;
 
-function animateMaterial(material, uniforms, mode = 'plain', cssStyle = false, clusterStyle = false) {
+function animateMaterial(material, uniforms, mode = 'plain', cssStyle = false, clusterStyle = false, rustStyle = false, eelStyle = false) {
   material.userData.fishPart=mode==='body'?'body':mode==='light'?'light':'detail';
   material.onBeforeCompile = shader => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = deformation + '\nattribute float aFin; varying vec2 vFishUv; varying vec3 vFishLocal;\n' + shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nobjectNormal = swimNormal(position, objectNormal, aFin);');
     shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFishUv = uv; vFishLocal = position; transformed = swimPosition(position, aFin);');
-    shader.fragmentShader = 'uniform float uSwimTime; uniform float uSwimFrequency; uniform float uGlow; uniform float uImmersion;' + (cssStyle ? ' uniform vec3 uStyleBody; uniform vec3 uStyleShade; uniform vec3 uStyleAccent; uniform vec3 uStyleEmission; uniform float uStyleGlow; uniform float uStylePattern;' : '') + ' float swimPhase() { return uSwimTime * uSwimFrequency; } varying vec2 vFishUv; varying vec3 vFishLocal;\n' + shader.fragmentShader;
+    shader.fragmentShader = 'uniform float uSwimTime; uniform float uSwimFrequency; uniform float uGlow; uniform float uImmersion;' + (cssStyle ? ' uniform vec3 uStyleBody; uniform vec3 uStyleShade; uniform vec3 uStyleAccent; uniform vec3 uStyleEmission; uniform float uStyleGlow; uniform float uStylePattern;' : '') + (rustStyle ? ' uniform float uRustSurge;' : '') + ' float swimPhase() { return uSwimTime * uSwimFrequency; } varying vec2 vFishUv; varying vec3 vFishLocal;\n' + shader.fragmentShader;
     if (mode === 'body') {
       shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `
         #include <color_fragment>
         // Staggered organic scales, not a mesh wireframe.
-        vec2 cell = vFishUv * ${cssStyle ? 'vec2(15.0, 10.0)' : clusterStyle ? 'vec2(11.0, 8.0)' : 'vec2(31.0, 22.0)'};
+        vec2 cell = vFishUv * ${cssStyle ? 'vec2(15.0, 10.0)' : clusterStyle ? 'vec2(11.0, 8.0)' : rustStyle ? 'vec2(22.0, 15.0)' : eelStyle ? 'vec2(17.0, 8.0)' : 'vec2(31.0, 22.0)'};
         vec2 origin = floor(cell), within = fract(cell);
         float nearest = 10.0, second = 10.0;
         for(int row=-1;row<=1;row++) for(int col=-1;col<=1;col++) {
@@ -197,9 +221,11 @@ function animateMaterial(material, uniforms, mode = 'plain', cssStyle = false, c
         float border=sqrt(second)-scaleDistance;
         float aa=max(fwidth(border),.008);
         float scaleRim=1.0-smoothstep(.012,.012+aa,border);
-        float scaleMask = smoothstep(${cssStyle ? '.08' : clusterStyle ? '.1' : '.15'}, ${cssStyle ? '.22' : clusterStyle ? '.24' : '.27'}, vFishUv.x) * (1.0 - smoothstep(${cssStyle ? '.82' : '.88'}, .99, vFishUv.x));
+        // The Rust marlin uses pigment bars instead of a scale-cell overlay;
+        // other species retain their own scale/circuit patterns.
+        float scaleMask = ${rustStyle ? '0.0' : `smoothstep(${cssStyle ? '.08' : clusterStyle ? '.1' : eelStyle ? '.12' : '.15'}, ${cssStyle ? '.22' : clusterStyle ? '.24' : eelStyle ? '.25' : '.27'}, vFishUv.x) * (1.0 - smoothstep(${cssStyle ? '.82' : eelStyle ? '.94' : '.88'}, .99, vFishUv.x))`};
         float dorsal = smoothstep(-.2, .45, vFishLocal.y);
-        vec3 skin = ${cssStyle ? 'mix(uStyleBody, uStyleShade, dorsal)' : clusterStyle ? 'mix(vec3(.105,.155,.145), vec3(.018,.042,.046), dorsal)' : 'mix(vec3(.014,.092,.155), vec3(.003,.018,.062), dorsal)'};
+        vec3 skin = ${cssStyle ? 'mix(uStyleBody, uStyleShade, dorsal)' : clusterStyle ? 'mix(vec3(.105,.155,.145), vec3(.018,.042,.046), dorsal)' : rustStyle ? 'mix(vec3(.48,.64,.76), vec3(.018,.075,.28), dorsal)' : eelStyle ? 'mix(vec3(.20,.17,.25), vec3(.025,.035,.08), dorsal)' : 'mix(vec3(.014,.092,.155), vec3(.003,.018,.062), dorsal)'};
         ${cssStyle ? `
         // CSS fish uses larger rounded cells and flowing bands instead of
         // Go's dense scale grid and branching circuitry. The pattern is
@@ -211,33 +237,54 @@ function animateMaterial(material, uniforms, mode = 'plain', cssStyle = false, c
          skin = mix(skin,uStyleAccent,(cascadeBand*.19+styleStripe*.16)*uStylePattern);
          skin += uStyleEmission*(cascadeGlow*.045 + bubbleMark*.018)*uStyleGlow;
         ` : ''}
-        skin += ${clusterStyle ? 'vec3(.012,.021,.018)' : 'vec3(.003,.012,.028)'} * (1.0-scaleDistance) * scaleMask * ${clusterStyle ? '.3' : '1.0'};
-        skin += ${cssStyle ? 'uStyleAccent' : clusterStyle ? 'vec3(.04,.11,.28)' : 'vec3(.01,.055,.105)'} * scaleRim * scaleMask * ${cssStyle ? '.36*uStylePattern' : clusterStyle ? '.1' : '.36'};
+        ${rustStyle ? `
+        // Striped-marlin bars cross the flanks, rather than running down the
+        // fish. A slight UV warp keeps the bands organic; the flank mask fades
+        // them across the dorsal ridge and pale belly.
+        float marlinSide = 1.0 - smoothstep(.40,.88,abs(sin(vFishUv.y*6.2831853)));
+        float marlinRange = smoothstep(.17,.29,vFishUv.x) * (1.0-smoothstep(.78,.91,vFishUv.x));
+        float marlinBandPhase = vFishUv.x*14.5 + .025*sin(vFishUv.y*6.2831853);
+        float marlinBand = smoothstep(.48,.77,.5+.5*cos(marlinBandPhase*6.2831853));
+        float marlinBands = marlinBand * marlinSide * marlinRange;
+        skin = mix(skin, vec3(.025,.31,.82), marlinBands*.96);
+        // A short Rust-orange flash rides the existing pigment bars during a
+        // server-authored surge. Its spatial pulse uses the synchronized body
+        // phase, so it never creates a second animation clock or fish copy.
+        float rustAccentWave = .5 + .5 * sin(vFishUv.x*18.0 - swimPhase()*1.15);
+        float rustMoveAccent = clamp(uRustSurge,0.0,1.0) * marlinBands * (.20 + .16*rustAccentWave);
+        skin = mix(skin, vec3(.78,.24,.09), rustMoveAccent);
+        ` : ''}
+        skin += ${clusterStyle ? 'vec3(.012,.021,.018)' : rustStyle ? 'vec3(.018,.022,.024)' : eelStyle ? 'vec3(.018,.012,.035)' : 'vec3(.003,.012,.028)'} * (1.0-scaleDistance) * scaleMask * ${clusterStyle ? '.3' : rustStyle ? '.7' : eelStyle ? '.55' : '1.0'};
+        skin += ${cssStyle ? 'uStyleAccent' : clusterStyle ? 'vec3(.04,.11,.28)' : rustStyle ? 'vec3(.18,.21,.20)' : eelStyle ? 'vec3(.52,.20,.04)' : 'vec3(.01,.055,.105)'} * scaleRim * scaleMask * ${cssStyle ? '.36*uStylePattern' : clusterStyle ? '.1' : rustStyle ? '.16' : eelStyle ? '.18' : '.36'};
         diffuseColor.rgb *= skin * 1.3;
       `);
       shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', `
         #include <emissivemap_fragment>
         float seam = pow(max(0.0, 1.0-abs(vFishLocal.y-.015)*9.0), 3.0);
-        totalEmissiveRadiance += ${cssStyle ? 'uStyleEmission*uStyleGlow*.42' : clusterStyle ? 'vec3(.0005,.002,.002)' : 'vec3(.001,.012,.027)'} * scaleRim * scaleMask * uGlow * (1.0-uImmersion*.9);
-        totalEmissiveRadiance += ${cssStyle ? 'uStyleAccent*uStyleGlow*.22' : clusterStyle ? 'vec3(.003,.009,.026)' : 'vec3(.0,.045,.085)'} * seam * scaleMask * uGlow * (1.0-uImmersion*.8);
+        totalEmissiveRadiance += ${cssStyle ? 'uStyleEmission*uStyleGlow*.42' : clusterStyle ? 'vec3(.0005,.002,.002)' : rustStyle ? 'vec3(.001,.0006,.0003)' : eelStyle ? 'vec3(.012,.002,.001)' : 'vec3(.001,.012,.027)'} * scaleRim * scaleMask * uGlow * (1.0-uImmersion*.9);
+        totalEmissiveRadiance += ${cssStyle ? 'uStyleAccent*uStyleGlow*.22' : clusterStyle ? 'vec3(.003,.009,.026)' : rustStyle ? 'vec3(.002,.001,.0005)' : eelStyle ? 'vec3(.42,.06,.006)' : 'vec3(.0,.045,.085)'} * seam * scaleMask * uGlow * (1.0-uImmersion*.8);
       `);
       // Shallow scale micro-relief via the surface derivatives.
       shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_maps>', `
         #include <normal_fragment_maps>
         vec3 sx = dFdx(vViewPosition); sx /= max(length(sx), .00001);
         vec3 sy = dFdy(vViewPosition); sy /= max(length(sy), .00001);
-        normal = normalize(normal + (sx*dFdx(scaleDistance) + sy*dFdy(scaleDistance)) * scaleMask * ${clusterStyle ? '.045' : '.18'});
+        normal = normalize(normal + (sx*dFdx(scaleDistance) + sy*dFdy(scaleDistance)) * scaleMask * ${clusterStyle ? '.045' : rustStyle ? '.09' : eelStyle ? '.06' : '.18'});
       `);
     }
     if (mode === 'light') shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', cssStyle
       ? '#include <color_fragment>\ndiffuseColor.rgb=mix(diffuseColor.rgb,uStyleAccent*1.28,.72); diffuseColor.rgb *= uGlow * (.86 + .14 * sin(swimPhase() * .91 - vFishLocal.x * 7.0)) * (1.0-uImmersion*smoothstep(2.5,4.1,vFishLocal.x)*.94);'
+      : rustStyle
+        ? '#include <color_fragment>\ndiffuseColor.rgb *= uGlow * (.72 + .28 * sin(swimPhase() * .78 - vFishLocal.x * 6.0)) * (1.0-uImmersion*smoothstep(2.0,3.5,vFishLocal.x)*.88);'
+      : eelStyle
+        ? '#include <color_fragment>\ndiffuseColor.rgb *= uGlow * (.78 + .22 * sin(swimPhase() * .72 - vFishLocal.x * 5.0)) * (1.0-uImmersion*.78);'
       : '#include <color_fragment>\ndiffuseColor.rgb *= uGlow * (.8 + .2 * sin(swimPhase() * .91 - vFishLocal.x * 7.0)) * (1.0-uImmersion*smoothstep(2.5,4.1,vFishLocal.x)*.94);');
   };
-  material.customProgramCacheKey = () => 'go-fish-v4-' + mode + (cssStyle ? '-css' : clusterStyle ? '-cluster' : '');
+  material.customProgramCacheKey = () => 'go-fish-v5-' + mode + (cssStyle ? '-css' : clusterStyle ? '-cluster' : rustStyle ? '-rust' : eelStyle ? '-eel' : '');
   return material;
 }
 
-function makeFinGeometry(base, edge, low) {
+function makeFinGeometry(base, edge, low, surfaceBulge = .065) {
   const root = curve(base), rim = curve(edge);
   const nu = low ? 28 : 52, nv = low ? 9 : 16;
   const positions = [], uvs = [], free = [], indices = [];
@@ -245,7 +292,7 @@ function makeFinGeometry(base, edge, low) {
     const u = i / nu, a = root.getPoint(u), b = rim.getPoint(u);
     for (let j = 0; j <= nv; j++) {
       const v = j / nv, p = a.clone().lerp(b, v);
-      p.z += Math.sin(Math.PI * v) * Math.sin(Math.PI * u) * .065;
+      p.z += Math.sin(Math.PI * v) * Math.sin(Math.PI * u) * surfaceBulge;
       positions.push(p.x, p.y, p.z); uvs.push(u, v); free.push(v * v);
     }
   }
@@ -261,7 +308,7 @@ function makeFinGeometry(base, edge, low) {
   return geometry;
 }
 
-function finMaterial(uniforms, rays, cssStyle = false, clusterStyle = false) {
+function finMaterial(uniforms, rays, cssStyle = false, clusterStyle = false, rustStyle = false, eelStyle = false) {
   return new THREE.ShaderMaterial({
     uniforms: { ...uniforms, uRays: { value: rays } },
     side: THREE.DoubleSide, transparent: true, depthWrite: false,
@@ -285,12 +332,12 @@ function finMaterial(uniforms, rays, cssStyle = false, clusterStyle = false) {
         vec3 eye=vView/max(length(vView),.00001);
         float fresnel=pow(clamp(1.0-abs(dot(n,eye)),0.0,1.0),2.2);
       float cssBubbles=smoothstep(.62,.92,.5+.5*sin(vUv.x*17.0+vUv.y*8.0));
-        float structure=${cssStyle ? 'rays*.24+edge*.78+veins*.12+cssBubbles*.08' : clusterStyle ? 'rays*.34+edge*.72+veins*.18' : 'rays*.65+edge*.8+veins'};
-        vec3 color=mix(${cssStyle ? 'uStyleShade*.46' : clusterStyle ? 'vec3(.025,.049,.047)' : 'vec3(.006,.055,.14)'},${cssStyle ? 'uStyleAccent*.68' : clusterStyle ? 'vec3(.12,.18,.16)' : 'vec3(.025,.26,.38)'},${cssStyle ? 'fold*.18+cssBubbles*.12+.42' : 'fold*.5+.5'});
-        color+=${cssStyle ? 'uStyleEmission*uStyleGlow*.48' : clusterStyle ? 'vec3(.003,.009,.008)' : 'vec3(.06,.7,.98)'}*structure*uGlow*(1.0-uImmersion*.9);
-        color+=${cssStyle ? 'uStyleAccent*.16' : clusterStyle ? 'vec3(.055,.085,.078)' : 'vec3(.025,.2,.29)'}*fresnel;
-        float alpha=clamp(${cssStyle ? '.34' : clusterStyle ? '.56+rays*.12+edge*.18+fresnel*.04' : '.19'}+${cssStyle ? 'rays*.20*mix(.82,1.0,uStylePattern)+edge*.24+fresnel*.06+cssBubbles*.03' : clusterStyle ? '0.0' : 'rays*.20+edge*.24+fresnel*.06'},0.0,${clusterStyle ? '.92' : '.72'});
-        alpha=mix(alpha,${clusterStyle ? '.68+.16*(1.0-vUv.y)+rays*.05' : '.48+.18*(1.0-vUv.y)+rays*.08'},uImmersion);
+        float structure=${cssStyle ? 'rays*.24+edge*.78+veins*.12+cssBubbles*.08' : clusterStyle ? 'rays*.34+edge*.72+veins*.18' : rustStyle ? 'rays*.18+edge*.58+veins*.08' : eelStyle ? 'rays*.22+edge*.70+veins*.08' : 'rays*.65+edge*.8+veins'};
+        vec3 color=mix(${cssStyle ? 'uStyleShade*.46' : clusterStyle ? 'vec3(.025,.049,.047)' : rustStyle ? 'vec3(.025,.075,.17)' : eelStyle ? 'vec3(.12,.025,.09)' : 'vec3(.006,.055,.14)'},${cssStyle ? 'uStyleAccent*.68' : clusterStyle ? 'vec3(.12,.18,.16)' : rustStyle ? 'vec3(.14,.39,.76)' : eelStyle ? 'vec3(.66,.20,.035)' : 'vec3(.025,.26,.38)'},${cssStyle ? 'fold*.18+cssBubbles*.12+.42' : 'fold*.5+.5'});
+        color+=${cssStyle ? 'uStyleEmission*uStyleGlow*.48' : clusterStyle ? 'vec3(.003,.009,.008)' : rustStyle ? 'vec3(.006,.035,.10)' : eelStyle ? 'vec3(.48,.025,.006)' : 'vec3(.06,.7,.98)'}*structure*uGlow*(1.0-uImmersion*.9);
+        color+=${cssStyle ? 'uStyleAccent*.16' : clusterStyle ? 'vec3(.055,.085,.078)' : rustStyle ? 'vec3(.035,.13,.30)' : eelStyle ? 'vec3(.26,.06,.02)' : 'vec3(.025,.2,.29)'}*fresnel;
+        float alpha=clamp(${cssStyle ? '.34' : clusterStyle ? '.56+rays*.12+edge*.18+fresnel*.04' : rustStyle ? '.57' : eelStyle ? '.18' : '.19'}+${cssStyle ? 'rays*.20*mix(.82,1.0,uStylePattern)+edge*.24+fresnel*.06+cssBubbles*.03' : clusterStyle ? '0.0' : rustStyle ? 'rays*.08+edge*.25+fresnel*.05' : eelStyle ? 'rays*.10+edge*.20+fresnel*.05' : 'rays*.20+edge*.24+fresnel*.06'},0.0,${clusterStyle ? '.92' : rustStyle ? '.94' : eelStyle ? '.68' : '.72'});
+        alpha=mix(alpha,${clusterStyle ? '.68+.16*(1.0-vUv.y)+rays*.05' : rustStyle ? '.76+.12*(1.0-vUv.y)+rays*.025' : eelStyle ? '.42+.14*(1.0-vUv.y)+rays*.04' : '.48+.18*(1.0-vUv.y)+rays*.08'},uImmersion);
         alpha*=smoothstep(0.0,.035,vUv.x)*(1.0-smoothstep(.97,1.0,vUv.x));
         gl_FragColor=vec4(color,alpha);
         #include <tonemapping_fragment>
@@ -302,20 +349,24 @@ function finMaterial(uniforms, rays, cssStyle = false, clusterStyle = false) {
 export function createGoFish({ detail = 'high', phase = 0, waterUniforms, naturalSwim = Boolean(waterUniforms), visualProfile = 'ocean' } = {}) {
   const cssStyle = visualProfile === 'css';
   const clusterStyle = visualProfile === 'cluster';
-  const swimVisualProfile = clusterStyle ? K8S_LEVIATHAN_SWIM_VISUAL_PROFILE : STANDARD_FISH_SWIM_VISUAL_PROFILE;
-  const group = new THREE.Group(); group.name = cssStyle ? 'CSS fish' : clusterStyle ? 'K8s Leviathan' : 'Go魚';
+  const rustStyle = visualProfile === 'rust';
+  const eelStyle = visualProfile === 'eel';
+  const swimVisualProfile = rustStyle ? RUST_BILLFISH_SWIM_VISUAL_PROFILE : eelStyle ? JS_EEL_SWIM_VISUAL_PROFILE : clusterStyle ? K8S_LEVIATHAN_SWIM_VISUAL_PROFILE : STANDARD_FISH_SWIM_VISUAL_PROFILE;
+  const group = new THREE.Group(); group.name = cssStyle ? 'CSS fish' : clusterStyle ? 'K8s Leviathan' : rustStyle ? 'Rustカジキ' : eelStyle ? 'JS Eel' : 'Go魚';
   group.userData.cssFriendly = cssStyle;
-  const shape = cssStyle ? cssShape : clusterStyle ? clusterShape : goShape;
+  group.userData.rustBillfish = rustStyle;
+  group.userData.jsEel = eelStyle;
+  const shape = cssStyle ? cssShape : clusterStyle ? clusterShape : rustStyle ? rustShape : eelStyle ? eelShape : goShape;
   const cssRedStateUniform={value:0};
   const habitatUniforms=waterUniforms?{...waterUniforms,uFishCenter:{value:group.position},uFishVisibility:{value:1},...(cssStyle?{uCssRedState:cssRedStateUniform}:{})}:null;
   const catalog = visualProfile === 'catalog' || clusterStyle;
-  const finHeightScale = cssStyle ? .82 : clusterStyle ? .82 : catalog ? .82 : 1;
-  const finDepthScale = cssStyle ? .86 : clusterStyle ? .84 : catalog ? .72 : 1;
+  const finHeightScale = cssStyle ? .82 : clusterStyle ? .82 : rustStyle ? .9 : eelStyle ? .68 : catalog ? .82 : 1;
+  const finDepthScale = cssStyle ? .86 : clusterStyle ? .84 : rustStyle ? .86 : eelStyle ? .68 : catalog ? .72 : 1;
   // The ocean model is seen at a closer, more dynamic scale than the catalog
   // card. Keep the tail expressive, but prevent the fork and streamers from
   // becoming longer than the fish's readable silhouette.
-  const tailHeightScale = cssStyle ? .94 : clusterStyle ? .96 : catalog ? .78 : .72;
-  const tailDepthScale = cssStyle ? .80 : clusterStyle ? .88 : catalog ? .72 : .82;
+  const tailHeightScale = cssStyle ? .94 : clusterStyle ? .96 : rustStyle ? 1.0 : eelStyle ? .62 : catalog ? .78 : .72;
+  const tailDepthScale = cssStyle ? .80 : clusterStyle ? .88 : rustStyle ? .9 : eelStyle ? .68 : catalog ? .72 : .82;
   const streamerScale = catalog ? .58 : .72;
   const initialPalette = getCssFishPalette('normal');
   const uniforms = {
@@ -328,6 +379,7 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
     uStyleShade:{value:new THREE.Color(initialPalette.shade)}, uStyleAccent:{value:new THREE.Color(initialPalette.accent)},
     uStyleEmission:{value:new THREE.Color(initialPalette.emission)}, uStyleGlow:{value:initialPalette.glow},
     uStylePattern:{value:initialPalette.pattern},
+    ...(rustStyle?{uRustSurge:{value:0}}:{}),
     ...(cssStyle?{uCssRedState:cssRedStateUniform}:{}),
   };
   const low = detail === 'low', geometries = new Set(), materials = new Set();
@@ -337,13 +389,30 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
     const mesh = new THREE.Mesh(geometry, material); mesh.name = name; mesh.frustumCulled = false;
     geometries.add(geometry); materials.add(material); group.add(mesh); return mesh;
   }
-  const skin = animateMaterial(new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: clusterStyle ? .82 : .4, metalness: clusterStyle ? .035 : .16, clearcoat: clusterStyle ? .08 : .48, clearcoatRoughness: .3, iridescence: clusterStyle ? .015 : .15, iridescenceIOR: 1.3, envMapIntensity: .3 }), uniforms, 'body', cssStyle, clusterStyle);
+  const skin = animateMaterial(new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: clusterStyle ? .82 : rustStyle ? .42 : eelStyle ? .64 : .4, metalness: clusterStyle ? .035 : rustStyle ? .12 : eelStyle ? .08 : .16, clearcoat: clusterStyle ? .08 : rustStyle ? .22 : eelStyle ? .18 : .48, clearcoatRoughness: .3, iridescence: clusterStyle ? .015 : rustStyle ? .025 : eelStyle ? .03 : .15, iridescenceIOR: 1.3, envMapIntensity: .3 }), uniforms, 'body', cssStyle, clusterStyle, rustStyle, eelStyle);
   const body = add(makeBodyGeometry(detail, shape), skin, 'sculpted-body');
   const luminous = animateMaterial(clusterStyle
     ? new THREE.MeshStandardMaterial({ color: 0x9baebc, emissive: 0x071226, emissiveIntensity: .06, roughness: .78, metalness: .025 })
-    : new THREE.MeshBasicMaterial({ color: new THREE.Color(.055, 2.5, 3.4), toneMapped: false }), uniforms, 'light', cssStyle, clusterStyle);
-  const subtle = animateMaterial(new THREE.MeshStandardMaterial({ color: clusterStyle ? 0x667b8d : 0x43b9cd, emissive: clusterStyle ? 0x091a3a : 0x04758e, emissiveIntensity: clusterStyle ? .08 : .35, roughness: clusterStyle ? .82 : .33, metalness: clusterStyle ? .035 : .65 }), uniforms, 'plain', cssStyle, clusterStyle);
-  const dark = animateMaterial(new THREE.MeshPhysicalMaterial({ color: clusterStyle ? 0x090f0e : 0x010810, roughness: clusterStyle ? .38 : .2, metalness: 0, clearcoat: clusterStyle ? .06 : .45, envMapIntensity: .08 }), uniforms, 'plain', cssStyle, clusterStyle);
+    : rustStyle
+      ? new THREE.MeshStandardMaterial({ color: 0x796b5b, emissive: 0x100a04, emissiveIntensity: .025, roughness: .5, metalness: .04 })
+      : new THREE.MeshBasicMaterial({ color: eelStyle ? new THREE.Color(2.4, .12, .015) : new THREE.Color(.055, 2.5, 3.4), toneMapped: false }), uniforms, 'light', cssStyle, clusterStyle, rustStyle, eelStyle);
+  const subtle = animateMaterial(new THREE.MeshStandardMaterial({ color: clusterStyle ? 0x667b8d : rustStyle ? 0x887b6a : eelStyle ? 0xe08a3b : 0x43b9cd, emissive: clusterStyle ? 0x091a3a : rustStyle ? 0x080503 : eelStyle ? 0x431005 : 0x04758e, emissiveIntensity: clusterStyle ? .08 : rustStyle ? .025 : eelStyle ? .12 : .35, roughness: clusterStyle ? .82 : rustStyle ? .68 : eelStyle ? .57 : .33, metalness: clusterStyle ? .035 : rustStyle ? .06 : eelStyle ? .12 : .65 }), uniforms, 'plain', cssStyle, clusterStyle, rustStyle, eelStyle);
+  const dark = animateMaterial(new THREE.MeshPhysicalMaterial({ color: clusterStyle ? 0x090f0e : rustStyle ? 0x11181a : eelStyle ? 0x07020d : 0x010810, roughness: clusterStyle ? .38 : rustStyle ? .42 : eelStyle ? .42 : .2, metalness: 0, clearcoat: clusterStyle ? .06 : rustStyle ? .08 : eelStyle ? .1 : .45, envMapIntensity: .08 }), uniforms, 'plain', cssStyle, clusterStyle, rustStyle, eelStyle);
+  // Keep the bill material separate from facial details for a readable
+  // blue-gray silhouette under water.
+  const billMaterial = rustStyle
+    ? animateMaterial(new THREE.MeshPhysicalMaterial({ color: 0x344b69, roughness: .56, metalness: .025, clearcoat: .08, envMapIntensity: .16 }), uniforms, 'plain', false, false, true)
+    : null;
+  // ConeGeometry's point begins on +Y. Rotating +90 degrees points it along
+  // local -X (the fish's nose); the near-round root overlaps the head instead
+  // of leaving a detached spike, matching a marlin's long rounded bill.
+  if (rustStyle) {
+    const bill = new THREE.ConeGeometry(.18, 1.46, low ? 10 : 20, 1, false);
+    bill.rotateZ(Math.PI / 2);
+    bill.scale(1, .92, 1.0);
+    bill.translate(-2.43, .008, 0);
+    add(bill, billMaterial, 'marlin-spear-bill');
+  }
   const armorMaterial = clusterStyle
     ? animateMaterial(new THREE.MeshPhysicalMaterial({ color: 0x465a68, roughness: .88, metalness: .025, clearcoat: .025, side: THREE.DoubleSide }), uniforms, 'plain', false, true)
     : null;
@@ -354,7 +423,64 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
   const fins = [];
   const finProfile = points => points.map(([x,y,z]) => [x,y*finHeightScale,z*finDepthScale]);
   const tailFinProfile = points => points.map(([x,y,z]) => [x,y*tailHeightScale,z*tailDepthScale]);
-  function fin(name, base, edge, rays = 22, profile = finProfile) { const mesh = add(makeFinGeometry(profile(base), profile(edge), low), finMaterial(uniforms, rays, cssStyle, clusterStyle), name); fins.push(mesh); }
+  function fin(name, base, edge, rays = 22, profile = finProfile) {
+    // Rust fins use a solid, softly lit surface. The other fish keep their
+    // species-specific translucent shader and ray patterns unchanged.
+    const material = rustStyle
+      ? animateMaterial(new THREE.MeshPhysicalMaterial({
+        color: name.includes('dorsal') || name.includes('crescent-tail') ? 0x315778 : 0x496d83,
+        roughness: .5, metalness: .025, clearcoat: .08, clearcoatRoughness: .48,
+        side: THREE.DoubleSide,
+      }), uniforms, 'plain', false, false, true)
+      : finMaterial(uniforms, rays, cssStyle, clusterStyle, rustStyle, eelStyle);
+    const mesh = add(makeFinGeometry(profile(base), profile(edge), low, rustStyle ? .008 : .065), material, name);
+    fins.push(mesh);
+  }
+  if (rustStyle) {
+    // Striped marlin: the first dorsal is high and long-based, but not a
+    // sailfish sail. A distinct small second dorsal and anal fin sit aft.
+    fin('marlin-first-dorsal',
+      [[-1.28,.28,0],[-1.25,.31,0],[-1.15,.34,0],[-1.02,.37,0],[-.87,.40,0],[-.68,.40,0],[-.43,.37,0],[-.25,.34,0]],
+      [[-1.28,.28,0],[-1.25,.53,0],[-1.15,.84,-.01],[-1.02,1.08,-.02],[-.87,1.02,-.02],[-.68,.79,-.015],[-.43,.55,-.01],[-.25,.34,0]], 24);
+    fin('marlin-second-dorsal',
+      [[.98,.095,0],[1.15,.075,0],[1.34,.045,0]],
+      [[.98,.095,0],[1.10,.20,0],[1.22,.18,0],[1.34,.045,0]], 12);
+    fin('marlin-anal',
+      [[-.18,-.40,0],[.12,-.37,0],[.48,-.24,0]],
+      [[-.18,-.40,0],[-.12,-.52,0],[.08,-.56,.01],[.29,-.49,.01],[.48,-.24,0]], 12);
+    fin('marlin-second-anal',
+      [[.98,-.095,0],[1.15,-.075,0],[1.32,-.045,0]],
+      [[.98,-.095,0],[1.10,-.20,0],[1.22,-.17,0],[1.32,-.045,0]], 12);
+    for (const sign of [-1, 1]) {
+      const keel = [.82,.88,.94].map((t,index) => bodySurface(t, sign > 0 ? 0 : Math.PI, .008 + (index === 1 ? .014 : 0)));
+      tube(keel, .012, subtle, `marlin-caudal-keel-${sign}`);
+    }
+    for (const sign of [-1, 1]) {
+      fin(`marlin-pectoral-${sign}`,
+        [[-.82,-.055,.20*sign],[-.51,-.12,.22*sign],[-.16,-.16,.17*sign]],
+        [[-.82,-.055,.20*sign],[-.56,-.16,.38*sign],[-.22,-.25,.48*sign],[-.04,-.21,.43*sign],[-.16,-.16,.17*sign]], 12);
+      fin(`marlin-pelvic-${sign}`,
+        [[.22,-.24,.12*sign],[.48,-.18,.10*sign],[.70,-.11,.07*sign]],
+        [[.22,-.24,.12*sign],[.38,-.33,.23*sign],[.68,-.34,.25*sign],[.82,-.23,.15*sign],[.70,-.11,.07*sign]], 10);
+      fin(`marlin-crescent-tail-${sign}`,
+        [[1.42,.045,0],[1.56,0,0],[1.42,-.045,0]],
+        [[2.06,.78,.012*sign],[1.88,.40,.012*sign],[1.72,0,.012*sign],[1.88,-.40,.012*sign],[2.06,-.78,.012*sign]], 14, tailFinProfile);
+    }
+  } else if (eelStyle) {
+    // Eels have low continuous dorsal/anal folds and tiny pectorals. There is
+    // no oversized fork or streamer: the tapering body itself is the tail.
+    fin('eel-dorsal',
+      [[-.22,.18,0],[.38,.14,0],[1.02,.085,0],[1.72,.035,0]],
+      [[-.22,.18,0],[.18,.27,0],[.72,.23,-.01],[1.30,.13,-.01],[1.72,.035,0]], 18);
+    fin('eel-anal',
+      [[-.10,-.18,0],[.46,-.13,0],[1.10,-.075,0],[1.72,-.03,0]],
+      [[-.10,-.18,0],[.22,-.26,0],[.78,-.22,.01],[1.34,-.12,.01],[1.72,-.03,0]], 18);
+    for (const sign of [-1, 1]) {
+      fin(`eel-pectoral-${sign}`,
+        [[-1.02,-.055,.095*sign],[-.87,-.08,.10*sign],[-.70,-.10,.075*sign]],
+        [[-1.02,-.055,.095*sign],[-.89,-.15,.19*sign],[-.66,-.22,.26*sign],[-.57,-.17,.16*sign],[-.70,-.10,.075*sign]], 12);
+    }
+  } else {
   fin('dorsal-sail',
     cssStyle ? [[-1.00,.38,0],[-.54,.45,0],[-.02,.36,0],[.54,.14,0]] : clusterStyle ? [[-.40,.57,0],[.08,.58,0],[.53,.40,0],[.96,.15,0]] : [[-.85,.47,0],[-.3,.52,0],[.45,.36,0],[1.27,.11,0]],
     cssStyle ? [[-1.00,.38,0],[-.78,.57,0],[-.42,.68,-.02],[-.08,.61,-.02],[.28,.39,-.02],[.54,.14,0]] : clusterStyle ? [[-.40,.57,0],[-.12,.91,0],[.32,1.02,-.02],[.53,.66,-.02],[.76,.36,0],[.96,.15,0]] : [[-.85,.47,0],[-.48,.95,0],[.58,1.51,-.025],[.33,.91,-.02],[.75,.56,0],[1.27,.11,0]],
@@ -392,11 +518,16 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
       }
     }
   }
-  const eyeScale = clusterStyle ? .58 : cssStyle ? 1.04 : 1;
+  }
+  const eyeScale = clusterStyle ? .58 : rustStyle ? .88 : eelStyle ? .72 : cssStyle ? 1.04 : 1;
   for (const sign of [-1, 1]) {
     const eyeAnchor = clusterStyle
       ? bodySurface(.29, sign > 0 ? .20 : Math.PI - .20, .035)
-      : new THREE.Vector3(-1.455, .112, .196 * sign);
+      : rustStyle
+        ? new THREE.Vector3(-1.47, .13, .17 * sign)
+        : eelStyle
+          ? new THREE.Vector3(-1.57, .085, .105 * sign)
+        : new THREE.Vector3(-1.455, .112, .196 * sign);
     const { x, y, z } = eyeAnchor;
     const eyeball = new THREE.SphereGeometry(1, 28, 22); eyeball.scale(.153*eyeScale,.157*eyeScale,.088*eyeScale); eyeball.translate(x,y,z);
     add(eyeball, dark, 'black-eye-' + sign);
@@ -413,6 +544,25 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
         gill.push(bodySurface(t, sign > 0 ? angle : Math.PI - angle, .012));
       }
       tube(gill,.0045,subtle,`armor-seam-${sign}`);
+    } else if (rustStyle) {
+      // The gill seam sits behind the eye and follows the marlin's tapered head
+      // head; it is intentionally shorter than Go's branching anatomy.
+      const gillPoints = [];
+      for (let j = 0; j <= 12; j++) {
+        const t = .30 + j / 12 * .12;
+        const angle = -.78 + j / 12 * 1.56;
+        gillPoints.push(bodySurface(t, sign > 0 ? angle : Math.PI - angle, .01));
+      }
+      tube(gillPoints, .0045, dark, `billfish-gill-${sign}`);
+      tube(gillPoints.map(p => [p.x + .012, p.y + .003, p.z + sign * .003]), .0028, subtle, `billfish-gill-rim-${sign}`);
+    } else if (eelStyle) {
+      const gillPoints = [];
+      for (let j = 0; j <= 10; j++) {
+        const t = .29 + j / 10 * .085;
+        const angle = -.68 + j / 10 * 1.36;
+        gillPoints.push(bodySurface(t, sign > 0 ? angle : Math.PI - angle, .006));
+      }
+      tube(gillPoints, .0045, dark, `eel-gill-${sign}`);
     } else {
       for (let j = 0; j <= 18; j++) {
         const angle = -.98 + j / 18 * 2.05, t = .27 + Math.cos(angle) * .037;
@@ -427,6 +577,10 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
       const seam = [.018,.055,.095,.14,.19].map((t,index) =>
         bodySurface(t, sign > 0 ? -.08 - index * .05 : Math.PI + .08 + index * .05, .016));
       tube(seam,.006,dark,`placoderm-mouth-seam-${sign}`);
+    } else if (rustStyle) {
+      tube([[-1.86,-.018,.013*sign],[-1.73,-.055,.062*sign],[-1.54,-.09,.11*sign]], .008, dark, `billfish-mouth-${sign}`);
+    } else if (eelStyle) {
+      tube([[-1.86,-.012,.013*sign],[-1.76,-.045,.052*sign],[-1.63,-.042,.088*sign]], .006, dark, `eel-mouth-${sign}`);
     } else {
       tube(cssStyle
         ? [[-1.86,-.018,.013*sign],[-1.77,-.062,.075*sign],[-1.64,-.050,.118*sign]]
@@ -437,7 +591,7 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
     }
     // Branching luminous conduits follow the *surface* so they remain coherent
     // under rotation and deformation, rather than being a 2D decal.
-    if (!cssStyle && !clusterStyle) {
+    if (!cssStyle && !clusterStyle && !rustStyle) {
       for (let lane = 0; lane < 4; lane++) {
         const points = [];
         for (let j = 0; j <= 26; j++) {
@@ -469,6 +623,17 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
         const dot = new THREE.SphereGeometry(.011 + (dotIndex % 2) * .003, low ? 7 : 10, 7);
         dot.scale(.9, .9, .42); dot.translate(p.x, p.y, p.z);
         add(dot, subtle, 'css-style-mark');
+      }
+    } else if (eelStyle) {
+      // Sparse amber nodes suggest JavaScript event hand-offs without
+      // replacing the eel's organic silhouette with a circuit board.
+      for (let mark = 0; mark < 4; mark++) {
+        const t = .40 + mark * .13;
+        const angle = -.34 + (mark % 2) * .42;
+        const p = bodySurface(t, sign > 0 ? angle : Math.PI - angle, .009);
+        const dot = new THREE.SphereGeometry(.008 + (mark % 2) * .002, low ? 6 : 9, 6);
+        dot.scale(1.8, .65, .45); dot.translate(p.x, p.y, p.z);
+        add(dot, luminous, 'js-event-node');
       }
     }
   }
@@ -531,10 +696,17 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
   };
   setVisualState(visualState);
   let disposed = false;
+  let rustSurgeCurrent = 0;
   return {
     group, body, fins, waterUniforms:habitatUniforms, setVisualState,
-    update(time, {power=.48, glow=1, bodyPhase, bodyFrequency, bodyWavelength, turn=0, effort=power, tetherLoad=0, visibility=1, styleDelta=.016}={}) {
+    update(time, {power=.48, glow=1, bodyPhase, bodyFrequency, bodyWavelength, turn=0, effort=power, tetherLoad=0, surge=0, visibility=1, styleDelta=.016}={}) {
       updateVisualStyle(styleDelta);
+      if(rustStyle){
+        const target=clamp(surge,0,1);
+        const rate=target>rustSurgeCurrent?18:5.5;
+        rustSurgeCurrent+=(target-rustSurgeCurrent)*(1-Math.exp(-Math.max(.001,styleDelta)*rate));
+        uniforms.uRustSurge.value=rustSurgeCurrent;
+      }
       const synced=Number.isFinite(bodyPhase)&&Number.isFinite(bodyFrequency)&&bodyFrequency>0;
       uniforms.uSwimTime.value=synced?bodyPhase/(bodyFrequency*TAU):time+phase;
       uniforms.uSwimFrequency.value=synced?bodyFrequency*TAU:3.5;

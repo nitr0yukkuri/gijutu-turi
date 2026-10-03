@@ -32,6 +32,28 @@ export const K8S_LEVIATHAN_SWIM_VISUAL_PROFILE: FishSwimVisualProfile = {
   finFlutterGain: .055,
 };
 
+/** Striped marlin keep the head and shoulder stiff while the rear third drives the burst. */
+export const RUST_BILLFISH_SWIM_VISUAL_PROFILE: FishSwimVisualProfile = {
+  flexStartX: -.15,
+  flexLength: 1.9,
+  bendGain: .54,
+  turnGain: .38,
+  finPhaseLag: .28,
+  finFlutterGain: .095,
+};
+
+/** Eels use an anguilliform wave: the whole trunk participates and the
+ * displacement grows smoothly toward the tail rather than starting at a
+ * stiff caudal peduncle. */
+export const JS_EEL_SWIM_VISUAL_PROFILE: FishSwimVisualProfile = {
+  flexStartX: -1.78,
+  flexLength: 4.15,
+  bendGain: .88,
+  turnGain: .58,
+  finPhaseLag: .16,
+  finFlutterGain: .032,
+};
+
 export function fishFlexEnvelopeAt(localX: number, profile: FishSwimVisualProfile): number {
   const amount = Math.max(0, Math.min(1, (localX - profile.flexStartX) / profile.flexLength));
   return amount * amount;
