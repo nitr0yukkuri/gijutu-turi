@@ -4,6 +4,10 @@ import { FISH_GAITS } from "./fish-contract.js";
 import { HOOK_RESULTS } from "./hook-timing.js";
 import type { FishMotionSnapshot } from "./fish.js";
 
+export const CATCH_SAVE_STATUSES = ["none", "pending", "saved", "failed"] as const;
+export type CatchSaveStatus = typeof CATCH_SAVE_STATUSES[number];
+export const canContinueAfterCatchSave = (status: CatchSaveStatus): boolean => status === "saved";
+
 export const OCEAN_PHASES = ["idle", "casting", "waiting", "biting", "fighting", "caught", "escaped", "retrieving"] as const;
 export const OCEAN_MODES = ["rest", "surge", "warning", "split"] as const;
 export const OCEAN_ESCAPE_REASONS = ["", "missed", "line", "slack", "distance"] as const;
@@ -97,6 +101,8 @@ export const oceanMessageSchema = z.object({
   serverNow: finite,
   controllers: z.number().int().nonnegative(),
   displays: z.number().int().nonnegative(),
+  // Optional while the separately deployed API is rolling forward.
+  catchSaveStatus: z.enum(CATCH_SAVE_STATUSES).optional(),
 }).strict();
 
 export type OceanMessage = z.infer<typeof oceanMessageSchema>;

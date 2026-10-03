@@ -2,6 +2,7 @@ import type { FishSpeciesId } from "../fish-species.js";
 import type { OceanClientState } from "../ocean-contract.js";
 export type OceanState = OceanClientState;
 export type { OceanMessage, OceanMode, OceanPhase } from "../ocean-contract.js";
+export type { CatchSaveStatus } from "../ocean-contract.js";
 export type { FishSpeciesId } from "../fish-species.js";
 
 export type CollectionEntry = {

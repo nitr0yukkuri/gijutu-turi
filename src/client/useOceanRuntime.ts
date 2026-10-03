@@ -1,18 +1,28 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { isOceanMessage } from "../ocean-contract.js";
 import { FishingAudioController } from "../audio/fishing-audio.js";
-import { castStrengthFromMotion, isCastMotionReleased, isCastMotionStart, isReelMotionStart, isReelMotionStop, reelAngularSignal } from "./cast-motion.js";
+import { CastMotionGesture, ReelMotionGesture, castStrengthFromMotion, reelAngularSignal } from "./cast-motion.js";
+import { createControllerLink, isLoopbackHost } from "./controller-url.js";
 import { RodStrokeMotion } from "./rod-stroke-motion.js";
 import { isFirstCatch } from "./catch-discovery.js";
 import { fetchCollection, type CollectionLoadResult } from "./collection-response.js";
 import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH } from "../cast-distance.js";
 import { FISH_SPECIES, type FishSpeciesId } from "../fish-species.js";
-import type { Collection, CollectionEntry, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
+import type { CatchSaveStatus, Collection, CollectionEntry, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
 
 const configuredBackendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim().replace(/\/+$/, "");
+const staticRouteMode = import.meta.env.VITE_STATIC_ROUTE_MODE === "query";
 const backendUrl = (path: string): string => configuredBackendUrl ? `${configuredBackendUrl}${path}` : path;
 const roomFishStorageKey = "gijutu.ocean-room-fish";
 const COLLECTION_LOAD_ERROR_MESSAGE = "図鑑を読み込めません。DBとの接続を確認してください。";
+const staticFishQueryById: Partial<Record<FishSpeciesId, string>> = {
+  "fish-001": "gofish",
+  "whale-001": "docker",
+  "css-001": "cssfish",
+  "k8s-001": "k8sfish",
+  "rust-001": "rustfish",
+  "js-001": "jseel",
+};
 
 class OceanRoomRateLimitError extends Error {
   constructor(readonly retryAfterSeconds: number) {
@@ -101,10 +111,13 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const [collection, setCollection] = useState<Collection>(() => initialCollection(false));
   const collectionRef = useRef(collection);
   const [newEncounter, setNewEncounter] = useState(false);
+  const [catchSaveStatus, setCatchSaveStatus] = useState<CatchSaveStatus>("none");
+  const catchSaveStatusRef = useRef<CatchSaveStatus>("none");
   const [selectedCollectionId, setSelectedCollectionId] = useState("fish-001");
   const [controllerUrl, setControllerUrl] = useState("");
   const [controllerHost, setControllerHost] = useState("");
-  const [sensorStatus, setSensorStatus] = useState("投げるときは振り、魚が掛かったらスマホを回します。");
+  const [controllerUrlError, setControllerUrlError] = useState("");
+  const [sensorStatus, setSensorStatus] = useState("投げるときは狙って一度振り、魚が掛かったらスマホを回します。");
   const [sensorButtonLabel, setSensorButtonLabel] = useState("モーション操作を有効にする");
   const [sensorsOn, setSensorsOn] = useState(false);
 
@@ -127,14 +140,15 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const fishingAudioRef = useRef<FishingAudioController | null>(null);
   const sensorTimerRef = useRef<number | null>(null);
   const sensorSamplesRef = useRef(0);
-  const sensorPeakRef = useRef({ acceleration: 0, angularSpeed: 0 });
-  const sensorPeakAtRef = useRef(0);
   const lastGestureRef = useRef(0);
   const gravityRef = useRef({ x: 0, y: 0, z: 0 });
+  const gravitySampleAtRef = useRef(0);
   const warmupRef = useRef(0);
   const motionReelRef = useRef(false);
   const motionListenerRef = useRef<((event: DeviceMotionEvent) => void) | null>(null);
   const rodStrokeMotionRef = useRef(new RodStrokeMotion());
+  const castGestureRef = useRef(new CastMotionGesture());
+  const reelMotionGestureRef = useRef(new ReelMotionGesture());
   const receivedRodStrokeRef = useRef<number | null>(null);
 
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -278,9 +292,19 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     else cast();
   }, [cast, send, startReel, stopReel]);
 
+  const retryCatchSave = useCallback(() => {
+    if (stateRef.current.phase === "caught" && catchSaveStatusRef.current === "failed") {
+      send({ action: "retry-catch-save" });
+    }
+  }, [send]);
+
   const applyState = useCallback((message: OceanMessage) => {
     const previous = stateRef.current;
     const next = message.state;
+    const previousCatchSaveStatus = catchSaveStatusRef.current;
+    const nextCatchSaveStatus = message.catchSaveStatus ?? (next.phase === "caught" ? "saved" : "none");
+    catchSaveStatusRef.current = nextCatchSaveStatus;
+    setCatchSaveStatus(nextCatchSaveStatus);
     stateRef.current = next;
     setState(next);
     setDisplayConnected(message.displays > 0);
@@ -309,33 +333,52 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
         const criticalHook = previous.phase === "biting" && next.hookResult === "critical";
         showHookFeedback(criticalHook);
         vibrate(criticalHook ? [35, 25, 55] : 80);
+        lastVibrationRef.current = Date.now();
       }
       if (next.phase === "caught") {
         setNewEncounter(false);
         setSelectedCollectionId(next.fishId);
         showFeedback(""); vibrate([90, 90, 180]);
-        if (!isPhone) {
-          // The room persists the catch before broadcasting this snapshot.
-          // The display only reloads the read model; it must not submit a
-          // second catch command from the browser.
-          const previousCatches = collectionRef.current.entries.find(entry => entry.id === next.fishId)?.catches ?? 0;
-          void loadCollection().then(result => {
-            if (!result.ok) { showToast(COLLECTION_LOAD_ERROR_MESSAGE); return; }
-            const loaded = result.value;
-            const currentCatches = loaded.entries.find(entry => entry.id === next.fishId)?.catches ?? previousCatches;
-            const firstCatch = isFirstCatch(previousCatches, currentCatches);
-            setNewEncounter(firstCatch);
-            showToast(firstCatch ? "新しい魚が図鑑に登録されました。" : "魚を釣り上げました。");
-          });
-        }
       }
       if (next.phase === "escaped") {
         const [title, hint] = failureHints[next.reason] ?? ["沖へ、逃げられた。", "魚が落ち着く間に、少しずつ巻こう。"];
         showFeedback(title, hint); vibrate([160, 80, 60]);
       }
     }
-    if (next.phase === "fighting" && previous.mode !== next.mode && next.mode === "split") vibrate([70, 40, 70, 40, 100]);
-    if (next.phase === "fighting" && next.tension > .82 && Date.now() - lastVibrationRef.current > 900) { vibrate(45); lastVibrationRef.current = Date.now(); }
+    if (next.phase === "caught" && nextCatchSaveStatus === "saved" && previousCatchSaveStatus !== "saved" && !isPhone) {
+      // Persistence belongs to the room. The display reloads only after the
+      // server confirms the write, and never submits a duplicate catch.
+      const previousCatches = collectionRef.current.entries.find(entry => entry.id === next.fishId)?.catches ?? 0;
+      void loadCollection().then(result => {
+        if (!result.ok) { showToast(COLLECTION_LOAD_ERROR_MESSAGE); return; }
+        const loaded = result.value;
+        const currentCatches = loaded.entries.find(entry => entry.id === next.fishId)?.catches ?? previousCatches;
+        const firstCatch = isFirstCatch(previousCatches, currentCatches);
+        setNewEncounter(firstCatch);
+        showToast(firstCatch ? "新しい魚が図鑑に登録されました。" : "魚を釣り上げました。");
+      });
+    }
+    const now = Date.now();
+    if (next.phase === "fighting" && previous.phase !== "fighting" && next.fishId === "k8s-001" && next.mode === "warning") {
+      // The leviathan's first warning is its encounter reveal, not a routine
+      // mode change; give the connected phone one restrained arrival pulse.
+      vibrate([42, 58, 96]);
+      lastVibrationRef.current = now;
+    } else if (next.phase === "fighting" && previous.phase === "fighting" && previous.mode !== next.mode) {
+      if (next.mode === "surge") vibrate([38, 34, 62]);
+      else if (next.mode === "warning") vibrate([24, 42, 24]);
+      else if (next.mode === "split") vibrate([55, 35, 55, 35, 85]);
+      lastVibrationRef.current = now;
+    }
+    if (next.phase === "fighting" && next.tension >= .58) {
+      const danger = clamp((next.tension - .58) / .42, 0, 1);
+      const interval = 1250 - danger * 720;
+      if (now - lastVibrationRef.current >= interval) {
+        const pulse = Math.round(18 + danger * 38);
+        vibrate(next.tension >= .94 ? [pulse, 32, pulse, 32, pulse] : pulse);
+        lastVibrationRef.current = now;
+      }
+    }
   }, [cancelCharge, getFishingAudio, isPhone, loadCollection, setConnected, showFeedback, showHookFeedback, showToast, stopReel, vibrate]);
 
   const getRoom = useCallback(async (): Promise<{ id: string; host?: string }> => {
@@ -343,7 +386,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     const stored = sessionStorage.getItem("gijutu.ocean-room");
     const storedHost = sessionStorage.getItem("gijutu.ocean-host-v2") ?? undefined;
     const storedFish = sessionStorage.getItem(roomFishStorageKey);
-    if (stored && storedHost && storedFish === roomFishKey) return { id: stored, host: storedHost };
+    if (stored && storedHost && !isLoopbackHost(storedHost) && storedFish === roomFishKey) return { id: stored, host: storedHost };
     if (stored) sessionStorage.removeItem("gijutu.ocean-room");
     if (storedHost) sessionStorage.removeItem("gijutu.ocean-host-v2");
     if (storedFish) sessionStorage.removeItem(roomFishStorageKey);
@@ -365,14 +408,16 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   }, [controllerId, initialFishId, isPhone, roomFishKey]);
 
   const connect = useCallback(async () => {
-    const scheduleRetry = (finalMessage: string) => {
+    const scheduleRetry = (message: string, retryAfterMs?: number) => {
       if (closingRef.current || pausedForVisibilityRef.current || retryTimerRef.current !== null) return;
-      if (retriesRef.current >= 4) { showToast(finalMessage); return; }
       const attempt = retriesRef.current++;
+      const backoff = Math.min(1000 * 2 ** Math.min(attempt, 5), 30_000) + Math.floor(Math.random() * 500);
+      const delay = retryAfterMs === undefined ? backoff : Math.max(1000, retryAfterMs);
+      if (attempt === 0 || retryAfterMs !== undefined) showToast(message);
       retryTimerRef.current = window.setTimeout(() => {
         retryTimerRef.current = null;
         void connect();
-      }, 1000 + attempt * 1000);
+      }, delay);
     };
     try {
       const room = await getRoom();
@@ -380,11 +425,22 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       const nextRoomId = room.id;
       if (!/^sea_[a-f0-9]{32}$/.test(nextRoomId)) throw new Error("link");
       if (!isPhone) {
-        const phoneUrl = new URL(routePath, window.location.origin);
-        if (room.host && ["localhost", "127.0.0.1", "[::1]"].includes(phoneUrl.hostname)) phoneUrl.hostname = room.host;
-        phoneUrl.searchParams.set("controller", nextRoomId);
-        setControllerHost(room.host ?? phoneUrl.hostname);
-        setControllerUrl(phoneUrl.href);
+        const phoneLink = createControllerLink(
+          window.location.origin,
+          routePath,
+          nextRoomId,
+          configuredBackendUrl ? undefined : room.host,
+          staticRouteMode ? { routeMode: "query", fishQuery: initialFishId ? staticFishQueryById[initialFishId] : undefined } : undefined,
+        );
+        if (phoneLink) {
+          setControllerHost(phoneLink.host);
+          setControllerUrl(phoneLink.href);
+          setControllerUrlError("");
+        } else {
+          setControllerHost("");
+          setControllerUrl("");
+          setControllerUrlError("PCのLANアドレスを取得できません。PCとスマホを同じWi-Fiへ接続し、開発サーバーとファイアウォールを確認してください。");
+        }
       }
       const url = configuredBackendUrl
         ? new URL(`${configuredBackendUrl}/ocean-ws`)
@@ -412,23 +468,24 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
         setConnected(false);
         if (pausedForVisibilityRef.current) return;
         if (closingRef.current) return;
-        if (!opened && !isPhone) {
+        if (!opened && !isPhone && retriesRef.current >= 2) {
+          // If a room vanished during a backend restart, retry the same room
+          // briefly, then create a fresh room instead of reconnecting forever.
           sessionStorage.removeItem("gijutu.ocean-room");
           sessionStorage.removeItem("gijutu.ocean-host-v2");
           sessionStorage.removeItem(roomFishStorageKey);
         }
-        scheduleRetry(isPhone ? "接続できません。海の画面から新しいURLを開いてください。" : "海に接続できません。ページを再読み込みしてください。");
+        scheduleRetry(isPhone ? "接続を再試行しています。接続できない場合は海の画面から新しいURLを開いてください。" : "海との接続が切れました。再接続しています。");
       });
       socket.addEventListener("error", () => setConnected(false));
     } catch (error) {
       setConnected(false);
       if (error instanceof OceanRoomRateLimitError) {
         const wait = Math.max(1, Math.ceil(error.retryAfterSeconds));
-        showToast(`接続が集中しています。${wait}秒後にもう一度試してください。`);
+        scheduleRetry(`接続が集中しています。${wait}秒後に自動で再試行します。`, wait * 1000);
         return;
       }
-      showToast("海に接続できません。再接続しています。");
-      scheduleRetry("海に接続できません。ページを再読み込みしてください。");
+      scheduleRetry("海に接続できません。再接続しています。");
     }
   }, [applyState, getRoom, isPhone, routePath, setConnected, showToast]);
 
@@ -571,27 +628,41 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const handlePointerCancel = useCallback(() => { cancelCharge(); stopReel(); }, [cancelCharge, stopReel]);
 
   const toggleSensor = useCallback(async () => {
-    if (sensorsOn) { showToast("釣り竿は有効です。小さく振ってください。"); return; }
+    if (sensorsOn) { showToast("釣り竿センサーは有効です。狙って一度振ってください。"); return; }
     try {
       if (!window.isSecureContext || !window.DeviceMotionEvent) { setSensorStatus("センサーが使えない環境です。下のボタンで投げられます。"); return; }
       const motionApi = window.DeviceMotionEvent as typeof DeviceMotionEvent & { requestPermission?: () => Promise<"granted" | "denied"> };
       if (typeof motionApi.requestPermission === "function" && await motionApi.requestPermission() !== "granted") { setSensorStatus("センサーは許可されていません。タッチ操作で遊べます。"); return; }
       sensorSamplesRef.current = 0;
       warmupRef.current = 0;
+      gravitySampleAtRef.current = 0;
+      castGestureRef.current.reset();
+      reelMotionGestureRef.current.reset();
+      rodStrokeMotionRef.current.reset();
       if (sensorTimerRef.current !== null) window.clearTimeout(sensorTimerRef.current);
       const motion = (event: DeviceMotionEvent) => {
-        if (document.hidden) return;
+        if (document.hidden) {
+          castGestureRef.current.reset();
+          reelMotionGestureRef.current.reset();
+          rodStrokeMotionRef.current.reset();
+          if (motionReelRef.current) stopReel();
+          return;
+        }
         const linear = event.acceleration;
         const hasLinear = Boolean(linear && [linear.x, linear.y, linear.z].every(Number.isFinite));
         const raw = hasLinear ? linear : event.accelerationIncludingGravity;
         if (!raw || typeof raw.x !== "number" || typeof raw.y !== "number" || typeof raw.z !== "number" || ![raw.x, raw.y, raw.z].every(Number.isFinite)) return;
         sensorSamplesRef.current += 1;
-        if (sensorSamplesRef.current === 1) { setSensorStatus("投げるときは振り、魚が掛かったらスマホを回します。"); setSensorButtonLabel("モーション操作は有効です"); }
+        if (sensorSamplesRef.current === 1) { setSensorStatus("投げるときは狙って一度振り、魚が掛かったらスマホを回します。"); setSensorButtonLabel("モーション操作は有効です"); }
         let { x, y, z } = raw;
+        const now = performance.now();
         if (!hasLinear) {
           const gravity = gravityRef.current;
-          gravity.x = gravity.x * .85 + x * .15; gravity.y = gravity.y * .85 + y * .15; gravity.z = gravity.z * .85 + z * .15;
+          const elapsed = gravitySampleAtRef.current === 0 ? 1 / 60 : clamp((now - gravitySampleAtRef.current) / 1000, .005, .1);
+          const alpha = 1 - Math.exp(-elapsed / .1);
+          gravity.x += (x - gravity.x) * alpha; gravity.y += (y - gravity.y) * alpha; gravity.z += (z - gravity.z) * alpha;
           x -= gravity.x; y -= gravity.y; z -= gravity.z;
+          gravitySampleAtRef.current = now;
         }
         if (warmupRef.current++ < 15) return;
         const acceleration = Math.hypot(x, y, z);
@@ -599,58 +670,52 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
         const angularSpeed = rate && [rate.alpha, rate.beta, rate.gamma].every(Number.isFinite)
           ? Math.hypot(rate.alpha ?? 0, rate.beta ?? 0, rate.gamma ?? 0)
           : 0;
-        const now = performance.now();
         const phase = stateRef.current.phase;
         if (!(phase === "idle" || phase === "biting" || phase === "fighting") || !onlineRef.current || now - lastGestureRef.current < 700 && phase !== "fighting") {
-          sensorPeakRef.current = { acceleration: 0, angularSpeed: 0 };
+          castGestureRef.current.reset();
+          reelMotionGestureRef.current.reset();
           rodStrokeMotionRef.current.reset();
           if (motionReelRef.current) stopReel();
           return;
         }
         if (phase === "fighting") {
+          castGestureRef.current.reset();
           const rotation = reelAngularSignal(rate?.alpha ?? null, rate?.beta ?? null, rate?.gamma ?? null);
           const canRecognizeRodStroke = !reelHeldRef.current && angularSpeed < 150;
           const rodStroke = canRecognizeRodStroke && rodStrokeMotionRef.current.update({ x, y, z }, now);
           if (rodStroke) {
             performRodStroke();
             lastGestureRef.current = now;
-            sensorPeakRef.current = { acceleration: 0, angularSpeed: 0 };
+            reelMotionGestureRef.current.reset();
             return;
           }
-          if (rodStrokeMotionRef.current.isPending()) return;
+          if (rodStrokeMotionRef.current.isPending()) {
+            reelMotionGestureRef.current.reset();
+            return;
+          }
           if (!canRecognizeRodStroke) rodStrokeMotionRef.current.reset();
-          if (isReelMotionStart(rotation)) {
+          if (reelHeldRef.current) {
+            reelMotionGestureRef.current.reset();
+            return;
+          }
+          const reelGesture = reelMotionGestureRef.current.update(rotation, now);
+          if (reelGesture === "start") {
             // Motion owns the lease only when it started it. This prevents a
             // sensor sample from stopping a reel held by the screen control.
-            if (!reelHeldRef.current) {
-              motionReelRef.current = true;
-              startReel();
-            }
-          } else if (motionReelRef.current && isReelMotionStop(rotation)) {
+            motionReelRef.current = true;
+            startReel();
+          } else if (motionReelRef.current && reelGesture === "stop") {
             stopReel();
           }
           return;
         }
         rodStrokeMotionRef.current.reset();
-        const peak = sensorPeakRef.current;
-        if (isCastMotionStart(acceleration, angularSpeed) && peak.acceleration === 0 && peak.angularSpeed === 0) {
-          peak.acceleration = acceleration;
-          peak.angularSpeed = angularSpeed;
-          sensorPeakAtRef.current = now;
-        }
-        if (peak.acceleration || peak.angularSpeed) {
-          peak.acceleration = Math.max(acceleration, peak.acceleration);
-          peak.angularSpeed = Math.max(angularSpeed, peak.angularSpeed);
-          if (now - sensorPeakAtRef.current > 650) {
-            sensorPeakRef.current = { acceleration: 0, angularSpeed: 0 };
-            return;
-          }
-          if (isCastMotionReleased(acceleration, angularSpeed) && now - sensorPeakAtRef.current > 60) {
-            if (stateRef.current.phase === "biting") send({ action: "hook" });
-            else cast(castStrengthFromMotion(peak.acceleration, peak.angularSpeed), 0);
-            lastGestureRef.current = now;
-            sensorPeakRef.current = { acceleration: 0, angularSpeed: 0 };
-          }
+        reelMotionGestureRef.current.reset();
+        const gesture = castGestureRef.current.update(acceleration, angularSpeed, now);
+        if (gesture) {
+          if (stateRef.current.phase === "biting") send({ action: "hook" });
+          else cast(castStrengthFromMotion(gesture.acceleration, gesture.angularSpeed), 0);
+          lastGestureRef.current = now;
         }
       };
       motionListenerRef.current = motion;
@@ -681,11 +746,11 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   }, []);
 
   return {
-    state, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, toast, chargeProgress, reticle,
-    soundEnabled, collection, selectedCollectionId, setSelectedCollectionId, controllerUrl, controllerHost,
+    state, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle,
+    soundEnabled, collection, selectedCollectionId, setSelectedCollectionId, controllerUrl, controllerHost, controllerUrlError,
     sensorStatus, sensorButtonLabel, sensorsOn,
     actions: {
-      activate, cast, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, releaseCharge,
+      activate, retryCatchSave, cast, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, releaseCharge,
       startCharge, startReel, stopReel, performRodStroke, toggleSensor, toggleSound, showToast, showFeedback,
     },
   };
