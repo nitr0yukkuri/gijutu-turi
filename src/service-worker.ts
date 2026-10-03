@@ -8,6 +8,7 @@ const PRECACHE_PATHS = [
   "dockerwhale",
   "docker",
   "cssfish",
+  "k8sfish",
   "rustfish",
   "jseel",
   "ocean-app.js",
