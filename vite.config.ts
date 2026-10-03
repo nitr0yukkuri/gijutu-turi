@@ -52,7 +52,6 @@ export default defineConfig({
       "/api": { target: backendHttp, changeOrigin: true },
       "/health": { target: backendHttp, changeOrigin: true },
       "/ocean-ws": { target: backendWs, ws: true },
-      "/ws": { target: backendWs, ws: true },
       "/manifest.webmanifest": { target: backendHttp },
       "/service-worker.js": { target: backendHttp },
       "/favicon.svg": { target: backendHttp },

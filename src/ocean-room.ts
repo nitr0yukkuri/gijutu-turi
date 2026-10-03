@@ -58,7 +58,7 @@ export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eve
   // the same fishing action.
   const canControl=(room:Room,client:Client)=>client.role==='controller'||client.role==='display'&&count(room,'controller')===0;
   const broadcast=(room:Room)=>{
-    const message:OceanMessage={type:'ocean',state:room.game.snapshot(),rodStroke:room.rodStroke,serverNow:Date.now(),controllers:count(room,'controller'),displays:count(room,'display')};
+    const message:OceanMessage={type:'ocean',state:room.game.wireSnapshot(),rodStroke:room.rodStroke,serverNow:Date.now(),controllers:count(room,'controller'),displays:count(room,'display')};
     const data=JSON.stringify(message);
     for(const client of room.clients.keys())if(client.readyState===WebSocket.OPEN&&client.bufferedAmount<64_000)client.send(data);
   };

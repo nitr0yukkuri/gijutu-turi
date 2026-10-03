@@ -26,13 +26,17 @@ test('K8S echo copies are faint at range, fan out on surges, then gather on warn
   const closeSplit = k8sFightPresentation('fighting', 5, 'split');
   const closeWarning = k8sFightPresentation('fighting', 5, 'warning');
 
-  assert.ok(Math.abs(farRest.echoVisibility - .00216) < 1e-12);
+  assert.ok(Math.abs(farRest.echoVisibility - .00072) < 1e-12);
   assert.ok(closeRest.echoVisibility > farRest.echoVisibility);
   assert.ok(closeSurge.echoVisibility > closeRest.echoVisibility);
   assert.ok(closeSplit.echoVisibility > closeSurge.echoVisibility);
+  assert.ok(closeSplit.echoVisibility < .26, 'the shadows stay subordinate to the main body');
   assert.ok(closeSplit.echoSpread > closeSurge.echoSpread);
   assert.ok(closeWarning.echoSpread < closeRest.echoSpread, 'the copies gather before the landing');
   assert.ok(closeSplit.wakeGain > closeSurge.wakeGain, 'the surface lunge makes the strongest trace');
+  const breach = k8sFightPresentation('fighting', 5, 'split', 1);
+  assert.ok(breach.echoVisibility > closeSplit.echoVisibility * .7, 'replicas remain readable during the breach');
+  assert.ok(breach.echoSpread > 1.5, 'the formation stays legible instead of collapsing into the leader');
 });
 
 test('K8S replicas stay absent before the fight and clear for the catch portrait', () => {

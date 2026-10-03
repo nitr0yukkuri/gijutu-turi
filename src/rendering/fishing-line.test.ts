@@ -46,6 +46,28 @@ test('projects the submerged leader but preserves the shared surface point',()=>
   assert.ok(pointAt(water,16).y>-4,'the visible submerged endpoint should follow the projected fish position');
 });
 
+test('blends fish refraction from the water crossing to avoid a visible kink',()=>{
+  const start={x:0,y:2,z:0},end={x:10,y:-4,z:0};
+  const baseAir=buffer(49),baseWater=buffer(49),projectedAir=buffer(49),projectedWater=buffer(49);
+  const base=updateFishingLineBuffers(start,end,baseAir,baseWater,()=>0,.4,.2,.5);
+  const projected=updateFishingLineBuffers(
+    start,end,projectedAir,projectedWater,()=>0,.4,.2,.5,
+    (point,progress)=>{point.y+=.65*progress*progress*(3-2*progress);},
+  );
+  assert.ok(projected.waterFraction!==null);
+  assert.equal(projected.waterFraction,base.waterFraction);
+  const crossingIndex=Math.round(projected.waterFraction!*48);
+  assert.deepEqual(pointAt(projectedAir,crossingIndex),pointAt(baseAir,crossingIndex),'refraction starts at the physical water crossing');
+  assert.deepEqual(pointAt(projectedAir,crossingIndex),pointAt(projectedWater,crossingIndex),'the air and water passes retain one shared seam');
+  const before=pointAt(projectedAir,crossingIndex-1),seam=pointAt(projectedAir,crossingIndex),after=pointAt(projectedAir,crossingIndex+1);
+  const incoming={x:seam.x-before.x,y:seam.y-before.y};
+  const outgoing={x:after.x-seam.x,y:after.y-seam.y};
+  const cosine=(incoming.x*outgoing.x+incoming.y*outgoing.y)/
+    (Math.hypot(incoming.x,incoming.y)*Math.hypot(outgoing.x,outgoing.y));
+  assert.ok(cosine>.995,'the refraction offset must not create a corner at the waterline');
+  assert.ok(Math.abs(pointAt(projectedAir,48).y-pointAt(baseAir,48).y-.65)<1e-5,'the fish endpoint reaches its apparent position');
+});
+
 test('keeps a line above the surface entirely in the air buffer',()=>{
   const air=buffer(),water=buffer();
   const split=updateFishingLineBuffers({x:0,y:2,z:0},{x:4,y:1,z:0},air,water,()=>0,.3,.2,0);

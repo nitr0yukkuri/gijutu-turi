@@ -17,9 +17,9 @@ const VISIBILITY_BY_SPECIES: Partial<Record<FishSpeciesId, FishVisibilityProfile
   // CSS's state palette is the feature. Let the normal blue cascade appear
   // clearly before the bite instead of looking like an unstyled Go shadow.
   'css-001': { waitingMax: .46, bitingMax: .98 },
-  // Keep the leviathan as a readable shadow at the bite. Its full body and
-  // replicas are revealed by fight distance instead of appearing together.
-  'k8s-001': { waitingMax: .34, bitingMax: .58 },
+  // Keep the leviathan recognizably distant, but do not let its dark body
+  // disappear before the player can read its swimming silhouette.
+  'k8s-001': { waitingMax: .42, bitingMax: .7 },
 };
 
 export const easeFishApproach = (progress: number): number => {

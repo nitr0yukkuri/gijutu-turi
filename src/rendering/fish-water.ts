@@ -1,19 +1,55 @@
 // @ts-nocheck -- shared GLSL and the vendored Three.js material boundary.
-// Surface shape is shared with the sea, including the same six impact ripples.
+// Keep CPU contact tests and the screen-space sea on the same wave parameters.
+const OCEAN_WAVE_OCTAVES = 7;
+const OCEAN_WAVE_FREQUENCY = .42;
+const OCEAN_WAVE_AMPLITUDE = .13;
+const OCEAN_WAVE_FREQUENCY_MULTIPLIER = 1.83;
+const OCEAN_WAVE_AMPLITUDE_DECAY = .40;
+const OCEAN_WAVE_ANGLE_STEP = 2.39996323;
+const OCEAN_WAVE_TIME_BASE = .42;
+const OCEAN_WAVE_TIME_STEP = .14;
+const RIPPLE_LIFETIME = 8;
+const RIPPLE_EXPANSION_SPEED = 1.25;
+const RIPPLE_FREQUENCY = 11;
+const RIPPLE_WIDTH = 1.6;
+const RIPPLE_DECAY = .55;
+const RIPPLE_HEIGHT = .08;
+const glslFloat=(value:number):string=>Number.isInteger(value)?`${value}.0`:String(value);
+
+export type WaterRippleSample = Readonly<{ x:number; y:number; z:number; w:number }>;
+
+/** CPU counterpart of `heightAt` in the sea shader; used by contact and line placement. */
+export function waterHeightAt(x:number,z:number,time:number,ripples:readonly WaterRippleSample[]=[]):number {
+  let height=0,frequency=OCEAN_WAVE_FREQUENCY,amplitude=OCEAN_WAVE_AMPLITUDE,angle=.3;
+  for(let octave=0;octave<OCEAN_WAVE_OCTAVES;octave++){
+    height+=Math.sin((x*Math.cos(angle)+z*Math.sin(angle))*frequency+time*(OCEAN_WAVE_TIME_BASE+octave*OCEAN_WAVE_TIME_STEP))*amplitude;
+    frequency*=OCEAN_WAVE_FREQUENCY_MULTIPLIER;
+    amplitude*=OCEAN_WAVE_AMPLITUDE_DECAY;
+    angle+=OCEAN_WAVE_ANGLE_STEP;
+  }
+  for(const ripple of ripples){
+    const age=time-ripple.z;
+    if(age<=0||age>=RIPPLE_LIFETIME)continue;
+    const distance=Math.hypot(x-ripple.x,z-ripple.y),radius=distance-age*RIPPLE_EXPANSION_SPEED;
+    height+=Math.sin(radius*RIPPLE_FREQUENCY)*Math.exp(-radius*radius*RIPPLE_WIDTH)*Math.exp(-age*RIPPLE_DECAY)*RIPPLE_HEIGHT*ripple.w;
+  }
+  return height;
+}
+
 export const waterHeightGLSL = `
 float heightAt(vec2 p) {
   float h=0.0;
-  float freq=0.42, amp=0.13, angle=0.3;
-  for(int i=0;i<7;i++) {
+  float freq=${OCEAN_WAVE_FREQUENCY}, amp=${OCEAN_WAVE_AMPLITUDE}, angle=0.3;
+  for(int i=0;i<${OCEAN_WAVE_OCTAVES};i++) {
     vec2 d=vec2(cos(angle),sin(angle));
-    h+=sin(dot(p,d)*freq+uTime*(0.42+float(i)*0.14))*amp;
-    freq*=1.83; amp*=0.40; angle+=2.39996323;
+    h+=sin(dot(p,d)*freq+uTime*(${OCEAN_WAVE_TIME_BASE}+float(i)*${OCEAN_WAVE_TIME_STEP}))*amp;
+    freq*=${OCEAN_WAVE_FREQUENCY_MULTIPLIER}; amp*=${OCEAN_WAVE_AMPLITUDE_DECAY}; angle+=${OCEAN_WAVE_ANGLE_STEP};
   }
   for(int i=0;i<6;i++) {
     float age=uTime-uRipples[i].z;
-    if(age>0.0 && age<8.0) {
-      float d=length(p-uRipples[i].xy), r=d-age*1.25;
-      h+=sin(r*11.0)*exp(-r*r*1.6)*exp(-age*0.55)*0.08*uRipples[i].w;
+    if(age>0.0 && age<${RIPPLE_LIFETIME}.0) {
+      float d=length(p-uRipples[i].xy), r=d-age*${RIPPLE_EXPANSION_SPEED};
+      h+=sin(r*${glslFloat(RIPPLE_FREQUENCY)})*exp(-r*r*${glslFloat(RIPPLE_WIDTH)})*exp(-age*${glslFloat(RIPPLE_DECAY)})*${glslFloat(RIPPLE_HEIGHT)}*uRipples[i].w;
     }
   }
   return h;

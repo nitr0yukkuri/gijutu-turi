@@ -1,4 +1,8 @@
 import { z } from "zod";
+import type { BodyWaveSnapshot, FishGait } from "./fish-contract.js";
+
+export { FISH_GAITS } from "./fish-contract.js";
+export type { BodyWaveSnapshot, FishGait } from "./fish-contract.js";
 
 export const sessionIdSchema = z.string().regex(/^session_[a-z0-9]{12}$/);
 
@@ -39,25 +43,6 @@ export type FishState =
   | "exhausted"
   | "caught"
   | "escaped";
-
-export type FishGait =
-  | "cruise"
-  | "css_cruise"
-  | "turn"
-  | "burst"
-  | "coast"
-  | "hooked_burst"
-  | "heavy_start"
-  | "heavy_surge"
-  | "heavy_glide"
-  | "exhausted";
-
-export interface BodyWaveSnapshot {
-  phase: number;
-  amplitude: number;
-  frequency: number;
-  wavelength: number;
-}
 
 export type FishingPhase =
   | "idle"

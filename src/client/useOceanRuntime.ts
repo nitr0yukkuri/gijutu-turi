@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
-import { createOcean } from "../rendering/ocean-scene.js";
+import { isOceanMessage } from "../ocean-contract.js";
 import { FishingAudioController } from "../audio/fishing-audio.js";
 import { castStrengthFromMotion, isCastMotionReleased, isCastMotionStart, isReelMotionStart, isReelMotionStop, reelAngularSignal } from "./cast-motion.js";
 import { RodStrokeMotion } from "./rod-stroke-motion.js";
@@ -64,7 +64,8 @@ const initialCollection = (caught: boolean): Collection => ({
 const initialState = (): OceanState => ({
   phase: "idle", revision: 0, strength: .65, aim: 0, castAt: 0, retrieveAt: 0,
   tension: 0, distance: 0, reeling: false, mode: "rest", catches: 0, reason: "", resultAt: 0, approach: 0,
-  stamina: 1, canReel: false, criticalWindow: false, hookResult: null, fishId: "fish-001",
+  stamina: 1, canReel: false, fightTime: 0, fishX: 0, fishSpeed: 0, school: 1,
+  criticalWindow: false, hookResult: null, fishId: "fish-001",
 });
 
 type UseOceanRuntimeOptions = {
@@ -398,8 +399,8 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       socket.addEventListener("message", event => {
         if (socketRef.current !== socket) return;
         try {
-          const message = JSON.parse(event.data) as OceanMessage;
-          if (message.type === "ocean") applyState(message);
+          const message: unknown = JSON.parse(event.data);
+          if (isOceanMessage(message)) applyState(message);
         } catch { showToast("海の状態を読み込めませんでした。"); }
       });
       socket.addEventListener("close", () => {
@@ -433,20 +434,36 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
 
   useEffect(() => {
     if (isPhone || !oceanMountRef.current) return;
-    try {
-      const scene = createOcean(oceanMountRef.current, {
-        onLand: () => {
-          fishingAudioRef.current?.play("splash");
-        },
-        onRenderError: () => setRenderFailed(true),
-      }) as OceanSceneController;
-      sceneRef.current = scene;
-      scene.setState(stateRef.current);
-      return () => { scene.dispose(); sceneRef.current = null; };
-    } catch (error) {
+    let disposed = false;
+    let scene: OceanSceneController | null = null;
+    void import("../rendering/ocean-scene.js").then(({ createOcean }) => {
+      if (disposed || !oceanMountRef.current) return;
+      try {
+        scene = createOcean(oceanMountRef.current, {
+          onLand: () => {
+            fishingAudioRef.current?.play("splash");
+          },
+          onSurfaceImpact: () => {
+            fishingAudioRef.current?.play("splash");
+          },
+          onRenderError: () => { if (!disposed) setRenderFailed(true); },
+        }) as OceanSceneController;
+        sceneRef.current = scene;
+        scene.setState(stateRef.current);
+      } catch (error) {
+        console.error("Ocean rendering unavailable", error);
+        setRenderFailed(true);
+      }
+    }).catch(error => {
+      if (disposed) return;
       console.error("Ocean rendering unavailable", error);
       setRenderFailed(true);
-    }
+    });
+    return () => {
+      disposed = true;
+      scene?.dispose();
+      if (sceneRef.current === scene) sceneRef.current = null;
+    };
   }, [getFishingAudio, isPhone, oceanMountRef]);
 
   useEffect(() => { sceneRef.current?.setOverlayOpen?.(collectionOpen); }, [collectionOpen]);

@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 import { LEGACY_FISH_PATH_ALIASES } from '../src/fishing-routes.js';
+import { isOceanMessage } from '../src/ocean-contract.js';
 const base=process.env.OCEAN_URL??'http://127.0.0.1:8787';
 for(const path of ['/','/gofish','/dockerwhale','/docker','/cssfish',...LEGACY_FISH_PATH_ALIASES,'/ocean-app.js','/ocean-scene.js','/ocean.css','/vendor/three.module.js','/vendor/three.core.js','/service-worker.js']){
   const response=await fetch(base+path);assert.equal(response.status,200,`${path} must load`);
@@ -22,7 +23,7 @@ const {id}=await (await fetch(base+'/api/ocean-sessions',{
 const peers=[];
 function peer(role){
   const ws=new WebSocket(base.replace('http','ws')+`/ocean-ws?room=${id}&role=${role}`,{origin:base});
-  const messages=[];ws.on('message',raw=>messages.push(JSON.parse(raw)));ws.on('error',()=>{});peers.push(ws);return{ws,messages};
+  const messages=[];ws.on('message',raw=>{const message=JSON.parse(raw);assert.ok(isOceanMessage(message),'server must only broadcast valid public wire messages');messages.push(message);});ws.on('error',()=>{});peers.push(ws);return{ws,messages};
 }
 async function until(predicate,label,timeout=10000){const start=Date.now();while(!predicate()){if(Date.now()-start>timeout)throw Error(`Timed out: ${label}`);await new Promise(resolve=>setTimeout(resolve,20));}}
 const wait=milliseconds=>new Promise(resolve=>setTimeout(resolve,milliseconds));

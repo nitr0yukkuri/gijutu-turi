@@ -12,7 +12,7 @@ export type FishingLineSplit = Readonly<{
   waterVisible:boolean;
 }>;
 
-export type FishingLinePointProjector = (point:MutableFishingLinePoint)=>void;
+export type FishingLinePointProjector = (point:MutableFishingLinePoint,submergedProgress:number)=>void;
 
 const clamp=(value:number,min=0,max=1)=>Math.max(min,Math.min(max,value));
 const smoothstep=(value:number)=>value*value*(3-2*value);
@@ -168,7 +168,12 @@ function writeSharedCurve(
           : surfaceFraction!+(1-surfaceFraction!)*(index-crossingIndex)/(last-crossingIndex);
     setLinePoint(start,end,fraction,airSag,waterSag,surfaceHeight,maxSag,point);
     const physicalDepth=Math.max(0,surfaceHeight(point.x,point.z)-point.y);
-    if(projectSubmergedPoint&&index!==crossingIndex)projectSubmergedPoint(point);
+    const submergedProgress=surfaceFraction===null
+      ? q
+      : startsUnderwater
+        ? clamp(fraction/Math.max(surfaceFraction!,1e-6))
+        : clamp((fraction-surfaceFraction!)/Math.max(1-surfaceFraction!,1e-6));
+    if(projectSubmergedPoint&&index!==crossingIndex&&physicalDepth>0)projectSubmergedPoint(point,submergedProgress);
     const positionOffset=index*3,colorOffset=index*4;
     const blend=surfaceFraction===null?0:smoothstep(clamp((fraction-(surfaceFraction!-.025))/.05));
     const airWeight=surfaceFraction===null
@@ -177,11 +182,6 @@ function writeSharedCurve(
     const waterWeight=surfaceFraction===null
       ? (startsUnderwater?1:0)
       : !waterVisible?0:!airVisible?1:1-airWeight;
-    const submergedProgress=surfaceFraction===null
-      ? q
-      : startsUnderwater
-        ? clamp(fraction/Math.max(surfaceFraction!,1e-6))
-        : clamp((fraction-surfaceFraction!)/Math.max(1-surfaceFraction!,1e-6));
     const depthFade=Math.exp(-Math.max(endpointDepth,physicalDepth)*submergedProgress*.12);
     const pointX=point.x,pointY=point.y,pointZ=point.z;
     air.positions[positionOffset]=pointX;

@@ -12,6 +12,12 @@
     { "source": "/gofish", "destination": "/index.html" },
     { "source": "/dockerwhale", "destination": "/index.html" },
     { "source": "/docker", "destination": "/index.html" },
-    { "source": "/cssfish", "destination": "/index.html" }
+    { "source": "/cssfish", "destination": "/index.html" },
+    { "source": "/fish=go", "destination": "/index.html" },
+    { "source": "/fish=docker", "destination": "/index.html" },
+    { "source": "/fish=css", "destination": "/index.html" },
+    { "source": "/fish=cssfish", "destination": "/index.html" },
+    { "source": "/fish=k8s", "destination": "/index.html" },
+    { "source": "/fish=k8sfish", "destination": "/index.html" }
   ]
 }

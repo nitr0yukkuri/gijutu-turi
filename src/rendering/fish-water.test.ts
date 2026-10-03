@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fishApparentPoint } from './fish-water.js';
+import { fishApparentPoint, waterHeightAt, waterHeightGLSL } from './fish-water.js';
 
 test('shares the fish refraction projection with submerged line points without allocating',()=>{
   const center={x:0,y:-2.2,z:-18};
@@ -14,4 +14,18 @@ test('shares the fish refraction projection with submerged line points without a
   assert.equal(apparent.z,mouth.z);
   assert.ok(apparent.y>mouth.y,'the submerged leader endpoint should rise with the fish image');
   assert.equal(fishApparentPoint({x:1,y:0,z:2},center,eye).y,0,'the waterline endpoint remains unchanged');
+});
+
+test('CPU water contact height and shader use the same wave/ripple parameters',()=>{
+  const point={x:2.4,z:-8.1},time=1.7;
+  const calm=waterHeightAt(point.x,point.z,time);
+  assert.equal(waterHeightAt(point.x,point.z,time),calm,'the contact surface is deterministic');
+
+  const ripple={x:point.x-1.25*.7+.12,y:point.z,z:1,w:1};
+  const rippled=waterHeightAt(point.x,point.z,time,[ripple]);
+  assert.notEqual(rippled,calm,'surface contact includes the same active impact ripple');
+  assert.ok(waterHeightGLSL.includes('float freq=0.42, amp=0.13'));
+  assert.ok(waterHeightGLSL.includes('uTime*(0.42+float(i)*0.14)'));
+  assert.ok(waterHeightGLSL.includes('sin(r*11.0)'), 'GLSL scalar operands must stay floating point');
+  assert.ok(waterHeightGLSL.includes('d-age*1.25'));
 });
