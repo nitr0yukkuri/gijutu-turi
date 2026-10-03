@@ -20,6 +20,12 @@ const VISIBILITY_BY_SPECIES: Partial<Record<FishSpeciesId, FishVisibilityProfile
   // Keep the leviathan recognizably distant, but do not let its dark body
   // disappear before the player can read its swimming silhouette.
   'k8s-001': { waitingMax: .42, bitingMax: .7 },
+  // The billfish is fast but visually disciplined: reveal the silhouette
+  // before the bite without making the bill appear as a floating prop.
+  'rust-001': { waitingMax: .38, bitingMax: .96 },
+  // The eel is long but low-contrast; reveal enough of its continuous body
+  // wave to read the species before the hook, without showing the full glow.
+  'js-001': { waitingMax: .36, bitingMax: .94 },
 };
 
 export const easeFishApproach = (progress: number): number => {

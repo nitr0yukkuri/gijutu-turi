@@ -28,11 +28,14 @@ export function mountCollectionFish(mount, modelKey = 'go-fish') {
   const isDockerWhale = modelKey === 'docker-whale';
   const isCssFish = modelKey === 'css-fish';
   const isClusterFish = modelKey === 'cluster-leviathan';
+  const isRustFish = modelKey === 'rust-swordfish';
+  const isJsEel = modelKey === 'js-eel';
   const fish = isDockerWhale
     ? createDockerWhale({ detail: 'high' })
-    : createGoFish({ detail: 'high', naturalSwim: true, visualProfile: isClusterFish ? 'cluster' : isCssFish ? 'css' : 'catalog' });
+    : createGoFish({ detail: 'high', naturalSwim: true, visualProfile: isClusterFish ? 'cluster' : isCssFish ? 'css' : isRustFish ? 'rust' : isJsEel ? 'eel' : 'catalog' });
   if (isDockerWhale) fish.group.scale.setScalar(.42);
   if (isClusterFish) fish.group.scale.setScalar(.62);
+  if (isJsEel) fish.group.scale.setScalar(.76);
   rig.add(fish.group);
   const echoes = isClusterFish ? Array.from({ length: K8S_ECHO_COUNT }, (_, index) => {
     const echo = createGoFish({ detail: 'low', naturalSwim: true, visualProfile: 'cluster', phase: index * 1.2 });
@@ -153,7 +156,7 @@ export function mountCollectionFish(mount, modelKey = 'go-fish') {
       const swimPhase = time * .82 * Math.PI * 2;
       if (isCssFish) fish.setVisualState(reducedMotion ? 'normal' : cssFishPreviewStateAt(time));
       fish.group.position.y = Math.sin(swimPhase) * .018;
-      fish.update(time, { power: .24, glow: .58, bodyPhase: swimPhase, bodyFrequency: .82, bodyWavelength: .92, effort: .34, styleDelta: delta });
+      fish.update(time, { power: isRustFish ? .34 : isJsEel ? .56 : .24, glow: isRustFish ? .42 : isJsEel ? .36 : .58, bodyPhase: swimPhase, bodyFrequency: isRustFish ? 1.08 : isJsEel ? 1.14 : .82, bodyWavelength: isRustFish ? 1.18 : isJsEel ? 1.02 : .92, effort: isRustFish ? .52 : isJsEel ? .62 : .34, styleDelta: delta });
       for (let index = 0; index < echoes.length; index++) {
         echoes[index].group.position.y = (index ? -.28 : .31) + Math.sin(swimPhase + index * 1.2) * .018;
         echoes[index].update(time, { power: .2, glow: .2, bodyPhase: swimPhase + index * 1.2, bodyFrequency: .82, bodyWavelength: .92, effort: .28, styleDelta: delta });

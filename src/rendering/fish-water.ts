@@ -59,6 +59,7 @@ const surface = `
 uniform float uTime;
 uniform vec4 uRipples[6];
 varying vec3 vFishWorld;
+varying float vWaterFinFacing;
 ${waterHeightGLSL}
 `;
 
@@ -90,9 +91,12 @@ export function fishApparentPoint(
 
 const refraction = `
 uniform vec3 uFishCenter;
+uniform float uWaterFinSide;
 vec4 fishWaterProjection(vec3 localPosition) {
   vec3 world=(modelMatrix*vec4(localPosition,1.0)).xyz;
   vFishWorld=world;
+  vec3 fishSide=normalize((modelMatrix*vec4(0.0,0.0,1.0,0.0)).xyz);
+  vWaterFinFacing=dot(normalize(cameraPosition-uFishCenter),fishSide)*uWaterFinSide;
   if(world.y>=0.0)return projectionMatrix*viewMatrix*vec4(world,1.0);
   float depth=max(0.0,-uFishCenter.y);
   float apparentY=uFishCenter.y;
@@ -173,6 +177,23 @@ export const K8S_LEVIATHAN_WATER_PROFILE: FishWaterProfile = {
   bodyLightMin: .40, bodyLightMax: .62, finLight: .46, lightPartLight: .64, detailPartLight: .14, cargoPartLight: .30,
 };
 
+const FIN_VIEW_BLEND_START = -.22;
+const FIN_VIEW_BLEND_END = .22;
+const FAR_FIN_COVERAGE_REDUCTION = .22;
+const FAR_FIN_LIGHT_REDUCTION = .50;
+
+/** Smoothly suppress only the submerged far-side pectoral, not the near silhouette. */
+export function farFinSideBlend(viewFacing:number, finSide:number):number {
+  if (!Number.isFinite(viewFacing) || !Number.isFinite(finSide) || Math.abs(finSide) < .5) return 0;
+  const t=Math.max(0,Math.min(1,(viewFacing-FIN_VIEW_BLEND_START)/(FIN_VIEW_BLEND_END-FIN_VIEW_BLEND_START)));
+  const nearSide=t*t*(3-2*t);
+  return 1-nearSide;
+}
+
+export function farFinWaterVisibility(viewFacing:number, finSide:number):number {
+  return 1-FAR_FIN_LIGHT_REDUCTION*farFinSideBlend(viewFacing,finSide);
+}
+
 export function fishWaterCoverage(depth,distance,transmission,part='body',profile=DEFAULT_FISH_WATER_PROFILE) {
   const d=Math.max(0,Math.min(1,(distance-profile.near)/(profile.far-profile.near)));
   return (profile.floor+profile.surface*Math.max(0,Math.min(1,transmission)))
@@ -187,6 +208,7 @@ uniform mat4 uCamera;
 uniform mat4 uProjectionInverse;
 uniform float uWaterPart;
 uniform float uFishVisibility;
+uniform float uWaterFinSide;
 ${profile.redStateRetention === undefined ? '' : 'uniform float uCssRedState;'}
 vec3 throughWater(vec3 fishColor) {
   float depth=max(0.0,heightAt(vFishWorld.xz)-vFishWorld.y);
@@ -231,12 +253,15 @@ vec3 throughWater(vec3 fishColor) {
   // the water blend instead of disappearing into the sea color.
   float fightReadability=smoothstep(.55,.95,uFishVisibility);
    float lightScale=uWaterPart<.5?mix(${profile.bodyLightMin},${profile.bodyLightMax},fightReadability):uWaterPart<1.5?${profile.finLight}:uWaterPart<2.5?${profile.lightPartLight}:uWaterPart<3.5?${profile.detailPartLight}:uWaterPart<4.5?0.0:${profile.cargoPartLight};
-  vec3 underwater=background*(1.0-coverage)+transmission*extinction*(1.0-haze*.97)*vignette*fishColor*lightScale;
+  float farFinBlend=step(.5,abs(uWaterFinSide))*(1.0-smoothstep(${FIN_VIEW_BLEND_START},${FIN_VIEW_BLEND_END},vWaterFinFacing));
+  float finCoverage=coverage*(1.0-${FAR_FIN_COVERAGE_REDUCTION}*farFinBlend);
+  float finLightScale=lightScale*(1.0-${FAR_FIN_LIGHT_REDUCTION}*farFinBlend);
+  vec3 underwater=background*(1.0-finCoverage)+transmission*extinction*(1.0-haze*.97)*vignette*fishColor*finLightScale;
   return mix(background,mix(fishColor,underwater,submerged),uFishVisibility);
 }`;
 
 // Opt-in: catalog/viewer materials and the sky/sea palette are untouched.
-export function applyFishWater(material, waterUniforms, part='detail', profile=DEFAULT_FISH_WATER_PROFILE) {
+export function applyFishWater(material, waterUniforms, part='detail', profile=DEFAULT_FISH_WATER_PROFILE, finSide=0) {
   const compile=material.onBeforeCompile;
   const cacheKey=material.customProgramCacheKey();
   const originallyToneMapped=material.toneMapped;
@@ -244,6 +269,7 @@ export function applyFishWater(material, waterUniforms, part='detail', profile=D
     compile.call(material,shader);
     Object.assign(shader.uniforms,waterUniforms);
     shader.uniforms.uWaterPart={value:{body:0,fin:1,light:2,detail:3,line:4,cargo:5}[part]};
+    shader.uniforms.uWaterFinSide={value:finSide};
     shader.vertexShader=surface+refraction+'\n'+shader.vertexShader;
     shader.vertexShader=shader.vertexShader.replace('#include <project_vertex>',
       '#include <project_vertex>\ngl_Position=fishWaterProjection(transformed);');
@@ -257,6 +283,6 @@ export function applyFishWater(material, waterUniforms, part='detail', profile=D
       #include <tonemapping_fragment>
       ${originallyToneMapped?'':'gl_FragColor.rgb=mix(fishBeforeTone,gl_FragColor.rgb,smoothstep(0.0,.12,heightAt(vFishWorld.xz)-vFishWorld.y));'}`);
   };
-  material.customProgramCacheKey=()=>cacheKey+'-underwater-v3-'+part+(profile.redStateRetention===undefined?'':`-red-${profile.redStateRetention}`);
+  material.customProgramCacheKey=()=>cacheKey+'-underwater-v4-'+part+(finSide===0?'':`-fin-side-${finSide}`)+(profile.redStateRetention===undefined?'':`-red-${profile.redStateRetention}`);
   material.toneMapped=true;
 }

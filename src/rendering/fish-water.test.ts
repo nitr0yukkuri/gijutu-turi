@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fishApparentPoint, waterHeightAt, waterHeightGLSL } from './fish-water.js';
+import { farFinSideBlend, farFinWaterVisibility, fishApparentPoint, waterHeightAt, waterHeightGLSL } from './fish-water.js';
+
+test('underwater view weighting keeps the near pectoral clear and lets the far one recede',()=>{
+  assert.equal(farFinSideBlend(1,1),0);
+  assert.equal(farFinSideBlend(-1,1),1);
+  assert.equal(farFinSideBlend(-1,0),0,'ordinary anatomy must not receive side-specific dimming');
+  assert.equal(farFinWaterVisibility(1,1),1);
+  assert.equal(farFinWaterVisibility(-1,1),.5);
+  assert.ok(farFinWaterVisibility(0,1)>.5&&farFinWaterVisibility(0,1)<1,'the edge-on view should blend smoothly');
+});
 
 test('shares the fish refraction projection with submerged line points without allocating',()=>{
   const center={x:0,y:-2.2,z:-18};

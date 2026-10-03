@@ -30,6 +30,10 @@ export type FishFightProfile = {
   baseLateralAmplitude: number;
   /** Optional lateral escape amplitude for a species' resistance burst. */
   surgeLateralAmplitude?: number;
+  /** Wider side-run while the player reels through a recovery window. */
+  reelingLateralAmplitude?: number;
+  /** Faster, still bounded steering sweep while resisting an active reel. */
+  reelingSteeringRate?: number;
   lateralLimit: number;
   /** Large species need a slower turn response than their line pressure. */
   lateralAcceleration?: number;
@@ -38,6 +42,8 @@ export type FishFightProfile = {
   lineResponse?: number;
   /** Small propulsion pulse coupled to the server-owned body-wave phase. */
   strokePush?: number;
+  /** Optional species-specific gait while the player reels during recovery. */
+  escapeGait?: FishGait;
   fatigueRate?: number;
   staminaRecovery?: number;
   /** How quickly the fish changes depth during a heavy turn. */
@@ -55,6 +61,25 @@ const standardFightGait = ({ mode, opening, reeling }: { mode: FishFightMode; op
   if (mode === "warning") return "turn";
   return reeling ? "turn" : "coast";
 };
+
+const goFishFightGait = ({ mode, opening, reeling }: { mode: FishFightMode; opening: boolean; reeling: boolean }): FishGait => {
+  if (opening || mode === "surge" || mode === "split") return "burst";
+  if (mode === "warning") return "turn";
+  return reeling ? "go_reel_resist" : "coast";
+};
+
+const rustBillfishGait = ({ mode, opening, reeling }: { mode: FishFightMode; opening: boolean; reeling: boolean }): FishGait => {
+  if (opening || mode === "surge") return "billfish_burst";
+  if (mode === "warning" || reeling) return "turn";
+  // Keep the marlin moving through its recovery window. `coast` makes its
+  // rear-body wave too small to read at fight distance, despite non-zero effort.
+  return "cruise";
+};
+
+const RUST_BILLFISH_OPENING_SECONDS = .95;
+const RUST_BILLFISH_REPEAT_SURGE_START = 3.25;
+const RUST_BILLFISH_SURGE_PERIOD = 4.25;
+const RUST_BILLFISH_SURGE_DURATION = 1.0;
 
 const cssFishGait = ({ mode, opening, reeling }: { mode: FishFightMode; opening: boolean; reeling: boolean }): FishGait => {
   if (opening || mode === "surge" || mode === "split") return "burst";
@@ -100,10 +125,28 @@ const cssFishModeAt = (fightTime: number, finale: number): { mode: FishFightMode
   return { mode, school: 1 };
 };
 
+const rustMarlinModeAt = (fightTime: number, finale: number): { mode: FishFightMode; school: number } => {
+  // The opening is followed by a real recovery window before the marlin
+  // commits to another full-speed run. Later attacks remain server-clocked.
+  const afterFirstRepeat = fightTime - RUST_BILLFISH_REPEAT_SURGE_START;
+  const pulse = fightTime < RUST_BILLFISH_OPENING_SECONDS
+    || (afterFirstRepeat >= 0 && afterFirstRepeat % RUST_BILLFISH_SURGE_PERIOD < RUST_BILLFISH_SURGE_DURATION);
+  if (finale >= 0 && finale < .75) return { mode: "warning", school: 1 };
+  return { mode: pulse ? "surge" : "rest", school: 1 };
+};
+
+const jsEelModeAt = (fightTime: number, finale: number): { mode: FishFightMode; school: number } => {
+  // The eel never becomes a rigid stop/start fish: a short acceleration is
+  // followed by readable coasting windows, while the body wave keeps running.
+  const pulse = fightTime < .9 || (fightTime - .9) % 4.8 < .62;
+  if (finale >= 0 && finale < .7) return { mode: "warning", school: 1 };
+  return { mode: pulse ? "surge" : "rest", school: 1 };
+};
+
 const GO_FISH_PROFILE: FishFightProfile = {
   initialTension: .34,
   openingSeconds: 1.3,
-  openingPressure: .28,
+  openingPressure: .24,
   basePressure: .035,
   minimumReelingTension: .065,
   reelingLoad: .14,
@@ -125,13 +168,20 @@ const GO_FISH_PROFILE: FishFightProfile = {
   surgeEffort: .88,
   openingLateralAmplitude: 2.4,
   baseLateralAmplitude: 1.25,
+  surgeLateralAmplitude: 1.9,
+  reelingLateralAmplitude: 1.9,
+  reelingSteeringRate: 1.05,
   lateralLimit: 2.5,
   restEffort: .22,
   reelingEffort: .58,
   openingEffort: .95,
+  // Each tail beat slightly delays line recovery, so Go still pushes back as
+  // the player makes progress toward landing it.
+  strokePush: .72,
+  escapeGait: "hooked_burst",
   fatigueRate: .12,
   staminaRecovery: .018,
-  gaitAt: standardFightGait,
+  gaitAt: goFishFightGait,
   modeAt: goModeAt,
 };
 
@@ -212,6 +262,77 @@ const CSS_FISH_PROFILE: FishFightProfile = {
   modeAt: cssFishModeAt,
 };
 
+const RUST_BILLFISH_PROFILE: FishFightProfile = {
+  // Rust's fish is fast but not heavy: the danger comes from a clean, sharp
+  // run that takes line before the player can settle into the reel rhythm.
+  initialTension: .40,
+  openingSeconds: RUST_BILLFISH_OPENING_SECONDS,
+  openingPressure: .28,
+  basePressure: .055,
+  minimumReelingTension: .085,
+  reelingLoad: .12,
+  releaseRecovery: .28,
+  openingRetreatSpeed: 4.6,
+  baseRetreatSpeed: .30,
+  openingReelSpeed: .9,
+  baseReelSpeed: 3.7,
+  surgePressure: .27,
+  surgeRetreatSpeed: 3.9,
+  surgeReelSpeed: 1.1,
+  surgeEffort: 1,
+  openingLateralAmplitude: 1.3,
+  baseLateralAmplitude: .8,
+  surgeLateralAmplitude: 1.85,
+  lateralLimit: 2.1,
+  lateralAcceleration: 4.2,
+  turnRate: 1.85,
+  lineResponse: 6.0,
+  strokePush: .65,
+  fatigueRate: .18,
+  staminaRecovery: .024,
+  depthResponse: 1.35,
+  restEffort: .32,
+  reelingEffort: .74,
+  openingEffort: .98,
+  gaitAt: rustBillfishGait,
+  modeAt: rustMarlinModeAt,
+};
+
+const JS_EEL_PROFILE: FishFightProfile = {
+  initialTension: .32,
+  openingSeconds: .9,
+  openingPressure: .19,
+  basePressure: .045,
+  minimumReelingTension: .07,
+  reelingLoad: .09,
+  releaseRecovery: .3,
+  openingRetreatSpeed: 2.15,
+  baseRetreatSpeed: .2,
+  openingReelSpeed: 1.2,
+  baseReelSpeed: 3.35,
+  surgePressure: .22,
+  surgeRetreatSpeed: 1.05,
+  surgeReelSpeed: 1.0,
+  surgeEffort: .82,
+  canReelDuringSurge: true,
+  openingLateralAmplitude: 1.65,
+  baseLateralAmplitude: 1.0,
+  surgeLateralAmplitude: 1.2,
+  lateralLimit: 2.0,
+  lateralAcceleration: 2.2,
+  turnRate: 1.15,
+  lineResponse: 2.8,
+  strokePush: .2,
+  fatigueRate: .2,
+  staminaRecovery: .026,
+  depthResponse: .8,
+  restEffort: .3,
+  reelingEffort: .58,
+  openingEffort: .9,
+  gaitAt: standardFightGait,
+  modeAt: jsEelModeAt,
+};
+
 const K8S_PULSE_PERIOD = 7.2;
 const K8S_PULSE_OFFSET = 2.4;
 const K8S_LUNGE_START = .95;
@@ -230,18 +351,30 @@ export function k8sSurfaceLungeProgress(fightTime: number): number {
 }
 
 const k8sModeAt = (fightTime: number, finale: number): { mode: FishFightMode; school: number } => {
-  // Follow the opening with a readable split beat, then repeat the cycle so
-  // the fight does not sit in the same low-energy state for too long.
-  if (finale >= 0 && finale < .9) return { mode: "warning", school: 1 };
-  if (fightTime < .95) return { mode: "surge", school: 1 };
+  // Give each cluster attack a readable tell: gather, commit, split/breach,
+  // then leave a real recovery window. The opening establishes the threat
+  // before the first run; the near-catch finale gets one last attack beat.
+  if (finale >= 0) {
+    if (finale < .8) return { mode: "warning", school: 1 };
+    if (finale < 2.2) return { mode: "split", school: 1 };
+    return { mode: "rest", school: 1 };
+  }
+  if (fightTime < .75) return { mode: "warning", school: 1 };
+  if (fightTime < 1.65) return { mode: "surge", school: 1 };
   const pulse = k8sPulseAt(fightTime);
-  const mode: FishFightMode = pulse < K8S_LUNGE_START ? "surge" : pulse < K8S_LUNGE_END ? "split" : "rest";
+  const mode: FishFightMode = pulse < .35
+    ? "surge"
+    : pulse < K8S_LUNGE_START
+      ? "warning"
+      : pulse < K8S_LUNGE_END
+        ? "split"
+        : "rest";
   return { mode, school: 1 };
 };
 
 const K8S_LEVIATHAN_PROFILE: FishFightProfile = {
   initialTension: .55,
-  openingSeconds: .95,
+  openingSeconds: .75,
   openingPressure: .3,
   basePressure: .075,
   minimumReelingTension: .1,
@@ -278,6 +411,8 @@ const FISH_FIGHT_PROFILES: Readonly<Record<FishSpeciesId, FishFightProfile>> = {
   "whale-001": DOCKER_WHALE_PROFILE,
   "css-001": CSS_FISH_PROFILE,
   "k8s-001": K8S_LEVIATHAN_PROFILE,
+  "rust-001": RUST_BILLFISH_PROFILE,
+  "js-001": JS_EEL_PROFILE,
 };
 
 export const getFishFightProfile = (fishId: FishSpeciesId): FishFightProfile => FISH_FIGHT_PROFILES[fishId];

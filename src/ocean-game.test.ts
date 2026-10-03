@@ -229,12 +229,98 @@ test('CSS fish changes style states while keeping one readable, catchable body',
   assert.equal(game.state.fishId,'css-001');
 });
 
+test('Rust striped marlin keeps its head stable, bursts with the rear body, and remains catchable',()=>{
+  const profile=getFishFightProfile('rust-001');
+  assert.equal(profile.initialTension,.40);
+  assert.ok((profile.openingRetreatSpeed??0)>4.4,'the billfish opening should remain a sharp, line-taking run');
+  assert.ok((profile.lateralAcceleration??0)>3,'the billfish should turn cleanly after a run');
+  assert.equal(profile.gaitAt({mode:'rest',opening:false,reeling:false}),'cruise','recovery should remain an active swim, not coast');
+  assert.equal(profile.gaitAt({mode:'surge',opening:false,reeling:false}),'billfish_burst','a repeat attack should use the marlin-specific tail-drive gait');
+  assert.equal(profile.modeAt(.96,-1).mode,'rest','the opening run must transition into a genuine recovery window');
+  assert.equal(profile.modeAt(2,-1).mode,'rest','the opening dash should be followed by a readable recovery window');
+  assert.equal(profile.modeAt(3.5,-1).mode,'surge','a forceful repeat dash should arrive early in the fight');
+  assert.equal(profile.modeAt(4.5,-1).mode,'rest','the repeat dash should leave a distinct reel window');
+  assert.equal(profile.modeAt(0,-1).school,1,'Rust is one owned fish, not a school split');
+  const game=new OceanFishingGame(()=>.5,'rust-001','fixed');let now=1000,sawRecovery=false,sawSecondSurge=false;
+  const step=(held=false)=>{now+=50;game.step(.05,held,now);};
+  const phase=()=>game.state.phase;
+  game.action({action:'cast',strength:.5,aim:0},now);
+  while(phase()!=='biting')step();
+  game.action({action:'hook'},now);
+  assert.equal(game.state.fishId,'rust-001');
+  assert.equal(game.state.school,1);
+  assert.equal(game.state.fish.gait,'hooked_burst');
+  const openingDistance=game.state.distance,openingDepth=game.state.fish.position.y;
+  let openingWavePeak=game.state.fish.bodyWave.amplitude;
+  for(let i=0;i<40&&game.state.fightTime<1.05;i++){
+    step(false);
+    openingWavePeak=Math.max(openingWavePeak,game.state.fish.bodyWave.amplitude);
+  }
+  assert.ok(game.state.distance-openingDistance>2.4,'the opening run should visibly take several meters of line');
+  assert.ok(openingWavePeak>.28,'the opening rush should carry a distinct, forceful tail wave');
+  assert.ok(game.state.fish.position.y>openingDepth+.25,'the marlin should angle up during its opening rush');
+  assert.equal(game.state.mode,'rest');
+  assert.equal(game.state.fish.gait,'cruise');
+  assert.ok(game.state.fish.bodyWave.amplitude>.03,'the marlin keeps a readable body wave in its recovery window');
+  assert.ok(game.state.fish.bodyWave.frequency>=1.5,'the tail keeps a purposeful cruise beat between dashes');
+  let secondRushStartDistance:number|null=null,secondRushPeakGain=0;
+  for(let i=0;i<3000&&phase()==='fighting';i++){
+    sawRecovery ||= game.state.mode==='rest';
+    sawSecondSurge ||= game.state.fightTime>3.2&&String(game.state.mode)==='surge';
+    if(game.state.fightTime>=3.2&&String(game.state.mode)==='surge'&&secondRushStartDistance===null){
+      secondRushStartDistance=game.state.distance;
+    }
+    step(game.state.mode==='rest'&&game.state.tension<.58);
+    if(secondRushStartDistance!==null){
+      secondRushPeakGain=Math.max(secondRushPeakGain,game.state.distance-secondRushStartDistance);
+    }
+    assert.equal(game.state.school,1);
+  }
+  assert.equal(game.state.phase,'caught',JSON.stringify(game.state));
+  assert.equal(sawRecovery,true);
+  assert.equal(sawSecondSurge,true);
+  assert.ok(secondRushPeakGain>2,'the repeat rush should make another distinct run before recovery');
+});
+
+test('JS eel remains a single catchable body while its whole length undulates',()=>{
+  const profile=getFishFightProfile('js-001');
+  assert.ok(profile.openingLateralAmplitude>1.4,'the eel should show a readable whole-body turn');
+  assert.equal(profile.modeAt(0,-1).school,1);
+  const game=new OceanFishingGame(()=>.5,'js-001','fixed');let now=1000;
+  const step=(held=false)=>{now+=50;game.step(.05,held,now);};
+  const phase=()=>game.state.phase;
+  game.action({action:'cast',strength:.5,aim:0},now);
+  while(phase()!=='biting')step();
+  game.action({action:'hook'},now);
+  assert.equal(game.state.fishId,'js-001');
+  assert.equal(game.state.school,1);
+  assert.equal(game.state.fish.gait,'hooked_burst');
+  const openingDistance=game.state.distance;
+  for(let i=0;i<60&&game.state.mode==='surge';i++)step(false);
+  assert.ok(game.state.distance>openingDistance,'the opening undulation should take line');
+  assert.equal(game.state.mode,'rest');
+  assert.ok(game.state.fish.bodyWave.amplitude>.02);
+  for(let i=0;i<3000&&phase()==='fighting';i++){
+    step(game.state.mode==='rest'&&game.state.tension<.52);
+    assert.equal(game.state.school,1);
+  }
+  assert.equal(game.state.phase,'caught',JSON.stringify(game.state));
+});
+
 test('K8s leviathan keeps one hooked body while its timed surges remain catchable',()=>{
   const profile=getFishFightProfile('k8s-001');
   assert.equal(profile.modeAt(0,-1).school,1,'replicas are visual shadows, not separately hooked fish');
-  assert.equal(profile.modeAt(1.5,-1).mode,'rest','the opening burst has a recovery window');
-  assert.equal(profile.modeAt(2.5,-1).mode,'surge','a short cluster pulse fans the shadows out');
+  assert.equal(profile.modeAt(0,-1).mode,'warning','the cluster should gather before revealing its first attack');
+  assert.equal(profile.modeAt(.5,-1).mode,'warning');
+  assert.equal(profile.modeAt(1,-1).mode,'surge','the first attack follows its tell');
+  assert.equal(profile.modeAt(1.8,-1).mode,'rest','the opening burst has a recovery window');
+  assert.equal(profile.modeAt(2.5,-1).mode,'surge','the cluster commits before its surface attack');
+  assert.equal(profile.modeAt(3,-1).mode,'warning','the echoes gather before the breach');
   assert.equal(profile.modeAt(3.5,-1).mode,'split','the surface lunge must reach the visual formation');
+  assert.equal(profile.modeAt(5,-1).mode,'rest','the player gets a recovery window after the breach');
+  assert.equal(profile.modeAt(10,0).mode,'warning','the near-catch finale signals its last attack');
+  assert.equal(profile.modeAt(11,1).mode,'split','the final warning resolves into a last attack');
+  assert.equal(profile.modeAt(12.3,2.3).mode,'rest','the final attack resolves instead of looping indefinitely');
   assert.equal(profile.gaitAt({mode:'split',opening:false,reeling:false}),'heavy_lunge','the surface lunge drives a distinct body kick');
   const game=new OceanFishingGame(()=>.5,'k8s-001','fixed');let now=1000,sawMidFightSurge=false,sawSplit=false,sawSurfaceLunge=false,maxSurfaceLungeY=Number.NEGATIVE_INFINITY;
   const step=(held=false)=>{now+=50;game.step(.05,held,now);};
@@ -285,7 +371,7 @@ test('fish-specific routes keep the selected species after a catch',()=>{
 });
 
 test('every fish keeps swimming while released line tension can reach zero',()=>{
-  const species:FishSpeciesId[]=['fish-001','whale-001','css-001','k8s-001'];
+  const species:FishSpeciesId[]=['fish-001','whale-001','css-001','k8s-001','rust-001','js-001'];
   for(const fishId of species){
     const game=new OceanFishingGame(()=>.5,fishId);let now=1000,observedRest=false;
     const step=()=>{now+=50;game.step(.05,false,now);};
@@ -321,6 +407,46 @@ test('Go fish attack phases take line and stay physically readable',()=>{
   assert.equal(game.state.fish.gait,'burst','the split attack should use the burst gait');
   assert.ok(game.state.distance>attackDistance+.1,'Go should take line even while the player reels during an attack');
   assert.ok(game.state.tension>attackTension,'the attack should load the line instead of becoming inert');
+});
+
+test('Go keeps a visible tail beat and uneven resistance while the player reels it closer',()=>{
+  const profile=getFishFightProfile('fish-001');
+  assert.equal(profile.gaitAt({mode:'rest',opening:false,reeling:true}),'go_reel_resist');
+  assert.ok((profile.reelingLateralAmplitude??0)>profile.baseLateralAmplitude,'reeling through a lull should trigger a wider Go-specific side run');
+  assert.ok((profile.surgeLateralAmplitude??0)>profile.baseLateralAmplitude,'Go should also pull wider while taking line');
+  assert.ok((profile.strokePush??0)>.5,'Go tail strokes should feed a pulse back into line recovery');
+  const {game,step,now}=setup(.5);game.action({action:'hook'},now());
+  while(game.state.mode==='surge'&&game.state.phase==='fighting')step(false);
+  const startDistance=game.state.distance;
+  let minFishX=game.state.fishX,maxFishX=game.state.fishX;
+  let previousDistance=startDistance,minLineVelocity=Infinity,maxLineVelocity=-Infinity;
+  for(let i=0;i<20;i++){
+    step(true);
+    assert.equal(game.state.fish.gait,'go_reel_resist');
+    assert.ok(game.state.fish.bodyWave.amplitude>.1,'the tail wave should remain visible during the recovery reel');
+    assert.ok(game.state.fish.bodyWave.frequency>3,'the recovery stroke should read as active resistance');
+    minFishX=Math.min(minFishX,game.state.fishX);
+    maxFishX=Math.max(maxFishX,game.state.fishX);
+    const lineVelocity=(game.state.distance-previousDistance)/.05;
+    minLineVelocity=Math.min(minLineVelocity,lineVelocity);
+    maxLineVelocity=Math.max(maxLineVelocity,lineVelocity);
+    previousDistance=game.state.distance;
+  }
+  assert.ok(maxFishX-minFishX>.35,'the Go body should make a visible side-run while resisting the reel');
+  assert.ok(game.state.distance<startDistance-1,'the player still makes clear progress toward landing Go');
+  assert.ok(maxLineVelocity-minLineVelocity>.15,'tail strokes should pulse the line-in rate');
+});
+
+test('Go keeps a stronger tail burst throughout its visible escape',()=>{
+  const {game,step,now}=setup(.5);game.action({action:'hook'},now());
+  game.state.distance=49.99;
+  step(false);
+  assert.equal(game.state.phase,'escaped');
+  assert.equal(game.state.reason,'distance');
+  assert.equal(game.state.fish.gait,'hooked_burst');
+  for(let i=0;i<10;i++)step(false);
+  assert.equal(game.state.fish.gait,'hooked_burst','the escape should remain active after the initial C-start');
+  assert.ok(game.state.fish.bodyWave.frequency>5);
 });
 
 test('a surge takes line while reeling, then the lull lets the player recover it',()=>{

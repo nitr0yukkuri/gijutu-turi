@@ -1,4 +1,6 @@
 import type { OceanMode, OceanPhase } from '../client/types.js';
+import type { FishSpeciesId } from '../fish-species.js';
+import { k8sSurfaceLungeProgress } from '../fish-behavior.js';
 
 export type K8sFightPresentation = {
   bodyVisibility: number;
@@ -15,6 +17,19 @@ const smoothstep = (value: number): number => {
   const amount = clamp01(value);
   return amount * amount * (3 - 2 * amount);
 };
+
+/**
+ * Resolve the same server-clocked K8s lunge used by the scene renderer.
+ * Callers with live snapshots can pass the renderer's interpolation delay so
+ * interface cues land on the same displayed frame as the fish and rod.
+ */
+export function k8sLungeForSnapshot(
+  snapshot: { fishId: FishSpeciesId; phase: OceanPhase; mode: OceanMode; fightTime: number },
+  delaySeconds = 0,
+): number {
+  if (snapshot.fishId !== 'k8s-001' || snapshot.phase !== 'fighting' || snapshot.mode === 'warning') return 0;
+  return k8sSurfaceLungeProgress(Math.max(0, snapshot.fightTime - Math.max(0, delaySeconds)));
+}
 
 /**
  * K8S Leviathan cues are a view of one server-owned fish, not extra fish state.

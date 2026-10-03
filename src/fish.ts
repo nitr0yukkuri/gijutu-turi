@@ -36,6 +36,12 @@ const GAIT_PROFILES: Record<FishGait, GaitProfile> = {
   css_cruise: { acceleration: 1.55, drag: 0.68, amplitude: 0.12, frequency: 1.65, wavelength: 0.82 },
   turn: { acceleration: 2.8, drag: 0.9, amplitude: 0.16, frequency: 2.6, wavelength: 0.72 },
   burst: { acceleration: 5.4, drag: 0.35, amplitude: 0.22, frequency: 4.6, wavelength: 0.64 },
+  // Go keeps a visible, uneven tail beat while the angler gains line. It is
+  // forceful enough to read at fight distance without becoming another surge.
+  go_reel_resist: { acceleration: 4.6, drag: 0.38, amplitude: 0.24, frequency: 3.7, wavelength: 0.58 },
+  // Swordfish use a sharp, tail-driven run: keep this gait species-specific so
+  // their acceleration wave can be forceful without speeding up other fish.
+  billfish_burst: { acceleration: 8.2, drag: 0.22, amplitude: 0.31, frequency: 5.8, wavelength: 0.52 },
   coast: { acceleration: 0.7, drag: 0.28, amplitude: 0.045, frequency: 0.8, wavelength: 0.9 },
   hooked_burst: { acceleration: 7.2, drag: 0.3, amplitude: 0.3, frequency: 5.8, wavelength: 0.58 },
   // Large animals need a distinct, authoritative gait: a short heavy start

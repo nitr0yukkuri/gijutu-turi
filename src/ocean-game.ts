@@ -110,7 +110,8 @@ export class OceanFishingGame {
   isEscapeAnimating():boolean{return this.state.phase==='escaped'&&this.escapeAge<ESCAPE_ANIMATION_SECONDS;}
   private stepEscape(dt:number):void{
     const before=this.locomotion.snapshot();
-    this.locomotion.update(dt,{direction:this.escapeDirection,speed:4.8,gait:'burst'});
+    const escapeGait=getFishFightProfile(this.state.fishId).escapeGait??'burst';
+    this.locomotion.update(dt,{direction:this.escapeDirection,speed:4.8,gait:escapeGait});
     const moved=this.locomotion.snapshot();
     const previousYaw=Math.atan2(before.heading.x,-before.heading.z),nextYaw=Math.atan2(moved.heading.x,-moved.heading.z);
     const turn=clamp(Math.atan2(Math.sin(nextYaw-previousYaw),Math.cos(nextYaw-previousYaw))/Math.max(dt,.001)/1.65,-1,1);
@@ -172,8 +173,8 @@ export class OceanFishingGame {
       const finale=this.finalBurst<0?-1:t-this.finalBurst;
       ({mode:s.mode,school:s.school}=profile.modeAt(t,finale));
       const surge=s.mode==='surge'||s.mode==='split';
-      // The warning telegraph is a Go-fish attack cue. Docker also has a
-      // warning phase near landing, but it must keep its steady-pull motion.
+      // Go uses warning for its landing attack; K8s uses it to gather its
+      // replica shadows before a cluster strike. Docker keeps its steady pull.
       const warning=s.mode==='warning'&&s.fishId==='fish-001';
       const opening=t<profile.openingSeconds;
       const staminaFactor=.55+s.stamina*.45;
@@ -231,14 +232,17 @@ export class OceanFishingGame {
       this.slack=s.tension<SLACK_TENSION_THRESHOLD?this.slack+dt:0;
       // Continuous steering and bounded acceleration: changing fight mode no
       // longer jumps to another sine-wave phase or instantly reverses the fish.
-      this.steeringPhase+=dt*(surge?1.65:warning?1.15:.72);
+      const steeringRate=surge?1.65:warning?1.15:reeling?profile.reelingSteeringRate??.72:.72;
+      this.steeringPhase+=dt*steeringRate;
       const k8sSurfaceLunge=s.fishId==='k8s-001'&&s.mode==='split';
       const surfaceLunge=k8sSurfaceLunge?k8sSurfaceLungeProgress(t):0;
       const lateralAmplitude=opening
         ? profile.openingLateralAmplitude
         : surge
           ? profile.surgeLateralAmplitude??profile.baseLateralAmplitude
-          : profile.baseLateralAmplitude;
+          : reeling
+            ? profile.reelingLateralAmplitude??profile.baseLateralAmplitude
+            : profile.baseLateralAmplitude;
       const lungeSide=-Math.sign(this.approachDirection.x||1);
       const lateral=Math.sin(this.steeringPhase)*lateralAmplitude+lungeSide*.72*surfaceLunge;
       const wantedVelocity=clamp((lateral-s.fishX)*2.2,-profile.lateralLimit,profile.lateralLimit);
@@ -255,12 +259,13 @@ export class OceanFishingGame {
       // distance, timers, or catch difficulty.
       // Skim the surface with a low, forward lunge instead of launching the
       // long armored body upright out of the water.
-      const targetDepth=k8sSurfaceLunge?-1.95+2*surfaceLunge:s.mode==='split'?-1.65:s.mode==='surge'?-1.8:warning?-2.05:-2.4;
+      const rustBillfishRush=s.fishId==='rust-001'&&(opening||surge);
+      const targetDepth=k8sSurfaceLunge?-1.95+2*surfaceLunge:rustBillfishRush?-1.55:s.mode==='split'?-1.65:s.mode==='surge'?-1.8:warning?-2.05:-2.4;
       const k8sSurfaceRecovery=s.fishId==='k8s-001'&&this.fishDepth>-2.4;
       const horizontalTravel=Math.hypot(s.fishX-previousFishX,s.distance-previousDistance);
       const diveResponse=k8sSurfaceLunge?7:k8sSurfaceRecovery?1.8:profile.depthResponse??1.2;
       const diveStep=(targetDepth-this.fishDepth)*Math.min(1,dt*diveResponse);
-      const verticalLimit=k8sSurfaceLunge?dt*4.5:k8sSurfaceRecovery?dt*1.8:horizontalTravel*.18;
+      const verticalLimit=k8sSurfaceLunge?dt*4.5:k8sSurfaceRecovery?dt*1.8:rustBillfishRush?dt*1.05:horizontalTravel*.18;
       this.fishDepth+=clamp(diveStep,-verticalLimit,verticalLimit);
       const velocity:Vec3={x:(s.fishX-previousFishX)/dt,y:(this.fishDepth-previousDepth)/dt,z:-(s.distance-previousDistance)/dt};
       const previousYaw=this.swimYaw;

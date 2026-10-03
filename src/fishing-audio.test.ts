@@ -15,12 +15,18 @@ test("fish audio tuning separates light and heavy resistance", () => {
   const css = getFishAudioTuning("css-001");
   const whale = getFishAudioTuning("whale-001");
   const leviathan = getFishAudioTuning("k8s-001");
+  const rust = getFishAudioTuning("rust-001");
+  const eel = getFishAudioTuning("js-001");
   assert.ok(whale.strainGain > go.strainGain);
   assert.ok(go.strainGain > css.strainGain);
   assert.ok(css.reelFrequency > go.reelFrequency);
   assert.ok(whale.reelFrequency < go.reelFrequency);
   assert.ok(leviathan.strainGain > whale.strainGain);
   assert.ok(leviathan.reelFrequency < whale.reelFrequency);
+  assert.ok(rust.strainGain > go.strainGain);
+  assert.ok(rust.reelFrequency > go.reelFrequency);
+  assert.ok(eel.strainGain < rust.strainGain);
+  assert.ok(eel.reelFrequency > go.reelFrequency);
 });
 
 test("drag sound stays quiet below strain and becomes more urgent with tension", () => {

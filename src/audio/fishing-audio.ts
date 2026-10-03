@@ -42,6 +42,12 @@ export const getFishAudioTuning = (fishId: FishSpeciesId): FishAudioTuning => {
   if (fishId === "css-001") {
     return { reelFrequency: 278, dragFrequency: 188, dragFilterFrequency: 980, reelIntervalMs: 142, reelGain: .009, strainGain: .022 };
   }
+  if (fishId === "rust-001") {
+    return { reelFrequency: 224, dragFrequency: 156, dragFilterFrequency: 760, reelIntervalMs: 116, reelGain: .011, strainGain: .037 };
+  }
+  if (fishId === "js-001") {
+    return { reelFrequency: 260, dragFrequency: 174, dragFilterFrequency: 840, reelIntervalMs: 122, reelGain: .010, strainGain: .029 };
+  }
   return { reelFrequency: 188, dragFrequency: 132, dragFilterFrequency: 690, reelIntervalMs: 128, reelGain: .012, strainGain: .032 };
 };
 

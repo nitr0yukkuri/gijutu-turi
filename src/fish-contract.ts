@@ -4,6 +4,8 @@ export const FISH_GAITS = [
   "css_cruise",
   "turn",
   "burst",
+  "go_reel_resist",
+  "billfish_burst",
   "coast",
   "hooked_burst",
   "heavy_start",

@@ -59,6 +59,26 @@ export const CSS_ROD_FLEX_PROFILE: RodFlexProfile = {
   tipDirectionBlend: .42,
 };
 
+/** Short, sharp billfish runs load the upper blank quickly, then recover cleanly. */
+export const RUST_BILLFISH_ROD_FLEX_PROFILE: RodFlexProfile = {
+  bendGain: .42,
+  loadingResponse: 8.2,
+  recoveryResponse: 7.2,
+  directionInfluence: .15,
+  verticalInfluence: .09,
+  tipDirectionBlend: .48,
+};
+
+/** Eel resistance travels through the line as a sustained, elastic load. */
+export const JS_EEL_ROD_FLEX_PROFILE: RodFlexProfile = {
+  bendGain: .34,
+  loadingResponse: 8.8,
+  recoveryResponse: 8.1,
+  directionInfluence: .13,
+  verticalInfluence: .075,
+  tipDirectionBlend: .40,
+};
+
 export const rodFlexProfileFor = (fishId: FishSpeciesId): RodFlexProfile =>
   fishId === "whale-001"
     ? DOCKER_ROD_FLEX_PROFILE
@@ -66,6 +86,10 @@ export const rodFlexProfileFor = (fishId: FishSpeciesId): RodFlexProfile =>
       ? K8S_ROD_FLEX_PROFILE
     : fishId === "css-001"
       ? CSS_ROD_FLEX_PROFILE
+      : fishId === "rust-001"
+        ? RUST_BILLFISH_ROD_FLEX_PROFILE
+      : fishId === "js-001"
+        ? JS_EEL_ROD_FLEX_PROFILE
       : STANDARD_ROD_FLEX_PROFILE;
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
