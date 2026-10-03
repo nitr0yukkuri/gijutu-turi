@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CollectionStore } from "./collection-db.js";
+import { FISH_SPECIES } from "./fish-species.js";
 
 test("collection store records each catch event once", () => {
   const directory = mkdtempSync(join(tmpdir(), "gijutu-collection-"));
@@ -12,11 +13,12 @@ test("collection store records each catch event once", () => {
   const playerId = "player_abcdefghijkl";
 
   try {
+    assert.doesNotThrow(() => store.ping());
     const initial = store.getCollection(playerId);
     assert.equal(initial.registered, 0);
-    assert.deepEqual(initial.entries.map(entry => entry.id), ["fish-001", "whale-001", "css-001", "k8s-001"]);
-    assert.equal(initial.activeTotal, 4);
-    assert.equal(initial.catalogTotal, 4);
+    assert.deepEqual(initial.entries.map(entry => entry.id), FISH_SPECIES.filter(species => species.catalogStatus === "active").map(species => species.id));
+    assert.equal(initial.activeTotal, FISH_SPECIES.filter(species => species.catalogStatus === "active").length);
+    assert.equal(initial.catalogTotal, FISH_SPECIES.length);
 
     const first = store.recordCatch(playerId, "fish-001", "sea_test:1", "2026-09-21T00:00:00.000Z");
     assert.equal(first.registered, 1);

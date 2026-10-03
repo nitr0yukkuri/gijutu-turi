@@ -8,8 +8,9 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
 import { createOceanRooms } from "./ocean-room.js";
-import { CollectionStore, isPlayerId } from "./collection-db.js";
-import { LEGACY_FISH_PATH_ALIASES } from "./fishing-routes.js";
+import { isPlayerId, type CollectionRepository } from "./collection-contract.js";
+import { createCollectionRepository } from "./collection-repository.js";
+import { CANONICAL_FISH_ROUTE_PATHS, FISHING_ROUTE_PATHS, LEGACY_FISH_PATH_ALIASES } from "./fishing-routes.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "0.0.0.0";
@@ -27,27 +28,34 @@ app.use("/api/*", async (c, next) => {
   if (c.req.method === "OPTIONS") return c.body(null, 204);
   await next();
 });
-const collectionStore = new CollectionStore();
+const collectionStore: CollectionRepository = await createCollectionRepository();
+const pendingCatchWrites = new Set<Promise<void>>();
 const oceanRooms = createOceanRooms(app, {
-  onCatch: (playerId, eventKey, fishId) => collectionStore.recordCatch(playerId, fishId, eventKey),
+  onCatch: (playerId, eventKey, fishId) => {
+    const pending = Promise.resolve(collectionStore.recordCatch(playerId, fishId, eventKey)).then(() => undefined);
+    pendingCatchWrites.add(pending);
+    void pending.then(
+      () => pendingCatchWrites.delete(pending),
+      () => pendingCatchWrites.delete(pending),
+    );
+    return pending;
+  },
 });
 
 const playerIdSchema = z.string().refine(isPlayerId);
 
-app.get("/api/collection", (c) => {
+app.get("/api/collection", async (c) => {
   const playerId = playerIdSchema.safeParse(c.req.query("playerId"));
   if (!playerId.success) return c.json({ error: "invalid_player_id" }, 400);
-  return c.json(collectionStore.getCollection(playerId.data));
+  return c.json(await collectionStore.getCollection(playerId.data));
 });
 
 // Explicit public assets only: never expose .git, .env, or the source tree.
-const publicAssets = new Map([
+const publicAssets = new Map<string, string[]>([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/index.html", ["index.html", "text/html; charset=utf-8"]],
-  ["/gofish", ["index.html", "text/html; charset=utf-8"]],
-  ["/dockerwhale", ["index.html", "text/html; charset=utf-8"]],
-  ["/docker", ["index.html", "text/html; charset=utf-8"]],
-  ["/cssfish", ["index.html", "text/html; charset=utf-8"]],
+  ...CANONICAL_FISH_ROUTE_PATHS.map(route => [route, ["index.html", "text/html; charset=utf-8"]] as [string, string[]]),
+  [FISHING_ROUTE_PATHS.docker, ["index.html", "text/html; charset=utf-8"]],
   ["/ocean.css", ["ocean.css", "text/css"]],
   ["/ocean2.css", ["ocean2.css", "text/css"]],
   ["/ocean3.css", ["ocean3.css", "text/css"]],
@@ -71,6 +79,7 @@ const publicAssets = new Map([
   ["/favicon.svg", ["favicon.svg", "image/svg+xml"]],
   ["/assets/gijutu-turi-logo.png", ["assets/gijutu-turi-logo.png", "image/png"]],
   ["/assets/gijutu-turi-favicon-generated.png", ["assets/gijutu-turi-favicon-generated.png", "image/png"]],
+  ["/assets/gijutu-turi-og.png", ["assets/gijutu-turi-og.png", "image/png"]],
 ]);
 for(const route of LEGACY_FISH_PATH_ALIASES)publicAssets.set(route,["index.html","text/html; charset=utf-8"]);
 const fishAddons = [
@@ -81,13 +90,13 @@ const fishAddons = [
   "shaders/CopyShader.js", "shaders/LuminosityHighPassShader.js", "shaders/OutputShader.js",
 ];
 for (const addon of fishAddons) publicAssets.set(`/vendor/addons/${addon}`, [`vendor/addons/${addon}`, "text/javascript"]);
-for (const route of ["/gofish", "/dockerwhale", "/docker", "/cssfish",...LEGACY_FISH_PATH_ALIASES]) {
+for (const route of [...CANONICAL_FISH_ROUTE_PATHS, FISHING_ROUTE_PATHS.docker, ...LEGACY_FISH_PATH_ALIASES]) {
   app.get(`${route}/`, c => c.redirect(`${route}${new URL(c.req.url).search}`, 308));
 }
 for (const [route, asset] of publicAssets) {
   app.get(route, async c => {
     try {
-      const preferred = new Set(["/", "/index.html", "/gofish", "/dockerwhale", "/docker", "/cssfish", ...LEGACY_FISH_PATH_ALIASES, "/ocean.css", "/ocean2.css", "/ocean3.css", "/ocean-app.js", "/go-fish.html", "/docker-whale.html", "/service-worker.js", "/manifest.webmanifest", "/favicon.svg", "/assets/gijutu-turi-favicon-generated.png", "/license.txt", "/third-party-notices.txt"]);
+      const preferred = new Set(["/", "/index.html", ...CANONICAL_FISH_ROUTE_PATHS, FISHING_ROUTE_PATHS.docker, ...LEGACY_FISH_PATH_ALIASES, "/ocean.css", "/ocean2.css", "/ocean3.css", "/ocean-app.js", "/go-fish.html", "/docker-whale.html", "/service-worker.js", "/manifest.webmanifest", "/favicon.svg", "/assets/gijutu-turi-favicon-generated.png", "/assets/gijutu-turi-og.png", "/license.txt", "/third-party-notices.txt"]);
       const candidates = preferred.has(route) ? [`dist/client/${asset[0]}`, asset[0]] : [asset[0]];
       let bytes: Buffer | undefined;
       for (const candidate of candidates) {
@@ -113,6 +122,16 @@ app.get("/chunks/*", c => serveBuiltAsset(c, "chunks"));
 app.get("/health", (c) =>
   c.json({ ok: true, service: "gijutu-turi-backend" }),
 );
+
+app.get("/ready", async c => {
+  c.header("Cache-Control", "no-store");
+  try {
+    await collectionStore.ping();
+    return c.json({ ok: true, service: "gijutu-turi-backend" });
+  } catch {
+    return c.json({ ok: false, service: "gijutu-turi-backend", error: "collection_store_unavailable" }, 503);
+  }
+});
 
 const httpServer = serve({ fetch: app.fetch, port, hostname: host });
 
@@ -144,7 +163,8 @@ const shutdown = (): Promise<void> => {
   shutdownPromise = (async () => {
     oceanRooms.close();
     await closeHttpServer();
-    collectionStore.close();
+    await Promise.allSettled([...pendingCatchWrites]);
+    await collectionStore.close();
   })();
   return shutdownPromise;
 };

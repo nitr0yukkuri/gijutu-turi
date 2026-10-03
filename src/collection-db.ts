@@ -2,25 +2,10 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { FISH_SPECIES } from "./fish-species.js";
+import { isPlayerId, type CollectionEntry, type CollectionRepository, type CollectionSnapshot } from "./collection-contract.js";
 
-export type CollectionStatus = "unknown" | "caught" | "preview";
-
-export type CollectionEntry = {
-  id: string;
-  number: number;
-  name: string | null;
-  classification: string | null;
-  tagline: string | null;
-  description: string | null;
-  habitat: string | null;
-  rarity: string | null;
-  modelKey: string | null;
-  catalogStatus: "active" | "preview";
-  status: CollectionStatus;
-  catches: number;
-  firstCaughtAt: string | null;
-  lastCaughtAt: string | null;
-};
+export { isPlayerId } from "./collection-contract.js";
+export type { CollectionEntry, CollectionRepository, CollectionSnapshot, CollectionStatus } from "./collection-contract.js";
 
 type CatalogRow = {
   id: string;
@@ -42,9 +27,7 @@ type CollectionRow = {
   last_caught_at: string;
 };
 
-export const isPlayerId = (value: string): boolean => /^player_[a-z0-9-]{12,80}$/.test(value);
-
-export class CollectionStore {
+export class CollectionStore implements CollectionRepository {
   private readonly db: DatabaseSync;
 
   constructor(filePath = process.env.GIJUTU_DB_PATH ?? resolve(process.cwd(), "data", "gijutu-turi.sqlite")) {
@@ -126,7 +109,11 @@ export class CollectionStore {
     this.db.close();
   }
 
-  getCollection(playerId: string): { entries: CollectionEntry[]; registered: number; activeTotal: number; catalogTotal: number } {
+  ping(): void {
+    this.db.prepare("SELECT 1").get();
+  }
+
+  getCollection(playerId: string): CollectionSnapshot {
     if (!isPlayerId(playerId)) throw new Error("invalid_player_id");
     const records = this.db.prepare(`
       SELECT fish_id, catches, first_caught_at, last_caught_at
