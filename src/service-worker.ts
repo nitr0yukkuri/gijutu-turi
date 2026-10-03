@@ -1,5 +1,5 @@
 // @ts-nocheck -- service-worker globals require a dedicated worker tsconfig; runtime code remains TypeScript.
-const CACHE_NAME = "gijutu-turi-ocean-v8-css-route";
+const CACHE_NAME = "gijutu-turi-ocean-v9-og";
 const BASE_URL = new URL("./", self.registration.scope);
 const PRECACHE_PATHS = [
   "",
@@ -8,6 +8,8 @@ const PRECACHE_PATHS = [
   "dockerwhale",
   "docker",
   "cssfish",
+  "rustfish",
+  "jseel",
   "ocean-app.js",
   "ocean.css",
   "go-fish.html",
@@ -16,6 +18,7 @@ const PRECACHE_PATHS = [
   "favicon.svg",
   "assets/gijutu-turi-logo.png",
   "assets/gijutu-turi-favicon-generated.png",
+  "assets/gijutu-turi-og.png",
 ];
 const PRECACHE_URLS = PRECACHE_PATHS.map((path) => new URL(path, BASE_URL).toString());
 
