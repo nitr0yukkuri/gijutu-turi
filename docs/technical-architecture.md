@@ -6,7 +6,7 @@
 
 技術釣りは、ブラウザーで動く3D釣りゲームと、釣り判定・部屋管理を行う Node.js サーバーを組み合わせたリアルタイムWebアプリである。PC画面とスマートフォンを1つの釣り部屋へ接続し、スマートフォンを入力端末、PCを3D表示端末として使える。
 
-大きな設計方針は、サーバーをゲーム状態の唯一の権威とし、クライアントは入力と表示を担当すること。魚の位置・速度・泳ぎの位相・釣果判定はサーバーが進め、Three.jsはそのスナップショットを補間して魚・水・糸・竿などを描く。捕獲記録はSQLiteに保存する。
+大きな設計方針は、サーバーをゲーム状態の唯一の権威とし、クライアントは入力と表示を担当すること。魚の位置・速度・泳ぎの位相・釣果判定はサーバーが進め、Three.jsはそのスナップショットを補間して魚・水・糸・竿などを描く。捕獲記録はローカルではSQLite、Cloud Runでは設定によりCloudflare D1へ保存する。
 
 「K8sレヴィアタン」は魚種名であり、現状のデプロイ基盤にKubernetesは使われていない。リポジトリにあるデプロイ手段はDockerコンテナと、Cloud Run / Vercelを組み合わせる案である。
 
@@ -22,12 +22,12 @@ PCブラウザー (React UI + Three.js WebGL)
        Node.js 22 + Hono + @hono/node-server
        ├─ Ocean Rooms: ルーム、接続、入力制限
        ├─ OceanFishingGame: 20Hzの権威シミュレーション
-       ├─ HTTP API: セッション作成、図鑑取得、health
-       └─ CollectionStore ─ SQLite (node:sqlite)
+       ├─ HTTP API: セッション作成、図鑑取得、health/readiness
+       └─ CollectionRepository ─ SQLite (local) / Cloudflare D1 (Cloud Run)
 
 開発: Vite :8788 ─proxy─ backend :8787
 本番: Docker 1プロセスでクライアント静的ファイル + API + WebSocket
-別案: Vercel (静的クライアント) + Cloud Run (API/WebSocket/SQLite)
+別案: Vercel (静的クライアント) + Cloud Run (API/WebSocket/D1)
 ```
 
 ## 3. 技術スタック
@@ -43,7 +43,7 @@ PCブラウザー (React UI + Three.js WebGL)
 | HTTP | Hono 4系を `@hono/node-server` でNode HTTPサーバーに接続 |
 | 双方向通信 | `ws` 8系。HTTPサーバーのupgradeを `/ocean-ws` に渡し、部屋単位にPC表示端末・スマホ操作端末を接続 |
 | 入力検証 | Zod 4系。HTTPセッション作成とWebSocketから来るゲームアクションを検証 |
-| 永続化 | Node組み込み `node:sqlite` の同期API (`DatabaseSync`)。魚種マスタ、プレイヤー別捕獲集計、捕獲イベントをSQLiteへ保存 |
+| 永続化 | ローカルはNode組み込みSQLite (`DatabaseSync`)、Cloud RunではD1環境変数設定時にCloudflare D1 APIを利用。`DATABASE_URL` のPostgreSQL接続も任意で残る |
 | PWA | Web App ManifestとService Worker。静的画面・ビルド資産をキャッシュし、API/WSはキャッシュしない |
 | 音 | Web Audio APIで生成する環境音・効果音。外部音源ファイルに依存しない |
 | テスト | Node.js `node:test` + `tsx`。純粋関数・ゲーム・DB・ルーム・レンダリング計算を検証。統合/モデル検証スクリプトもある |
@@ -59,7 +59,8 @@ PCブラウザー (React UI + Three.js WebGL)
 
 - `npm run dev` が `scripts/dev.ts` を通じてバックエンドとViteを別プロセスで起動する。
 - Viteは通常 `0.0.0.0:8788`、API/WebSocketサーバーは `0.0.0.0:8787`。
-- Viteは `/api`、`/health`、`/ocean-ws` と公開アセットをバックエンドへproxyする。ブラウザーからは原則同じ開発オリジンに見える。
+- Viteは `/api`、`/health`、`/ready`、`/ocean-ws` と公開アセットをバックエンドへproxyする。ブラウザーからは原則同じ開発オリジンに見える。
+- `/health` はプロセス生存確認、`/ready` は図鑑ストアへの疎通を含む準備完了確認。DBが使えないとき `/ready` は503を返す。
 - `npm run dev:server` は `tsx` で `src/index.ts` を実行する。`src/index.ts` は `server.ts` を読み込む薄い入口。
 - `BACKEND_PORT`、`VITE_PORT` を変更可能。これらは `.env.example` には載っていないため、READMEが実質的な設定説明になっている。
 
@@ -122,25 +123,25 @@ Three.jsのメインscene、魚モデル、魚水面材質、図鑑プレビュ�
 
 ## 8. 永続データ・魚カタログ
 
-`src/collection-db.ts` はNode組み込みの同期SQLite (`node:sqlite`) を利用。起動時に `FISH_SPECIES` から魚種マスタをupsertし、WALを有効化する。主なテーブルは次の3つ。
+`CollectionRepository` を通して保存先を切り替える。既定は `src/collection-db.ts` の同期SQLite (`node:sqlite`)。`CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_D1_DATABASE_ID`、`CLOUDFLARE_API_TOKEN` の3つを設定すると `src/d1-collection-db.ts` がD1 APIを使う。`DATABASE_URL` を設定したPostgreSQLモードも互換用に残しているが、D1と同時には設定できない。各保存先は起動時に `FISH_SPECIES` をupsertし、同じ3テーブルを用意する。
 
 - `fish_species`: 魚種マスタと表示メタデータ
 - `player_collections`: プレイヤー×魚種ごとの釣果回数、初回/直近日時
 - `collection_catch_events`: イベントキーによる冪等な捕獲履歴
 
-捕獲処理は `BEGIN IMMEDIATE` transaction内でイベントをinsertし、新規イベントの場合だけ集計を加算する。ローカル既定DBは `data/gijutu-turi.sqlite`、環境変数 `GIJUTU_DB_PATH` で変更できる。
+捕獲処理はイベント記録と集計更新を一つのD1バッチトランザクションにまとめ、新規イベントの場合だけ集計を加算する。イベントキーの一意制約と `changes()` 条件により、再送時の二重加算を防ぐ。ローカル既定DBは `data/gijutu-turi.sqlite`、環境変数 `GIJUTU_DB_PATH` で変更できる。Cloud RunでD1を使う場合、APIトークンはSecret Managerから `CLOUDFLARE_API_TOKEN` として渡す。D1設定がなければDockerfile既定の `/tmp` SQLiteとなり、再起動後の永続化は保証されない。
 
 ## 9. 配信・運用
 
 ### Docker / Cloud Run
 
-DockerはNode 22 slimのマルチステージ構成。実行段階はproduction依存のみをinstallし、ポート8080、`HOST=0.0.0.0`、DB `/tmp/gijutu-turi.sqlite` で単一Nodeサーバーを起動する。Cloud Run向けのリポジトリ文書は、部屋がプロセスメモリにあるため最大1インスタンスを推奨し、WebSocket接続、session affinity、`/tmp` DBの消失を運用上の制約として説明している。
+DockerはNode 22 slimのマルチステージ構成。実行段階はproduction依存のみをinstallし、ポート8080、`HOST=0.0.0.0` で単一Nodeサーバーを起動する。D1環境変数がそろえばCloudflare D1、未設定なら `/tmp/gijutu-turi.sqlite` を使う。互換用の `DATABASE_URL` はPostgreSQLを選ぶ。Cloud Run向けのリポジトリ文書は、部屋がプロセスメモリにあるため最大1インスタンスを推奨し、WebSocket接続とsession affinityを運用上の制約として説明している。
 
-これは低コストのデモ向け構成であり、捕獲履歴を長期保存する本番DBや複数サーバー間の部屋共有は実装されていない。インスタンス再起動では部屋は消え、`/tmp` の図鑑DBも永続保証されない。セッションアフィニティはベストエフォートで、複数インスタンスの協調機構ではない。
+D1接続コードは実装されているが、D1データベース作成とCloud Run環境変数・Secret設定は運用者の設定が必要。D1未設定時の `/tmp` SQLiteは永続化されない。インスタンス再起動では進行中の部屋も消え、セッションアフィニティはベストエフォートで、複数インスタンスの協調機構ではない。
 
 ### Vercel
 
-`vercel.json` は `dist/client` を配信するViteフロントエンド構成。Node API/WebSocketサーバーはVercel設定からは起動しないため、利用するなら別backendを用意し、ビルド時 `VITE_BACKEND_URL` とbackend側 `FRONTEND_ORIGIN` を合わせる必要がある。正規魚種pathと、共有別名から生成する `/fish=...` の各pathをrewriteする。`src/fishing-routes.test.ts` がVercel rewriteと共有別名の一致を検査する。`/?fish=k8s` はrootのquery routeとして引き続き使える。
+`vercel.json` は `dist/client` を配信するViteフロントエンド構成。Node API/WebSocketサーバーはVercel設定からは起動しないため、利用するなら別backendを用意し、ビルド時 `VITE_BACKEND_URL` とbackend側 `FRONTEND_ORIGIN` を合わせる必要がある。正規魚種pathと、共有別名から生成する `/fish=...` の各pathをrewriteする。`src/fishing-routes.test.ts` がVercel rewriteと共有別名の一致、およびK8s正規pathのrewrite・末尾スラッシュredirectを検査する。`/?fish=k8s` は互換用query routeとして引き続き使える。
 
 ### PWAとオフライン
 

@@ -44,7 +44,7 @@ PCに広がる海へキャストし、スマートフォンを釣り竿のコン
 | リアルタイム通信 | WebSocket（`ws`） | PC画面とスマートフォン間の状態・操作同期 |
 | 入力検証 | Zod | APIとWebSocketから届くデータの検証 |
 | ゲーム状態 | `OceanFishingGame` | 魚の動き、張力、距離、捕獲・逃走をサーバー側で判定 |
-| 図鑑 | SQLite（Node.js組み込み `node:sqlite`） | 魚種マスタ、プレイヤー別捕獲数、捕獲イベントの保存 |
+| 図鑑 | ローカル: SQLite（`node:sqlite`） / Cloud Run: Cloudflare D1（任意） | 魚種マスタ、プレイヤー別捕獲数、捕獲イベントを保存 |
 | 配信 | Docker、Cloud RunまたはVercel構成 | Docker/Cloud Runはアプリ一体型、Vercelは静的フロントエンド用 |
 
 ## アーキテクチャ
@@ -54,13 +54,13 @@ PCブラウザー（React + Three.js） ── WebSocket ──┐
                                                  ├─ Node.js + Hono サーバー
 スマートフォン（Reactコントローラー） ─ WebSocket ┘  ├─ Ocean Rooms（接続・入力・配信）
                                                     ├─ OceanFishingGame（20Hzのゲーム判定）
-                                                    └─ 捕獲イベント ──► SQLite
+                                                    └─ 捕獲イベント ──► SQLite / D1
 ```
 
 - **サーバーがゲーム状態の正**です。アタリ、魚の位置・抵抗、距離、捕獲・逃走はサーバー側で決めます。
 - **クライアントは操作と表示を担当**します。ゲームスナップショットを受け取り、魚や竿を滑らかに補間して描きます。
 - **スマートフォンは入力端末**です。PCと同じルームへ接続し、同時操作による競合を防ぎます。
-- **図鑑は捕獲イベントから更新**します。捕獲記録はサーバーがSQLiteへ一度だけ保存し、画面側は図鑑を読み直します。
+- **図鑑は捕獲イベントから更新**します。捕獲記録はサーバーがDBへ一度だけ保存し、画面側は図鑑を読み直します。
 - **K8sの水面演出も魚の表示状態に同期**します。急浮上の時刻・モード・距離を魚の補間とそろえ、頭や背中などの接触点と水面シェーダーで共有する波・波紋の式から飛沫や再入水を判定します。航跡は魚の速度や身体波に応じて変わります。これらは表示演出で、捕獲判定や魚の強さを変更しません。
 
 ## はじめる
@@ -85,7 +85,7 @@ PCで [http://127.0.0.1:8788/](http://127.0.0.1:8788/) を開きます。`npm ru
 | `8788` | Vite開発サーバー。ブラウザーで開く画面 |
 | `8787` | HTTP API、WebSocket、SQLiteを扱うバックエンド |
 
-開発サーバーはLANからの接続を受け付けます。同じWi-FiのスマートフォンでQRコードを読み取る場合、PC側ファイアウォールで開発サーバーへの接続を許可してください。ローカルHTTPではタッチ操作を使えます。モーションセンサーを使うには、スマートフォンから到達できるHTTPS環境とブラウザーのセンサー許可が必要です。
+開発サーバーはLANからの接続を受け付けます。PCで `localhost` を開いている場合も、QRコードはPCのLANアドレスに置き換わるため、同じWi-Fiのスマートフォンから接続できます。PC側ファイアウォールで開発サーバーへの接続を許可してください。ローカルHTTPではタッチ操作を使えます。モーションセンサーを使うには、スマートフォンから到達できるHTTPS環境とブラウザーのセンサー許可が必要です。
 
 ### 3Dモデルの単体プレビュー
 
@@ -99,7 +99,9 @@ PCで [http://127.0.0.1:8788/](http://127.0.0.1:8788/) を開きます。`npm ru
 | `/gofish` | Go魚 | 魚種固定 |
 | `/dockerwhale` | Dockerクジラ | 魚種固定 |
 | `/cssfish` | CSS fish | 魚種固定 |
-| `/?fish=k8s` | K8sレヴィアタン | 実験的な魚種。通常抽選には含まれない |
+| `/rustfish` | Rustカジキ | 魚種固定 |
+| `/jseel` | JSうなぎ | 魚種固定 |
+| `/k8sfish` | K8sレヴィアタン | 魚種固定。通常抽選には含まれない |
 | `/docker` | Dockerクジラ | `/dockerwhale` の互換URL |
 
 以前の `?fish=go`、`?fish=docker`、`?fish=cssfish`、`?fish=k8s` や `/fish=...` 形式のURLも互換用に利用できます。新しく共有する場合は上表のURLを使ってください。PCで作ったルームと魚種はスマートフォンにも引き継がれます。
@@ -125,8 +127,13 @@ PCで [http://127.0.0.1:8788/](http://127.0.0.1:8788/) を開きます。`npm ru
 | `VITE_PORT` | Vite開発サーバーのポート | `8788` |
 | `PORT` | Nodeサーバーのポート | `8787`。Dockerfileでは`8080` |
 | `HOST` | Nodeサーバーの待受アドレス | `npm run dev`で未指定なら`0.0.0.0`。LAN接続が不要なら`127.0.0.1`に限定可能 |
-| `GIJUTU_DB_PATH` | SQLiteファイルの保存先 | `data/gijutu-turi.sqlite` |
+| `GIJUTU_DB_PATH` | D1 / PostgreSQL 未設定時のSQLite保存先 | `data/gijutu-turi.sqlite` |
+| `CLOUDFLARE_ACCOUNT_ID` | D1を使うCloudflareアカウントID | D1利用時に設定 |
+| `CLOUDFLARE_D1_DATABASE_ID` | D1データベースID | D1利用時に設定 |
+| `CLOUDFLARE_API_TOKEN` | D1 APIトークン（D1 Read / Write） | D1利用時にSecret Manager等から設定 |
+| `DATABASE_URL` | 任意のPostgreSQL接続URL | D1とは同時に設定しない |
 | `VITE_BACKEND_URL` | Vercelフロントエンドから接続するバックエンドURL | Vercelのビルド環境に設定 |
+| `VITE_PUBLIC_ORIGIN` | OGP/Twitterカードに埋め込む公開URLのOrigin | 本番ビルド時に設定。例: `https://example.com`（末尾スラッシュなし） |
 | `FRONTEND_ORIGIN` | API/WebSocketで許可するフロントエンドOrigin | Cloud Run側に設定。複数はカンマ区切り |
 
 ポートを変えて起動する例:
@@ -165,7 +172,7 @@ npm run test:whale
 - Docker/Cloud RunではNodeサーバーが画面・API・WebSocketをまとめて配信します。Cloud Runでの公開URLにはポート番号を付けません。
 - Vercel構成は静的フロントエンド用です。WebSocket/APIサーバーは別途用意し、Vercelの `VITE_BACKEND_URL` とバックエンドの `FRONTEND_ORIGIN` を設定します。
 - ルーム状態はNodeプロセスのメモリ上にあります。Cloud Runの再起動やインスタンス切替で接続中のルームは失われます。
-- DockerfileのSQLite保存先は `/tmp` です。Cloud Runでは永続ストレージではないため、再起動後の図鑑データ保持は保証されません。現在の構成は小規模デモ向けです。
+- Cloud Runは既定で `/tmp` のSQLiteを使うため、再起動後の図鑑データ保持は保証されません。Cloud Runで永続化する場合はCloudflare D1を選べます。設定は[Cloudflare D1永続化ガイド](./docs/cloudflare-d1-persistence.md)を参照してください。D1設定と `DATABASE_URL`（PostgreSQL）は同時に使えません。
 - ルームは最大128個、1ルーム最大8接続で、スマートフォンの操作担当は1台です。無人のルームは30分後に回収します。QR/ルームURLを知っている人はその海へ接続できるため、公開場所へ不用意に共有しないでください。
 - Service Workerは静的ファイルをキャッシュしますが、ゲーム進行や捕獲記録にはオンラインのバックエンド接続が必要です。
 
@@ -181,7 +188,7 @@ npm run test:whale
 - `src/fish-species.ts` / `src/fishing-routes.ts`: 魚種レジストリとURL解決
 - `src/rendering/ocean-scene.ts`: Three.jsの海・魚・竿・糸・水面演出
 - `src/rendering/k8s-surface-motion.ts` / `src/rendering/fish-water.ts`: K8s水面接触と共有波面計算
-- `src/collection-db.ts`: SQLite図鑑データ
+- `src/collection-db.ts` / `src/d1-collection-db.ts` / `src/postgres-collection-db.ts`: SQLite / D1 / PostgreSQL図鑑データ
 - `vendor/`: 使用するThree.js配布ファイルとライセンス
 
 ## ライセンス
