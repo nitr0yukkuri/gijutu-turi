@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { OceanFishingGame } from "./ocean-game.js";
-import { isOceanMessage, oceanMessageSchema } from "./ocean-contract.js";
+import { canContinueAfterCatchSave, isOceanMessage, oceanMessageSchema } from "./ocean-contract.js";
 
 const makeMessage = () => ({
   type: "ocean" as const,
@@ -50,4 +50,18 @@ test("frontend accepts and strips private fields from the previous server during
     ...legacyMessage,
     state: { ...legacyMessage.state, initialDistance: Number.NaN },
   }), false);
+});
+
+test("catch persistence status is validated while old server messages remain compatible", () => {
+  const message = makeMessage();
+
+  assert.equal(isOceanMessage(message), true);
+  for (const catchSaveStatus of ["none", "pending", "saved", "failed"] as const) {
+    assert.equal(isOceanMessage({ ...message, catchSaveStatus }), true);
+  }
+  assert.equal(isOceanMessage({ ...message, catchSaveStatus: "unknown" }), false);
+  assert.equal(canContinueAfterCatchSave("none"), false);
+  assert.equal(canContinueAfterCatchSave("pending"), false);
+  assert.equal(canContinueAfterCatchSave("failed"), false);
+  assert.equal(canContinueAfterCatchSave("saved"), true);
 });

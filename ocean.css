@@ -72,6 +72,8 @@ body:has(#collection-dialog[open]) #sea #escape-ui {
 .collection-silhouette svg { position: relative; width: min(88%, 430px); height: auto; overflow: visible; filter: drop-shadow(0 12px 24px #0000008c); }
 .collection-silhouette path, .collection-silhouette rect, .collection-silhouette circle { vector-effect: non-scaling-stroke; }
 .collection-silhouette .silhouette-body, .collection-silhouette .silhouette-tail, .collection-silhouette .silhouette-fin { fill: currentColor; opacity: .92; stroke: currentColor; stroke-width: 1.2; }
+.collection-silhouette .silhouette-bill { fill: currentColor; opacity: .96; stroke: currentColor; stroke-width: 1; }
+.collection-silhouette .silhouette-stripes { fill: none; stroke: #42aaff; stroke-width: 4; stroke-linecap: round; opacity: .78; }
 .collection-silhouette .silhouette-body { opacity: .98; }
 .collection-silhouette .silhouette-fin { opacity: .86; }
 .collection-silhouette .silhouette-fin--lower { opacity: .78; }
@@ -81,6 +83,7 @@ body:has(#collection-dialog[open]) #sea #escape-ui {
 .collection-silhouette--go-school { color: #04080d; }
 .collection-silhouette--docker-whale { color: #050b10; transform: scale(1.14); }
 .collection-silhouette--css-fish { color: #050b10; transform: scale(.82); }
+.collection-silhouette--rust-striped-marlin { color: #061323; transform: scale(1.03); }
 .collection-silhouette--cluster-leviathan { color: #101817; transform: scale(1.04); }
 .collection-silhouette--css-fish::before { background: radial-gradient(ellipse, #000 0%, transparent 70%); opacity: .16; }
 .collection-silhouette-caption { position: absolute; bottom: 8px; color: #b9d4d9; font-size: 10px; letter-spacing: .14em; opacity: .72; }
@@ -228,3 +231,5 @@ body[data-phase=caught] .catch-ui h1{font-size:clamp(40px,6vw,72px);line-height:
 @media(max-width:600px){body[data-phase=caught] .catch-ui{top:calc(15% + 48px);left:24px;width:calc(100vw - 48px)}body[data-phase=caught] .catch-ui h1{font-size:clamp(40px,13vw,53px)}}
 .phone-rod-pump{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:min(100%,340px);min-height:56px;margin:0 0 10px;border:1px solid #b6e7ea55;border-radius:5px;background:#12374375;color:#e4f1ef;touch-action:manipulation}.phone-rod-pump span{font-size:15px;font-weight:500;letter-spacing:.06em}.phone-rod-pump small{font-size:10px;color:#b4cdd6}.phone-rod-pump:disabled{opacity:.45;cursor:wait}.rod-symbol.is-fighting{transform-origin:50% 85%;animation:phone-rod-stroke .62s cubic-bezier(.2,.72,.25,1) both}@keyframes phone-rod-stroke{0%{transform:translateY(0) rotate(0)}18%{transform:translateY(-9px) rotate(-8deg)}46%{transform:translateY(4px) rotate(4deg)}72%{transform:translateY(-2px) rotate(-1.5deg)}100%{transform:translateY(0) rotate(0)}}
 @media(prefers-reduced-motion:reduce){.rod-symbol.is-fighting{animation:none!important}.phone-rod-pump{transition:none}}
+.tension-track .tension-impact{position:absolute;top:0;bottom:0;left:var(--k8s-lunge-start,0%);width:var(--k8s-lunge-width,0%);background:linear-gradient(90deg,#ffdca522,#ffc18dcc);box-shadow:0 0 10px #ffbf8caa;opacity:0;pointer-events:none;transition:left .08s linear,width .08s linear,opacity .08s linear}.tension-track[data-k8s-lunge=true] .tension-impact{opacity:1}.rod-symbol.is-k8s-fighting svg{transform-origin:50% 90%;transform:rotate(var(--k8s-rod-angle,0deg));filter:drop-shadow(0 0 var(--k8s-rod-glow,0px) #ffc18c88);transition:transform .08s linear,filter .08s linear}.rod-symbol.is-k8s-lunge .rod-thread{stroke:#ffe0b4}.tension-track[data-k8s-lunge=true]{box-shadow:0 0 12px #f4b88a66}@media(prefers-reduced-motion:reduce){.tension-track .tension-impact,.rod-symbol.is-k8s-fighting svg{transition:none!important}.rod-symbol.is-k8s-fighting svg{transform:none!important;filter:none!important}}
+.tension-track[data-k8s-mode=warning]{background:#d5e8e85c;box-shadow:0 0 0 1px #d5e8e84a,0 0 13px #b7dce344;transition:background .3s,box-shadow .3s}
