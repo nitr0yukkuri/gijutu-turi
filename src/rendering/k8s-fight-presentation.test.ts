@@ -1,0 +1,61 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { OCEAN_RENDER_DELAY_MS } from '../ocean-timing.js';
+import { K8S_ECHO_COUNT, k8sFightPresentation, k8sLungeForSnapshot } from './k8s-fight-presentation.js';
+
+test('K8S has two echoes, matching the species description', () => {
+  assert.equal(K8S_ECHO_COUNT, 2);
+});
+
+test('K8S lunge cue uses the renderer delay and stays off for non-fight states', () => {
+  const snapshot={fishId:'k8s-001' as const,phase:'fighting' as const,mode:'split' as const,fightTime:3.8};
+  const inPhase=k8sLungeForSnapshot(snapshot);
+  const delayed=k8sLungeForSnapshot(snapshot,OCEAN_RENDER_DELAY_MS/1000);
+  assert.ok(inPhase>delayed&&delayed>0,'UI cue should follow the same 100ms render buffer as the fish and rod');
+  assert.equal(k8sLungeForSnapshot({...snapshot,phase:'caught'}),0);
+  assert.equal(k8sLungeForSnapshot({...snapshot,fishId:'fish-001'}),0);
+  assert.equal(k8sLungeForSnapshot({...snapshot,mode:'warning'}),0);
+});
+
+test('K8S reveal follows line distance without a visibility jump at the bite', () => {
+  const bite = .58;
+  const far = k8sFightPresentation('fighting', 60, 'surge');
+  const mid = k8sFightPresentation('fighting', 24, 'surge');
+  const close = k8sFightPresentation('fighting', 4, 'surge');
+
+  assert.ok(far.bodyVisibility < mid.bodyVisibility);
+  assert.ok(mid.bodyVisibility < close.bodyVisibility);
+  assert.ok(far.bodyVisibility < bite + .01, 'a far hook remains a silhouette');
+  assert.ok(mid.bodyVisibility > bite, 'the body clarifies as the fish comes closer');
+  assert.equal(close.bodyVisibility, 1);
+});
+
+test('K8S echo copies are faint at range, fan out on surges, then gather on warning', () => {
+  const farRest = k8sFightPresentation('fighting', 60, 'rest');
+  const closeRest = k8sFightPresentation('fighting', 5, 'rest');
+  const closeSurge = k8sFightPresentation('fighting', 5, 'surge');
+  const closeSplit = k8sFightPresentation('fighting', 5, 'split');
+  const closeWarning = k8sFightPresentation('fighting', 5, 'warning');
+
+  assert.ok(Math.abs(farRest.echoVisibility - .00072) < 1e-12);
+  assert.ok(closeRest.echoVisibility > farRest.echoVisibility);
+  assert.ok(closeSurge.echoVisibility > closeRest.echoVisibility);
+  assert.ok(closeSplit.echoVisibility > closeSurge.echoVisibility);
+  assert.ok(closeSplit.echoVisibility < .26, 'the shadows stay subordinate to the main body');
+  assert.ok(closeSplit.echoSpread > closeSurge.echoSpread);
+  assert.ok(closeWarning.echoSpread < closeRest.echoSpread, 'the copies gather before the landing');
+  assert.ok(closeSplit.wakeGain > closeSurge.wakeGain, 'the surface lunge makes the strongest trace');
+  const breach = k8sFightPresentation('fighting', 5, 'split', 1);
+  assert.ok(breach.echoVisibility > closeSplit.echoVisibility * .7, 'replicas remain readable during the breach');
+  assert.ok(breach.echoSpread > 1.5, 'the formation stays legible instead of collapsing into the leader');
+});
+
+test('K8S replicas stay absent before the fight and clear for the catch portrait', () => {
+  const waiting = k8sFightPresentation('waiting', 20, 'rest');
+  const caught = k8sFightPresentation('caught', 2, 'warning');
+
+  assert.equal(waiting.echoVisibility, 0);
+  assert.equal(caught.bodyVisibility, 1);
+  assert.equal(caught.echoVisibility, 0);
+  assert.equal(caught.echoSpread, .56);
+});
