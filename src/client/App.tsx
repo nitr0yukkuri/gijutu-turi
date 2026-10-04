@@ -6,6 +6,7 @@ import { canContinueAfterCatchSave } from "../ocean-contract.js";
 import { k8sLungeForSnapshot } from "../rendering/k8s-fight-presentation.js";
 import { resolveFishingRoute } from "./fishing-route.js";
 import { TECH_TREE_BRANCHES, TECH_TREE_NODE_DETAILS } from "./tech-tree.js";
+import { techTreeReveal } from "./tech-tree-preview.js";
 import { useOceanRuntime } from "./useOceanRuntime.js";
 import { PhoneReelControl } from "./PhoneReelControl.js";
 import type { Collection, CollectionEntry, OceanPhase } from "./types.js";
@@ -186,10 +187,12 @@ function TechTreeView({ entries, selectedId, onSelect }: {
 }) {
   const speciesEntries = entries.filter(entry => isFishSpeciesId(entry.id) && entry.catalogStatus === "active");
   const discovered = speciesEntries.filter(entry => entry.status === "caught").length;
+  const [showAllPreview, setShowAllPreview] = useState(false);
+  const previewEnabled = import.meta.env.DEV && showAllPreview;
   const selected = speciesEntries.find(entry => entry.id === selectedId) ?? speciesEntries[0];
   const selectedSpecies = selected && isFishSpeciesId(selected.id) ? getFishSpecies(selected.id) : undefined;
   const selectedDetails = selected && isFishSpeciesId(selected.id) ? TECH_TREE_NODE_DETAILS[selected.id] : undefined;
-  const selectedCaught = selected?.status === "caught";
+  const selectedReveal = techTreeReveal(selected?.status ?? "unknown", showAllPreview, import.meta.env.DEV);
   const selectedSpeciesId = selected && isFishSpeciesId(selected.id) ? selected.id : undefined;
   const selectedBranch = selectedSpeciesId
     ? TECH_TREE_BRANCHES.find(branch => branch.speciesIds.includes(selectedSpeciesId))
@@ -239,8 +242,12 @@ function TechTreeView({ entries, selectedId, onSelect }: {
           <p className="tech-tree-kicker">釣果からひらく、技術の海図</p>
           <h3 id="tech-tree-heading">技術の海図</h3>
         </div>
-        <div className="tech-tree-progress" aria-live="polite"><span>発見</span><strong>{discovered}<small> / {speciesEntries.length}</small></strong></div>
+        <div className="tech-tree-intro-actions">
+          <div className="tech-tree-progress" aria-live="polite"><span>{previewEnabled ? "表示" : "発見"}</span><strong>{previewEnabled ? speciesEntries.length : discovered}<small> / {speciesEntries.length}</small></strong></div>
+          {import.meta.env.DEV && <button type="button" className="tech-tree-preview-toggle" aria-pressed={showAllPreview} onClick={() => setShowAllPreview(value => !value)}>全開放プレビュー</button>}
+        </div>
       </header>
+      {previewEnabled && <p className="tech-tree-preview-note" role="status">開発用の表示です。実際の発見は {discovered} / {speciesEntries.length}。釣果・DBは変更しません。</p>}
 
       {speciesEntries.length === 0 ? <p className="tech-tree-empty" role="status">技術ツリーを読み込めませんでした。魚図鑑に戻ってください。</p> : <>
         <div className="tech-tree-layout">
@@ -265,23 +272,23 @@ function TechTreeView({ entries, selectedId, onSelect }: {
                   </header>
                   <div className="tech-tree-nodes">
                     {branchEntries.map(entry => {
-                      const caught = entry.status === "caught";
+                      const reveal = techTreeReveal(entry.status, showAllPreview, import.meta.env.DEV);
                       const species = isFishSpeciesId(entry.id) ? getFishSpecies(entry.id) : undefined;
                       const details = isFishSpeciesId(entry.id) ? TECH_TREE_NODE_DETAILS[entry.id] : undefined;
-                      const title = caught && details ? details.technology : "？？？";
-                      const subtitle = caught && species ? collectionName(entry) : species?.unknownTitle ?? "まだ見ぬ魚";
+                      const title = reveal.revealed && details ? details.technology : "？？？";
+                      const subtitle = reveal.revealed && species ? collectionName(entry) : species?.unknownTitle ?? "まだ見ぬ魚";
                       return <button
                         key={entry.id}
                         type="button"
-                        className={`tech-tree-node tech-tree-node--${entry.id}${caught ? " is-unlocked" : " is-locked"}${entry.id === selected?.id ? " is-selected" : ""}`}
+                        className={`tech-tree-node tech-tree-node--${entry.id}${reveal.revealed ? " is-unlocked" : " is-locked"}${reveal.preview ? " is-preview" : ""}${entry.id === selected?.id ? " is-selected" : ""}`}
                         data-species-id={entry.id}
                         aria-pressed={entry.id === selected?.id}
-                        aria-label={`${title}。${caught ? "発見済み" : "未発見"}。${subtitle}`}
+                        aria-label={`${title}。${reveal.caught ? "発見済み" : reveal.preview ? "プレビュー表示" : "未発見"}。${subtitle}`}
                         onClick={() => onSelect(entry.id)}
                       >
                         <span className="tech-tree-node-icon" aria-hidden="true">
                           <FishTechIcon speciesId={entry.id} />
-                          <span className="tech-tree-node-mark">{caught ? "✦" : ""}</span>
+                          <span className="tech-tree-node-mark">{reveal.caught ? "✦" : reveal.preview ? "◇" : ""}</span>
                         </span>
                         <span className="tech-tree-node-copy"><strong>{title}</strong><small>{subtitle}</small></span>
                       </button>;
@@ -294,27 +301,27 @@ function TechTreeView({ entries, selectedId, onSelect }: {
 
           {selected && selectedSpecies && (
             <section className="tech-tree-inspector" aria-live="polite" aria-label="選択した技術ノード">
-              <div className="tech-tree-inspector-topline"><span>{selectedBranch?.label ?? "発見した技術"}</span><span className={selectedCaught ? "is-unlocked" : "is-locked"}>{selectedCaught ? "発見済み" : "未発見"}</span></div>
+              <div className="tech-tree-inspector-topline"><span>{selectedBranch?.label ?? "発見した技術"}</span><span className={selectedReveal.caught ? "is-unlocked" : selectedReveal.preview ? "is-preview" : "is-locked"}>{selectedReveal.caught ? "発見済み" : selectedReveal.preview ? "プレビュー" : "未発見"}</span></div>
               <div className="tech-tree-inspector-heading">
-                <span className={`tech-tree-inspector-icon${selectedCaught ? " is-unlocked" : ""}`} aria-hidden="true"><FishTechIcon speciesId={selected.id} /></span>
-                <div><p>{selectedCaught && selectedDetails ? selectedDetails.technology : "未知の技術"}</p><h4>{selectedCaught ? collectionName(selected) : selectedSpecies.unknownTitle}</h4></div>
+                <span className={`tech-tree-inspector-icon${selectedReveal.revealed ? " is-unlocked" : ""}`} aria-hidden="true"><FishTechIcon speciesId={selected.id} /></span>
+                <div><p>{selectedReveal.revealed && selectedDetails ? selectedDetails.technology : "未知の技術"}</p><h4>{selectedReveal.revealed ? collectionName(selected) : selectedSpecies.unknownTitle}</h4></div>
               </div>
-              {selectedCaught && selectedDetails ? <div className="tech-tree-node-data">
+              {selectedReveal.revealed && selectedDetails ? <div className="tech-tree-node-data">
                 <p className="tech-tree-concept">{selectedDetails.concept}</p>
                 <p className="tech-tree-expression"><span>釣りでは</span>{selectedDetails.gameExpression}</p>
-                <p className="tech-tree-catches">釣果 <strong>{selected.catches}</strong> 回</p>
+                {selectedReveal.caught && <p className="tech-tree-catches">釣果 <strong>{selected.catches}</strong> 回</p>}
               </div> : <div className="tech-tree-node-data">
                 <p className="tech-tree-concept">{selectedSpecies.unknownHint}</p>
                 <ul className="tech-tree-clues" aria-label="魚影の手がかり">
                   {selectedSpecies.traits.map(trait => <li key={trait}>{trait}</li>)}
                 </ul>
               </div>}
-              <a className="tech-tree-route" href={selectedDetails?.routeHref ?? "/"}>{selectedCaught ? "もう一度、この魚に会う" : "この魚を釣りに行く"}<span aria-hidden="true">→</span></a>
+              <a className="tech-tree-route" href={selectedDetails?.routeHref ?? "/"}>{selectedReveal.caught ? "もう一度、この魚に会う" : "この魚を釣りに行く"}<span aria-hidden="true">→</span></a>
             </section>
           )}
         </div>
       </>}
-      <p className="tech-tree-legend">光る紋章は発見済み。線は分野のつながりで、解放の順番ではありません。</p>
+      <p className="tech-tree-legend">{previewEnabled ? "光る紋章は開発用プレビューです。" : "光る紋章は発見済み。"}線は分野のつながりで、解放の順番ではありません。</p>
     </section>
   );
 }

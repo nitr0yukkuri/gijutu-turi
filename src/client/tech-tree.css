@@ -73,6 +73,47 @@
   letter-spacing: .04em;
 }
 
+.tech-tree-intro-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 15px;
+}
+
+.tech-tree-preview-toggle {
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px dashed #e8cc987d;
+  border-radius: 999px;
+  background: #102e3bd9;
+  color: #f1dfbe;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.tech-tree-preview-toggle[aria-pressed="true"] {
+  border-style: solid;
+  background: #715940;
+  color: #fff4df;
+}
+
+.tech-tree-preview-toggle:hover { border-color: #ffe3aa; }
+.tech-tree-preview-toggle:focus-visible { outline: 3px solid #ffe2ac; outline-offset: 3px; }
+
+.tech-tree-preview-note {
+  margin: -1px 4px 13px;
+  padding: 8px 12px;
+  border-left: 2px solid #f2d39b;
+  border-radius: 0 6px 6px 0;
+  background: #102e3be8;
+  color: #f6e8d1;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .tech-tree-progress {
   display: flex;
   align-items: baseline;
@@ -303,6 +344,7 @@
 }
 
 .tech-tree-node.is-locked .tech-tree-node-icon { border-style: dashed; opacity: .78; }
+.tech-tree-node.is-preview .tech-tree-node-icon { border-color: #e4cf9e; box-shadow: inset 0 0 0 3px #d2dfdb0e, 0 0 18px #e5c8864d; }
 .tech-tree-node--fish-001 { --node-accent: #a9e0d3; }
 .tech-tree-node--rust-001 { --node-accent: #f0b48b; }
 .tech-tree-node--js-001 { --node-accent: #f3c871; }
@@ -332,6 +374,7 @@
 }
 
 .tech-tree-node.is-unlocked .tech-tree-node-mark { border-color: #f7d8a3; background: #f4d8a7; }
+.tech-tree-node.is-preview .tech-tree-node-mark { background: #f1e1bc; color: #28444a; }
 .tech-tree-node-copy { display: grid; justify-items: center; gap: 1px; min-width: 0; }
 .tech-tree-node-copy strong { color: #fff4dd; font-size: 12px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
 .tech-tree-node-copy small { color: #d3dfdd; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
@@ -363,6 +406,7 @@
 
 .tech-tree-inspector-topline > span:last-child { color: #d4e2dd; font-size: 11px; white-space: nowrap; }
 .tech-tree-inspector-topline > span:last-child.is-unlocked { color: #bcebd3; }
+.tech-tree-inspector-topline > span:last-child.is-preview { color: #f5d7a4; }
 .tech-tree-inspector-heading { display: flex; align-items: center; gap: 10px; margin-top: 15px; }
 .tech-tree-inspector-icon {
   display: grid;
@@ -517,6 +561,8 @@
   .collection-views button { min-width: 0; flex: 1; padding-inline: 11px; font-size: 11px; }
   .tech-tree { padding: 13px 0 22px; }
   .tech-tree-intro h3 { font-size: 21px; }
+  .tech-tree-intro { flex-wrap: wrap; gap: 8px; }
+  .tech-tree-intro-actions { width: 100%; flex-direction: row-reverse; justify-content: space-between; }
   .tech-tree-kicker { font-size: 10px; }
   .tech-tree-progress { gap: 5px; font-size: 11px; }
   .tech-tree-progress strong { font-size: 18px; }
