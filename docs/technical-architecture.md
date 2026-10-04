@@ -169,7 +169,7 @@ D1接続コードは実装されているが、D1データベース作成とClou
 
 ### 対応済み — 旧protocolと現行魚泳ぎ型の依存混在
 
-現行起動経路は `OceanFishingGame` / `OceanMessage`。魚gait/body-waveの共有語彙を `fish-contract.ts` に分離し、現行server/rendererは旧 `protocol.ts` に依存しない。旧 `FishingSimulation` / `GameSnapshot` / `ClientMessage` は互換性確認用のtest-only実装として残すが、production server buildからは除外した。コード自体を削除せず、利用実態を分けた。
+現行起動経路は `OceanFishingGame` / `OceanMessage`。魚gait/body-waveの共有語彙を `fish-contract.ts` に分離し、server/rendererで共有する。旧 `FishingSimulation` / `GameSnapshot` / `ClientMessage` は現行経路から参照されず、互換性テストも廃止したため、旧 `game.ts` / `protocol.ts` とともに削除した。
 
 ### P2 — 描画・入力hookが大きく、型検査除外の境界が広い
 
