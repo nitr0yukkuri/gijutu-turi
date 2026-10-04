@@ -87,7 +87,7 @@ function bodySurfaceAt(shape, t, angle, extra = 0) {
   return new THREE.Vector3(p.x, p.center + Math.sin(angle) * (p.height + extra), Math.cos(angle) * (p.width + extra));
 }
 
-function makeBodyGeometry(detail, shape = goShape) {
+function makeBodyGeometry(detail, shape = goShape, smoothAngularSeam = false) {
   const rings = detail === 'low' ? 64 : 112, sides = detail === 'low' ? 32 : 56;
   const positions = [], uvs = [], indices = [];
   for (let i = 0; i <= rings; i++) {
@@ -113,6 +113,21 @@ function makeBodyGeometry(detail, shape = goShape) {
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices); geometry.computeVertexNormals();
+  if (smoothAngularSeam) {
+    const normals = geometry.attributes.normal;
+    const stride = sides + 1;
+    for (let ring = 0; ring <= rings; ring++) {
+      const first = ring * stride;
+      const last = first + sides;
+      const x = normals.getX(first) + normals.getX(last);
+      const y = normals.getY(first) + normals.getY(last);
+      const z = normals.getZ(first) + normals.getZ(last);
+      const length = Math.hypot(x, y, z) || 1;
+      normals.setXYZ(first, x / length, y / length, z / length);
+      normals.setXYZ(last, x / length, y / length, z / length);
+    }
+    normals.needsUpdate = true;
+  }
   return geometry;
 }
 
@@ -300,7 +315,7 @@ function animateMaterial(material, uniforms, mode = 'plain', cssStyle = false, c
   return material;
 }
 
-function makeFinGeometry(base, edge, low, surfaceBulge = .065, freeEdgeMotion = 1) {
+function makeFinGeometry(base, edge, low, surfaceBulge = .065, freeEdgeMotion = 1, bulgeDirection = 1) {
   const root = curve(base), rim = curve(edge);
   const nu = low ? 28 : 52, nv = low ? 9 : 16;
   const positions = [], uvs = [], free = [], indices = [];
@@ -308,7 +323,7 @@ function makeFinGeometry(base, edge, low, surfaceBulge = .065, freeEdgeMotion = 
     const u = i / nu, a = root.getPoint(u), b = rim.getPoint(u);
     for (let j = 0; j <= nv; j++) {
       const v = j / nv, p = a.clone().lerp(b, v);
-      p.z += Math.sin(Math.PI * v) * Math.sin(Math.PI * u) * surfaceBulge;
+      p.z += bulgeDirection * Math.sin(Math.PI * v) * Math.sin(Math.PI * u) * surfaceBulge;
       positions.push(p.x, p.y, p.z); uvs.push(u, v); free.push(v * v * freeEdgeMotion);
     }
   }
@@ -341,7 +356,9 @@ function makeFoldedMarlinFinGeometry(shape, { xStart, xEnd, side, flankAngle, sp
   for (let i = 0; i < stations; i++) {
     const u = i / (stations - 1);
     const x = xStart + (xEnd - xStart) * u;
-    const surface = bodySurfaceAt(shape, bodyParameterAtX(shape, x), flankAngle, .004);
+    // Bury the root slightly under the skin. A positive offset made the opaque
+    // fin overlap the body and expose a thin, dark z-fighting line on the flank.
+    const surface = bodySurfaceAt(shape, bodyParameterAtX(shape, x), flankAngle, -.006);
     const tipEnvelope = u <= tipAt
       ? Math.sin((u / tipAt) * Math.PI * .5)
       : Math.sin(((1 - u) / (1 - tipAt)) * Math.PI * .5);
@@ -352,7 +369,44 @@ function makeFoldedMarlinFinGeometry(shape, { xStart, xEnd, side, flankAngle, sp
       side * spread * tipEnvelope,
     )).toArray());
   }
-  return makeFinGeometry(root, freeEdge, low, .002, freeEdgeMotion);
+  return makeFinGeometry(root, freeEdge, low, .003, freeEdgeMotion, side);
+}
+
+/** A caudal keel should read as a low body ridge, never as an overlaid wire. */
+function makeMarlinKeelGeometry(shape, side, low) {
+  const alongSegments = low ? 10 : 18;
+  const acrossSegments = low ? 4 : 8;
+  const positions = [], uvs = [], indices = [];
+  const tStart = .82, tEnd = .94;
+  const centerAngle = side > 0 ? TAU : Math.PI;
+  for (let i = 0; i <= alongSegments; i++) {
+    const u = i / alongSegments;
+    const t = tStart + (tEnd - tStart) * u;
+    const lengthTaper = Math.pow(Math.sin(Math.PI * u), .7);
+    for (let j = 0; j <= acrossSegments; j++) {
+      const v = j / acrossSegments;
+      const angle = centerAngle + (v * 2 - 1) * .085;
+      const widthTaper = Math.sin(Math.PI * v);
+      const lift = .0015 + .006 * lengthTaper * widthTaper;
+      const point = bodySurfaceAt(shape, t, angle, lift);
+      positions.push(point.x, point.y, point.z);
+      // Match the body's cylindrical UVs so the ridge shares its pigment and
+      // keeps the flank pattern continuous across the patch.
+      uvs.push(t, angle / TAU);
+    }
+  }
+  for (let i = 0; i < alongSegments; i++) for (let j = 0; j < acrossSegments; j++) {
+    const a = i * (acrossSegments + 1) + j;
+    const b = a + acrossSegments + 1;
+    indices.push(a, b, a + 1, a + 1, b, b + 1);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setAttribute('aFin', new THREE.Float32BufferAttribute(new Float32Array(positions.length / 3), 1));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 function finMaterial(uniforms, rays, cssStyle = false, clusterStyle = false, rustStyle = false, eelStyle = false) {
@@ -438,7 +492,7 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
     geometries.add(geometry); materials.add(material); group.add(mesh); return mesh;
   }
   const skin = animateMaterial(new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: clusterStyle ? .82 : rustStyle ? .42 : eelStyle ? .48 : .4, metalness: clusterStyle ? .035 : rustStyle ? .12 : eelStyle ? .035 : .16, clearcoat: clusterStyle ? .08 : rustStyle ? .22 : eelStyle ? .32 : .48, clearcoatRoughness: .3, iridescence: clusterStyle ? .015 : rustStyle ? .025 : eelStyle ? .045 : .15, iridescenceIOR: 1.3, envMapIntensity: .3 }), uniforms, 'body', cssStyle, clusterStyle, rustStyle, eelStyle);
-  const body = add(makeBodyGeometry(detail, shape), skin, 'sculpted-body');
+  const body = add(makeBodyGeometry(detail, shape, rustStyle), skin, 'sculpted-body');
   const luminous = animateMaterial(clusterStyle
     ? new THREE.MeshStandardMaterial({ color: 0x9baebc, emissive: 0x071226, emissiveIntensity: .06, roughness: .78, metalness: .025 })
     : rustStyle
@@ -517,10 +571,9 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
       [[.98,-.095,0],[1.15,-.075,0],[1.32,-.045,0]],
       [[.98,-.095,0],[1.10,-.20,0],[1.22,-.17,0],[1.32,-.045,0]], 12);
     for (const sign of [-1, 1]) {
-      // Keep the real paired keels as shallow ridges; a raised dark tube reads
-      // like a drawn seam at the close side-on camera angle.
-      const keel = [.82,.88,.94].map((t,index) => bodySurface(t, sign > 0 ? 0 : Math.PI, .002 + (index === 1 ? .002 : 0)));
-      tube(keel, .0025, rustAnatomy, `marlin-caudal-keel-${sign}`);
+      // Keep the paired caudal keels fused to the body. A narrow surface patch
+      // shares the skin shader, avoiding the dark wire edge of a tube overlay.
+      add(makeMarlinKeelGeometry(shape, sign, low), skin, `marlin-caudal-keel-${sign}`);
     }
     for (const sign of [-1, 1]) {
       // The pectoral follows the flank from shoulder to a swept-back tip.
