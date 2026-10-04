@@ -73,12 +73,14 @@ export class FishingAudioController {
   private ambientModulationGain: GainNode | null = null;
   private reelPulseTimer: number | null = null;
   private dragPulseTimer: number | null = null;
+  private waterLapTimer: number | null = null;
   private reelPulseInterval = 0;
   private dragPulseInterval = 0;
   private reelTuning = getFishAudioTuning("fish-001");
   private reelAmount = 0;
   private dragTuning = this.reelTuning;
   private dragAmount = 0;
+  private waterLapAmount = 1;
   private activeVoices = new Set<AudioScheduledSourceNode>();
   private lastEvents = new Map<FishingAudioEvent, number>();
   private lastLoopUpdate = 0;
@@ -96,7 +98,9 @@ export class FishingAudioController {
     const time = context.currentTime;
     inputGain.gain.cancelScheduledValues(time);
     inputGain.gain.setTargetAtTime(this.enabled ? 1 : 0, time, .045);
-    if (!this.enabled) {
+    if (this.enabled) {
+      this.scheduleWaterLap(1500 + Math.random() * 1800);
+    } else {
       this.clearPulseTimers();
       window.setTimeout(() => {
         if (!this.enabled) void context.suspend();
@@ -107,6 +111,7 @@ export class FishingAudioController {
 
   sync(previous: OceanState, next: OceanState): void {
     if (!this.enabled) return;
+    this.waterLapAmount = next.phase === "fighting" ? (next.tension >= .58 ? .3 : .44) : next.phase === "biting" ? .72 : 1;
     if (previous.phase !== next.phase) {
       const eventByPhase: Partial<Record<OceanPhase, FishingAudioEvent>> = {
         casting: "cast",
@@ -170,10 +175,17 @@ export class FishingAudioController {
     }
   }
 
-  suspend(): void { void this.context?.suspend(); }
+  suspend(): void {
+    if (this.waterLapTimer !== null) window.clearTimeout(this.waterLapTimer);
+    this.waterLapTimer = null;
+    void this.context?.suspend();
+  }
 
   async resume(): Promise<void> {
     if (this.enabled && this.context?.state === "suspended") await this.context.resume();
+    if (this.enabled && this.context?.state === "running" && this.waterLapTimer === null) {
+      this.scheduleWaterLap(1500 + Math.random() * 1800);
+    }
   }
 
   dispose(): void {
@@ -299,6 +311,43 @@ export class FishingAudioController {
     this.dragPulseTimer = window.setInterval(() => this.playDragPulse(), interval);
   }
 
+  /** Add an irregular, soft surface lap over the continuous low water bed. */
+  private scheduleWaterLap(delayMs: number): void {
+    if (!this.enabled || this.waterLapTimer !== null) return;
+    this.waterLapTimer = window.setTimeout(() => {
+      this.waterLapTimer = null;
+      if (!this.enabled) return;
+      this.playWaterLap();
+      this.scheduleWaterLap(4600 + Math.random() * 3900);
+    }, delayMs);
+  }
+
+  private playWaterLap(): void {
+    const context = this.context;
+    if (!context || context.state !== "running") return;
+    const now = context.currentTime + .012;
+    const amount = this.waterLapAmount;
+    const duration = 1.7 + Math.random() * .8;
+    const peak = (.008 + Math.random() * .002) * amount;
+    const startFrequency = 320 + Math.random() * 220;
+    const endFrequency = 720 + Math.random() * 430;
+    this.playNoise(now, duration, startFrequency, peak, endFrequency, .24 + Math.random() * .12);
+
+    // A much quieter high ripple gives some laps a little surface fizz.
+    if (Math.random() < .55) {
+      const rippleStart = now + .32 + Math.random() * .24;
+      const rippleDuration = .72 + Math.random() * .36;
+      this.playNoise(
+        rippleStart,
+        rippleDuration,
+        1050 + Math.random() * 360,
+        peak * (.24 + Math.random() * .12),
+        1780 + Math.random() * 620,
+        .12,
+      );
+    }
+  }
+
   private playReelPulse(): void {
     const context = this.context;
     if (!context || context.state !== "running") return;
@@ -324,8 +373,10 @@ export class FishingAudioController {
   private clearPulseTimers(): void {
     if (this.reelPulseTimer !== null) window.clearInterval(this.reelPulseTimer);
     if (this.dragPulseTimer !== null) window.clearInterval(this.dragPulseTimer);
+    if (this.waterLapTimer !== null) window.clearTimeout(this.waterLapTimer);
     this.reelPulseTimer = null;
     this.dragPulseTimer = null;
+    this.waterLapTimer = null;
     this.reelPulseInterval = 0;
     this.dragPulseInterval = 0;
   }
