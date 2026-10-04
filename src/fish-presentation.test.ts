@@ -98,6 +98,24 @@ test('fish heading preserves dorsal-up through both sides of a pitched turn',()=
   }
 });
 
+test('fish orientation can reuse a caller-owned quaternion and scratch vectors',()=>{
+  const target=new THREE.Quaternion();
+  const scratch={forward:new THREE.Vector3(),z:new THREE.Vector3(),y:new THREE.Vector3(),worldUp:new THREE.Vector3(0,1,0),basis:new THREE.Matrix4()};
+  const forward=scratch.forward,z=scratch.z,basis=scratch.basis;
+  const firstHeading=new THREE.Vector3(.3,.2,-.9).normalize();
+  const firstExpected=fishOrientation(firstHeading);
+  assert.equal(fishOrientation(firstHeading,target,scratch),target);
+  assert.ok(target.angleTo(firstExpected)<1e-6);
+
+  const nextHeading=new THREE.Vector3(-.4,-.1,.8).normalize();
+  const nextExpected=fishOrientation(nextHeading);
+  assert.equal(fishOrientation(nextHeading,target,scratch),target);
+  assert.ok(target.angleTo(nextExpected)<1e-6);
+  assert.equal(scratch.forward,forward);
+  assert.equal(scratch.z,z);
+  assert.equal(scratch.basis,basis);
+});
+
 test('ocean optics cover every anatomical material but do not alter catalog materials',()=>{
   const waterUniforms={uWaterBackdrop:{value:null},uTime:{value:0}};
   const submerged=createGoFish({waterUniforms}),catalog=createGoFish();
