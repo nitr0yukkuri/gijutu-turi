@@ -315,7 +315,10 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       const previousRodStroke = receivedRodStrokeRef.current;
       if (previousRodStroke !== null && (message.rodStroke ?? 0) > previousRodStroke) {
         const newStrokes = Math.min(4, (message.rodStroke ?? 0) - previousRodStroke);
-        for (let index = 0; index < newStrokes; index++) sceneRef.current?.rodStroke?.();
+        for (let index = 0; index < newStrokes; index++) {
+          sceneRef.current?.rodStroke?.();
+          fishingAudioRef.current?.play("rod-pump");
+        }
         setRodStrokeRevision(revision => revision + newStrokes);
       }
       receivedRodStrokeRef.current = message.rodStroke ?? 0;

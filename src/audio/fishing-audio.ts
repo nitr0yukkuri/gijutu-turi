@@ -1,7 +1,10 @@
 import type { FishSpeciesId } from "../fish-species.js";
-import type { OceanPhase, OceanState } from "../client/types.js";
+import type { OceanMode, OceanPhase, OceanState } from "../client/types.js";
 
-export type FishingAudioEvent = "cast" | "splash" | "bite" | "hook-critical" | "catch" | "escape" | "retrieve";
+export type FishingAudioEvent =
+  | "cast" | "splash" | "bite" | "hook-set" | "hook-critical" | "rod-pump" | "line-slack"
+  | "fight-rest" | "fight-surge" | "fight-warning" | "fight-split"
+  | "catch" | "escape" | "retrieve";
 
 export type FishAudioTuning = {
   reelFrequency: number;
@@ -123,8 +126,22 @@ export class FishingAudioController {
       const event = eventByPhase[next.phase];
       if (event) this.play(event);
     }
-    if (previous.phase === "biting" && next.phase === "fighting" && next.hookResult === "critical") {
-      this.play("hook-critical");
+    if (previous.phase === "biting" && next.phase === "fighting") {
+      this.play(next.hookResult === "critical" ? "hook-critical" : "hook-set");
+    }
+    if (previous.phase === "fighting" && next.phase === "fighting") {
+      const modeChanged = previous.mode !== next.mode;
+      if (modeChanged) {
+        const eventByMode: Partial<Record<OceanMode, FishingAudioEvent>> = {
+          rest: "fight-rest",
+          surge: "fight-surge",
+          warning: "fight-warning",
+          split: "fight-split",
+        };
+        const event = eventByMode[next.mode];
+        if (event) this.play(event);
+      }
+      if (!modeChanged && previous.tension >= .42 && next.tension <= .32) this.play("line-slack");
     }
     this.syncLoops(next, (next.phase === "fighting" && next.reeling) || next.phase === "retrieving");
   }
@@ -141,7 +158,7 @@ export class FishingAudioController {
     if (!context || !inputGain || this.activeVoices.size >= MAX_ONE_SHOT_VOICES) return;
     const now = context.currentTime + .004;
     const previous = this.lastEvents.get(event) ?? -Infinity;
-    const cooldown = event === "splash" ? .14 : .08;
+    const cooldown = event === "splash" ? .14 : event === "line-slack" ? 1.2 : event.startsWith("fight-") ? .28 : .08;
     if (context.currentTime - previous < cooldown) return;
     this.lastEvents.set(event, context.currentTime);
 
@@ -161,6 +178,28 @@ export class FishingAudioController {
       // A short, soft line-pluck marks a well-timed hook without stacking a loud splash.
       this.playTone(now, 520, 390, .12, .016, "triangle", .004);
       this.playNoise(now, .055, 1180, .009, 720, .003);
+    } else if (event === "hook-set") {
+      // A restrained lower pluck distinguishes a normal hook from the brighter critical cue.
+      this.playTone(now, 278, 205, .13, .011, "sine", .006);
+      this.playNoise(now, .06, 820, .009, 460, .004);
+    } else if (event === "rod-pump") {
+      this.playNoise(now, .095, 540, .009, 980, .012);
+      this.playTone(now, 164, 126, .12, .008, "triangle", .01);
+    } else if (event === "line-slack") {
+      // A small descending line flick marks the return from a tight load.
+      this.playNoise(now, .14, 1120, .01, 380, .008);
+      this.playTone(now, 244, 116, .17, .009, "sine", .012);
+    } else if (event === "fight-warning") {
+      this.playNoise(now, .24, 390, .011, 210, .025);
+      this.playTone(now, 116, 82, .22, .008, "triangle", .025);
+    } else if (event === "fight-surge") {
+      this.playNoise(now, .2, 510, .012, 1420, .018);
+      this.playTone(now, 156, 232, .16, .008, "sine", .018);
+    } else if (event === "fight-split") {
+      this.playNoise(now, .12, 780, .01, 1380, .008);
+      this.playNoise(now + .09, .13, 520, .008, 980, .008);
+    } else if (event === "fight-rest") {
+      this.playNoise(now, .16, 680, .006, 360, .025);
     } else if (event === "catch") {
       // A warm, simultaneous two-note resolution avoids the arcade scale cue.
       this.playTone(now, 330, 330, .27, .019, "sine", .035);
@@ -324,7 +363,7 @@ export class FishingAudioController {
 
   private playWaterLap(): void {
     const context = this.context;
-    if (!context || context.state !== "running") return;
+    if (!context || context.state !== "running" || this.activeVoices.size >= MAX_ONE_SHOT_VOICES - 2) return;
     const now = context.currentTime + .012;
     const amount = this.waterLapAmount;
     const duration = 1.7 + Math.random() * .8;
