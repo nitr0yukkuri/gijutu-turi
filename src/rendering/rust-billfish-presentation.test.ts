@@ -4,7 +4,16 @@ import { createGoFish } from './go-fish.js';
 
 type MeshWithPositions = {
   name: string;
-  geometry: { attributes: { position: { array: ArrayLike<number> }; aFin?: { array: ArrayLike<number> } }; parameters?: { radius?: number } };
+  geometry: {
+    type?: string;
+    attributes: {
+      position: { array: ArrayLike<number>; count: number };
+      normal?: { getZ(index: number): number; count: number };
+      uv?: { count: number };
+      aFin?: { array: ArrayLike<number> };
+    };
+    parameters?: { radius?: number };
+  };
   material: {
     type?: string;
     transparent?: boolean;
@@ -142,6 +151,63 @@ test('Rust marlin has the striped-marlin fin layout and one deep crescent tail',
   }
 });
 
+test('Rust marlin skin has continuous shading across the visible UV wrap', () => {
+  const model = createGoFish({ detail: 'low', visualProfile: 'rust' });
+  try {
+    const body = model.group.children.find(child => child.name === 'sculpted-body') as
+      | { geometry: { attributes: { normal: { getX(index: number): number; getY(index: number): number; getZ(index: number): number } } } }
+      | undefined;
+    assert.ok(body);
+    const normals = body.geometry.attributes.normal;
+    const ringStride = 33; // low detail: 32 angular segments plus the duplicated UV seam
+    let maxSeamDelta = 0;
+    for (let ring = 0; ring <= 64; ring++) {
+      const first = ring * ringStride;
+      const last = first + ringStride - 1;
+      const delta = Math.hypot(
+        normals.getX(first) - normals.getX(last),
+        normals.getY(first) - normals.getY(last),
+        normals.getZ(first) - normals.getZ(last),
+      );
+      maxSeamDelta = Math.max(maxSeamDelta, delta);
+    }
+    assert.ok(maxSeamDelta < 1e-6, `the two UV-seam normals should match (${maxSeamDelta})`);
+  } finally {
+    model.dispose();
+  }
+});
+
+test('Rust marlin body-hugging fins stay mirrored instead of bulging through the flank', () => {
+  const model = createGoFish({ detail: 'low', visualProfile: 'rust' });
+  try {
+    for (const fin of ['pectoral', 'pelvic']) {
+      const near = model.group.children.find(child => child.name === `marlin-${fin}-1`) as
+        | MeshWithPositions
+        | undefined;
+      const far = model.group.children.find(child => child.name === `marlin-${fin}--1`) as
+        | MeshWithPositions
+        | undefined;
+      assert.ok(near, `the near-side marlin ${fin} remains present`);
+      assert.ok(far, `the far-side marlin ${fin} remains present`);
+      const nearPositions = near.geometry.attributes.position.array;
+      const farPositions = far.geometry.attributes.position.array;
+      assert.equal(nearPositions.length, farPositions.length);
+      let maxMirrorError = 0;
+      for (let i = 0; i < nearPositions.length; i += 3) {
+        maxMirrorError = Math.max(
+          maxMirrorError,
+          Math.abs(nearPositions[i]! - farPositions[i]!),
+          Math.abs(nearPositions[i + 1]! - farPositions[i + 1]!),
+          Math.abs(nearPositions[i + 2]! + farPositions[i + 2]!),
+        );
+      }
+      assert.ok(maxMirrorError < 1e-5, `${fin} sides should mirror around the fish body (${maxMirrorError})`);
+    }
+  } finally {
+    model.dispose();
+  }
+});
+
 test('Rust avoids the scratch-like gill tube and keeps mouth/keel lines subdued', () => {
   const model = createGoFish({ detail: 'low', visualProfile: 'rust' });
   try {
@@ -158,8 +224,20 @@ test('Rust avoids the scratch-like gill tube and keeps mouth/keel lines subdued'
 
     const keels = model.group.children.filter(child => child.name.startsWith('marlin-caudal-keel-')) as unknown as MeshWithPositions[];
     assert.equal(keels.length, 2, 'the real paired caudal keels remain present');
-    assert.ok(keels.every(child => child.geometry.parameters?.radius === .0025),
-      'caudal keels should read as shallow ridges rather than raised black wires');
+    assert.ok(keels.every(child => child.geometry.type === 'BufferGeometry'),
+      'caudal keels should be a shallow surface patch, not a raised tube');
+    assert.ok(keels.every(child => child.material.userData?.fishPart === 'body'),
+      'caudal keels should share the skin material so their pigment has no dark outline');
+    assert.ok(keels.every(child => child.geometry.attributes.uv?.count === child.geometry.attributes.position.count),
+      'caudal keels should continue the body UV pattern across the ridge');
+    for (const keel of keels) {
+      const normals = keel.geometry.attributes.normal;
+      assert.ok(normals);
+      const averageZ = Array.from({ length: normals.count }, (_, index) => normals.getZ(index))
+        .reduce((sum, value) => sum + value, 0) / normals.count;
+      assert.ok(keel.name.endsWith('--1') ? averageZ < -.7 : averageZ > .7,
+        'both keels face away from the body instead of being culled from one side');
+    }
   } finally {
     model.dispose();
   }
