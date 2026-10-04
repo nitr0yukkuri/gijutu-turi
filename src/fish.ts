@@ -1,4 +1,4 @@
-import type { BodyWaveSnapshot, FishGait } from "./protocol.js";
+import type { BodyWaveSnapshot, FishGait } from "./fish-contract.js";
 
 export type Vec3 = { x: number; y: number; z: number };
 

@@ -44,8 +44,6 @@ const publicAssets = new Map([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/index.html", ["index.html", "text/html; charset=utf-8"]],
   ["/ocean.css", ["ocean.css", "text/css"]],
-  ["/ocean2.css", ["ocean2.css", "text/css"]],
-  ["/ocean3.css", ["ocean3.css", "text/css"]],
   ["/ocean-app.js", ["ocean-app.js", "text/javascript"]],
   ["/collection-preview.js", ["src/rendering/collection-preview.ts", "text/javascript"]],
   ["/ocean-scene.js", ["src/rendering/ocean-scene.ts", "text/javascript"]],
@@ -76,7 +74,7 @@ for (const addon of fishAddons) publicAssets.set(`/vendor/addons/${addon}`, [`ve
 for (const [route, asset] of publicAssets) {
   app.get(route, async c => {
     try {
-      const preferred = new Set(["/", "/index.html", "/ocean.css", "/ocean2.css", "/ocean3.css", "/ocean-app.js", "/go-fish.html", "/docker-whale.html", "/service-worker.js", "/manifest.webmanifest", "/license.txt", "/third-party-notices.txt"]);
+      const preferred = new Set(["/", "/index.html", "/ocean.css", "/ocean-app.js", "/go-fish.html", "/docker-whale.html", "/service-worker.js", "/manifest.webmanifest", "/license.txt", "/third-party-notices.txt"]);
       const candidates = preferred.has(route) ? [`dist/client/${asset[0]}`, asset[0]] : [asset[0]];
       let bytes: Buffer | undefined;
       for (const candidate of candidates) {
