@@ -37,10 +37,10 @@ export const DOCKER_ROD_FLEX_PROFILE: RodFlexProfile = {
   tipDirectionBlend: .64,
 };
 
-/** A short, damped blank response when Docker begins a heavy run. */
+/** A sustained, decaying blank response when Docker begins a heavy run. */
 export function dockerWhaleRodKick(age: number): number {
-  if (age < 0 || age >= .82) return 0;
-  return Math.exp(-age * 5.4) * Math.sin(age * 18);
+  if (age < 0 || age >= 1.25) return 0;
+  return (1 - Math.exp(-age * 24)) * Math.exp(-age * 1.8);
 }
 
 export const K8S_ROD_FLEX_PROFILE: RodFlexProfile = {
@@ -101,6 +101,13 @@ export const rodFlexProfileFor = (fishId: FishSpeciesId): RodFlexProfile =>
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 type RodPoint = { x: number; y: number; z: number };
 
+export type RodFlexBendFrame = {
+  load: number;
+  screenDown: RodPoint;
+  screenRight: RodPoint;
+  gain: number;
+};
+
 const addScaled = (origin: RodPoint, direction: RodPoint, scale: number): RodPoint => ({
   x: origin.x + direction.x * scale,
   y: origin.y + direction.y * scale,
@@ -155,6 +162,7 @@ export const rodCenterAt = (
   lineDirection: RodPoint | null,
   load: number,
   profile: RodFlexProfile,
+  fightBend?: RodFlexBendFrame,
 ): RodPoint => {
   const chord=subtract(tip,butt),chordLength=length(chord),chordDirection=normalize(chord,{x:0,y:0,z:1});
   const pullDirection=normalize(lineDirection||chordDirection,chordDirection);
@@ -172,6 +180,33 @@ export const rodCenterAt = (
   },visualSag);
   const amount=clamp01(load)*profile.bendGain;
   const tipTangent=normalize(lerpPoint(chordDirection,pullDirection,clamp01(load)*profile.tipDirectionBlend),chordDirection);
+
+  if (fightBend) {
+    const rejectChord=(direction:RodPoint):RodPoint=>{
+      const along=dot(direction,chordDirection);
+      return {
+        x:direction.x-chordDirection.x*along,
+        y:direction.y-chordDirection.y*along,
+        z:direction.z-chordDirection.z*along,
+      };
+    };
+    const perpendicularDown=normalize(rejectChord(fightBend.screenDown),normalize(rejectChord(fightBend.screenRight),bendDirection));
+    const fightDirection=normalize({
+      x:pullSide.x*.2+perpendicularDown.x*.8,
+      y:pullSide.y*.2+perpendicularDown.y*.8,
+      z:pullSide.z*.2+perpendicularDown.z*.8,
+    },perpendicularDown);
+    const controlOne=addScaled(butt,chordDirection,chordLength*.32);
+    const controlTwo=addScaled(tip,tipTangent,-chordLength*.28);
+    const base=cubicBezier(butt,controlOne,controlTwo,tip,progress);
+    const t=clamp01(progress);
+    // A broad tapered load keeps both anchors and their tangents continuous,
+    // while the middle-to-upper blank carries the visible weight.
+    const upperBlankShape=16*t*t*(1-t)*(1-t);
+    const loadCurve=Math.pow(clamp01(fightBend.load),.72);
+    return addScaled(base,fightDirection,fightBend.gain*loadCurve*upperBlankShape);
+  }
+
   const controlOne=addScaled(addScaled(butt,chordDirection,chordLength*.32),bendDirection,amount*.18);
   const controlTwo=addScaled(addScaled(tip,tipTangent,-chordLength*.28),bendDirection,amount*.92);
   return cubicBezier(butt,controlOne,controlTwo,tip,progress);
