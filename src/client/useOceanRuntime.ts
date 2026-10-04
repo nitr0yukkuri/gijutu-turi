@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { isOceanMessage } from "../ocean-contract.js";
 import { FishingAudioController } from "../audio/fishing-audio.js";
+import type { FishSurfaceImpactCue } from "../fish-surface-impact.js";
 import { CastMotionGesture, ReelMotionGesture, castStrengthFromMotion, reelAngularSignal } from "./cast-motion.js";
 import { createControllerLink, isLoopbackHost } from "./controller-url.js";
 import { RodStrokeMotion } from "./rod-stroke-motion.js";
@@ -217,8 +218,8 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     const next = await getFishingAudio().toggle();
     setSoundEnabled(next);
     soundEnabledRef.current = next;
-    if (next) getFishingAudio().sync(stateRef.current, stateRef.current);
-  }, [getFishingAudio]);
+    if (next) getFishingAudio().sync(stateRef.current, stateRef.current, !isPhone);
+  }, [getFishingAudio, isPhone]);
 
   const loadCollection = useCallback(async (): Promise<CollectionLoadResult> => {
     const result = await fetchCollection(`${backendUrl("/api/collection")}?playerId=${encodeURIComponent(playerIdRef.current)}`);
@@ -309,7 +310,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     setState(next);
     setDisplayConnected(message.displays > 0);
     displayConnectedRef.current = message.displays > 0;
-    fishingAudioRef.current?.sync(previous, next);
+    fishingAudioRef.current?.sync(previous, next, !isPhone);
     sceneRef.current?.setState(next, message.serverNow);
     if (Number.isSafeInteger(message.rodStroke) && (message.rodStroke ?? 0) >= 0) {
       const previousRodStroke = receivedRodStrokeRef.current;
@@ -503,8 +504,8 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
           onLand: () => {
             fishingAudioRef.current?.play("splash");
           },
-          onSurfaceImpact: () => {
-            fishingAudioRef.current?.play("splash");
+          onSurfaceImpact: (impact: FishSurfaceImpactCue) => {
+            fishingAudioRef.current?.playFishSurfaceImpact(impact);
           },
           onRenderError: () => { if (!disposed) setRenderFailed(true); },
         }) as OceanSceneController;

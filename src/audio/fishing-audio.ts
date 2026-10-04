@@ -1,10 +1,24 @@
 import type { FishSpeciesId } from "../fish-species.js";
-import type { OceanMode, OceanPhase, OceanState } from "../client/types.js";
+import type { FishSurfaceImpactCue } from "../fish-surface-impact.js";
+import type { OceanClientState as OceanState, OceanMode, OceanPhase } from "../ocean-contract.js";
+import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH } from "../cast-distance.js";
+
+export type { FishSurfaceImpactCue } from "../fish-surface-impact.js";
 
 export type FishingAudioEvent =
   | "cast" | "splash" | "bite" | "hook-set" | "hook-critical" | "rod-pump" | "line-slack"
   | "fight-rest" | "fight-surge" | "fight-warning" | "fight-split"
-  | "catch" | "escape" | "retrieve";
+  | "fish-surface-first" | "fish-surface-breach" | "fish-surface-reentry"
+  | "catch" | "escape" | "escape-missed" | "escape-line" | "escape-slack" | "escape-distance" | "retrieve";
+
+type FishSplashTuning = {
+  bodyFrequency: number;
+  bodyPeak: number;
+  bodyDuration: number;
+  sprayFrequency: number;
+  sprayPeak: number;
+  sprayDuration: number;
+};
 
 export type FishAudioTuning = {
   reelFrequency: number;
@@ -20,6 +34,13 @@ const MAX_ONE_SHOT_GAIN = .11;
 const ONE_SHOT_GAIN_BOOST = 1.5;
 const OUTPUT_GAIN = .62;
 const AMBIENT_GAIN = .022;
+const BATTLE_MUSIC_GAIN = .012;
+const BATTLE_MUSIC_CHORDS: readonly (readonly [number, number, number])[] = [
+  [146.83, 174.61, 220],
+  [116.54, 146.83, 174.61],
+  [174.61, 220, 261.63],
+  [130.81, 164.81, 196],
+];
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
@@ -54,6 +75,64 @@ export const getFishAudioTuning = (fishId: FishSpeciesId): FishAudioTuning => {
   return { reelFrequency: 188, dragFrequency: 132, dragFilterFrequency: 690, reelIntervalMs: 128, reelGain: .012, strainGain: .032 };
 };
 
+const getFishSplashTuning = (fishId: FishSpeciesId): FishSplashTuning => {
+  if (fishId === "whale-001") {
+    return { bodyFrequency: 84, bodyPeak: .031, bodyDuration: .42, sprayFrequency: 920, sprayPeak: .024, sprayDuration: .27 };
+  }
+  if (fishId === "k8s-001") {
+    return { bodyFrequency: 68, bodyPeak: .038, bodyDuration: .48, sprayFrequency: 820, sprayPeak: .03, sprayDuration: .3 };
+  }
+  if (fishId === "rust-001") {
+    return { bodyFrequency: 112, bodyPeak: .025, bodyDuration: .3, sprayFrequency: 1480, sprayPeak: .029, sprayDuration: .22 };
+  }
+  if (fishId === "css-001") {
+    return { bodyFrequency: 184, bodyPeak: .011, bodyDuration: .18, sprayFrequency: 1420, sprayPeak: .015, sprayDuration: .14 };
+  }
+  if (fishId === "js-001") {
+    return { bodyFrequency: 128, bodyPeak: .012, bodyDuration: .2, sprayFrequency: 1260, sprayPeak: .016, sprayDuration: .16 };
+  }
+  return { bodyFrequency: 156, bodyPeak: .015, bodyDuration: .22, sprayFrequency: 1180, sprayPeak: .017, sprayDuration: .16 };
+};
+
+export type FishSurfaceSoundKind = "first" | "breach" | "reentry";
+export type FishSurfaceSoundProfile = FishSplashTuning & {
+  bodyAttack: number;
+  sprayDelay: number;
+  introToneFrequency?: number;
+  introToneDuration?: number;
+  introTonePeak?: number;
+};
+
+/** Pure, bounded sound envelope for one fish crossing the water surface. */
+export function fishSurfaceSoundProfile(
+  fishId: FishSpeciesId,
+  kind: FishSurfaceSoundKind,
+  impactPower: number,
+): FishSurfaceSoundProfile {
+  const tuning = getFishSplashTuning(fishId);
+  const impact = clamp((clamp(Number.isFinite(impactPower) ? impactPower : 1.5, 1.5, 2.7) - 1.5) / 1.2, 0, 1);
+  const first = kind === "first";
+  const reentry = kind === "reentry";
+  const level = (first ? 1 : reentry ? .82 : .64) * (.9 + impact * .15);
+  const bodyDuration = tuning.bodyDuration * (first ? 1.16 : reentry ? .86 : .62);
+  const profile: FishSurfaceSoundProfile = {
+    bodyFrequency: tuning.bodyFrequency,
+    bodyPeak: tuning.bodyPeak * level,
+    bodyDuration,
+    bodyAttack: first ? .035 : .012,
+    sprayFrequency: tuning.sprayFrequency,
+    sprayPeak: tuning.sprayPeak * level,
+    sprayDuration: tuning.sprayDuration * (first ? 1.08 : .82),
+    sprayDelay: first ? .065 : .035,
+  };
+  if (first && (fishId === "whale-001" || fishId === "rust-001" || fishId === "k8s-001")) {
+    profile.introToneFrequency = tuning.bodyFrequency;
+    profile.introToneDuration = bodyDuration * .78;
+    profile.introTonePeak = tuning.bodyPeak * level * .28;
+  }
+  return profile;
+}
+
 type AudioContextConstructor = new () => AudioContext;
 
 const getAudioContextConstructor = (): AudioContextConstructor | undefined => {
@@ -74,6 +153,14 @@ export class FishingAudioController {
   private ambientSource: AudioBufferSourceNode | null = null;
   private ambientModulator: OscillatorNode | null = null;
   private ambientModulationGain: GainNode | null = null;
+  private battleMusicGain: GainNode | null = null;
+  private battleMusicFilters: BiquadFilterNode[] = [];
+  private battleMusicVoices: OscillatorNode[] = [];
+  private battleMusicVoiceGains: GainNode[] = [];
+  private battleMusicStopTimer: number | null = null;
+  private battleMusicProgressionTimer: number | null = null;
+  private battleMusicProgressionIndex = 0;
+  private battleMusicActive = false;
   private reelPulseTimer: number | null = null;
   private dragPulseTimer: number | null = null;
   private waterLapTimer: number | null = null;
@@ -98,6 +185,7 @@ export class FishingAudioController {
     if (!context || !inputGain) throw new Error("audio_unavailable");
     await context.resume();
     this.enabled = !this.enabled;
+    if (!this.enabled) this.syncBattleMusic(false);
     const time = context.currentTime;
     inputGain.gain.cancelScheduledValues(time);
     inputGain.gain.setTargetAtTime(this.enabled ? 1 : 0, time, .045);
@@ -112,19 +200,31 @@ export class FishingAudioController {
     return this.enabled;
   }
 
-  sync(previous: OceanState, next: OceanState): void {
-    if (!this.enabled) return;
+  sync(previous: OceanState, next: OceanState, allowBattleMusic = true): void {
+    if (!this.enabled) {
+      this.syncBattleMusic(false);
+      return;
+    }
+    this.syncBattleMusic(allowBattleMusic && next.phase === "fighting");
     this.waterLapAmount = next.phase === "fighting" ? (next.tension >= .58 ? .3 : .44) : next.phase === "biting" ? .72 : 1;
     if (previous.phase !== next.phase) {
       const eventByPhase: Partial<Record<OceanPhase, FishingAudioEvent>> = {
-        casting: "cast",
         biting: "bite",
         caught: "catch",
-        escaped: "escape",
         retrieving: "retrieve",
       };
       const event = eventByPhase[next.phase];
       if (event) this.play(event);
+      if (next.phase === "casting") this.play("cast", next.strength);
+      if (next.phase === "escaped") {
+        const eventByReason: Partial<Record<OceanState["reason"], FishingAudioEvent>> = {
+          missed: "escape-missed",
+          line: "escape-line",
+          slack: "escape-slack",
+          distance: "escape-distance",
+        };
+        this.play(eventByReason[next.reason] ?? "escape");
+      }
     }
     if (previous.phase === "biting" && next.phase === "fighting") {
       this.play(next.hookResult === "critical" ? "hook-critical" : "hook-set");
@@ -151,21 +251,32 @@ export class FishingAudioController {
     this.syncLoops(state, active && state.phase === "fighting");
   }
 
-  play(event: FishingAudioEvent): void {
+  play(event: FishingAudioEvent, amount = 1, fishId?: FishSpeciesId): void {
     if (!this.enabled) return;
     const context = this.context;
     const inputGain = this.inputGain;
     if (!context || !inputGain || this.activeVoices.size >= MAX_ONE_SHOT_VOICES) return;
     const now = context.currentTime + .004;
     const previous = this.lastEvents.get(event) ?? -Infinity;
-    const cooldown = event === "splash" ? .14 : event === "line-slack" ? 1.2 : event.startsWith("fight-") ? .28 : .08;
+    const cooldown = event === "splash" ? .14
+      : event === "line-slack" ? 1.2
+        : event.startsWith("fight-") ? .28
+          : event.startsWith("fish-surface-") ? .2
+            : .08;
     if (context.currentTime - previous < cooldown) return;
     this.lastEvents.set(event, context.currentTime);
 
     if (event === "cast") {
-      // A soft line/air swish; the separate landing callback supplies the splash.
-      this.playNoise(now, .34, 1700, .031, 460, .018);
-      this.playTone(now, 122, 88, .25, .012, "triangle", .025);
+      // Cast force shapes the line swish; the separate landing callback supplies the splash.
+      const strength = clamp(
+        (clamp(Number.isFinite(amount) ? amount : CAST_MIN_STRENGTH, CAST_MIN_STRENGTH, CAST_MAX_STRENGTH) - CAST_MIN_STRENGTH)
+          / (CAST_MAX_STRENGTH - CAST_MIN_STRENGTH),
+        0,
+        1,
+      );
+      const duration = .22 + strength * .18;
+      this.playNoise(now, duration, 1250 + strength * 800, .022 + strength * .01, 420 + strength * 180, .012 + strength * .01);
+      this.playTone(now, 104 + strength * 42, 76 + strength * 20, .17 + strength * .12, .009 + strength * .006, "triangle", .02);
     } else if (event === "splash") {
       this.playNoise(now, .17, 520, .028, 760, .006);
       this.playNoise(now + .018, .105, 1560, .011, 920, .004);
@@ -200,6 +311,42 @@ export class FishingAudioController {
       this.playNoise(now + .09, .13, 520, .008, 980, .008);
     } else if (event === "fight-rest") {
       this.playNoise(now, .16, 680, .006, 360, .025);
+    } else if (event.startsWith("fish-surface-")) {
+      const kind: FishSurfaceSoundKind = event === "fish-surface-first"
+        ? "first"
+        : event === "fish-surface-reentry" ? "reentry" : "breach";
+      const profile = fishSurfaceSoundProfile(fishId ?? "fish-001", kind, amount);
+      this.playNoise(
+        now,
+        profile.bodyDuration,
+        profile.bodyFrequency,
+        profile.bodyPeak,
+        profile.bodyFrequency * 1.42,
+        profile.bodyAttack,
+      );
+      this.playNoise(
+        now + profile.sprayDelay,
+        profile.sprayDuration,
+        profile.sprayFrequency,
+        profile.sprayPeak,
+        profile.sprayFrequency * .72,
+        .008,
+      );
+      if (profile.introToneFrequency !== undefined && profile.introToneDuration !== undefined && profile.introTonePeak !== undefined) {
+        this.playTone(now, profile.introToneFrequency, profile.introToneFrequency * .78, profile.introToneDuration, profile.introTonePeak, "triangle", .025);
+      }
+    } else if (event === "escape-missed") {
+      this.playNoise(now, .13, 620, .014, 280, .008);
+      this.playTone(now, 188, 132, .16, .01, "sine", .012);
+    } else if (event === "escape-line") {
+      this.playNoise(now, .09, 2050, .026, 720, .002);
+      this.playTone(now, 740, 190, .2, .02, "triangle", .002);
+    } else if (event === "escape-slack") {
+      this.playNoise(now, .18, 980, .013, 360, .012);
+      this.playTone(now, 212, 104, .2, .011, "sine", .015);
+    } else if (event === "escape-distance") {
+      this.playNoise(now, .42, 940, .021, 260, .045);
+      this.playTone(now, 318, 118, .36, .01, "sine", .04);
     } else if (event === "catch") {
       // A warm, simultaneous two-note resolution avoids the arcade scale cue.
       this.playTone(now, 330, 330, .27, .019, "sine", .035);
@@ -212,6 +359,113 @@ export class FishingAudioController {
       this.playNoise(now, .21, 430, .021, 1180, .012);
       this.playTone(now, 172, 132, .16, .009, "sine", .018);
     }
+  }
+
+  playFishSurfaceImpact(cue: FishSurfaceImpactCue): void {
+    const event: FishingAudioEvent = cue.transition === "reentry"
+      ? "fish-surface-reentry"
+      : cue.firstBreach ? "fish-surface-first" : "fish-surface-breach";
+    this.play(event, cue.impactPower, cue.fishId);
+  }
+
+  private ensureBattleMusicGraph(): void {
+    const context = this.context;
+    const inputGain = this.inputGain;
+    const firstChord = BATTLE_MUSIC_CHORDS[0];
+    if (!context || !inputGain || !firstChord || this.battleMusicGain) return;
+
+    const highpass = context.createBiquadFilter();
+    highpass.type = "highpass";
+    highpass.frequency.value = 85;
+    const lowpass = context.createBiquadFilter();
+    lowpass.type = "lowpass";
+    lowpass.frequency.value = 520;
+    const musicGain = context.createGain();
+    musicGain.gain.value = 0;
+    highpass.connect(lowpass);
+    lowpass.connect(musicGain);
+    musicGain.connect(inputGain);
+    this.battleMusicFilters = [highpass, lowpass];
+    this.battleMusicGain = musicGain;
+
+    this.battleMusicVoices = firstChord.map((frequency, index) => {
+      const oscillator = context.createOscillator();
+      const voiceGain = context.createGain();
+      oscillator.type = index === 2 ? "triangle" : "sine";
+      oscillator.frequency.value = frequency;
+      oscillator.detune.value = index === 1 ? 2 : index === 2 ? -2 : 0;
+      voiceGain.gain.value = index === 2 ? .11 : .2;
+      oscillator.connect(voiceGain);
+      voiceGain.connect(highpass);
+      oscillator.start();
+      this.battleMusicVoiceGains.push(voiceGain);
+      return oscillator;
+    });
+  }
+
+  private syncBattleMusic(inFight: boolean): void {
+    const active = this.enabled && inFight;
+    if (!active && !this.battleMusicGain) return;
+    if (active) this.ensureBattleMusicGraph();
+    const context = this.context;
+    const musicGain = this.battleMusicGain;
+    if (!context || !musicGain || this.battleMusicActive === active) return;
+
+    if (this.battleMusicStopTimer !== null) window.clearTimeout(this.battleMusicStopTimer);
+    this.battleMusicStopTimer = null;
+    this.battleMusicActive = active;
+    const now = context.currentTime;
+    musicGain.gain.cancelScheduledValues(now);
+    musicGain.gain.setTargetAtTime(active ? BATTLE_MUSIC_GAIN : 0, now, active ? .45 : .65);
+
+    if (active) {
+      if (this.battleMusicProgressionTimer === null) {
+        this.battleMusicProgressionTimer = window.setInterval(() => {
+          if (!this.battleMusicActive || context.state !== "running") return;
+          this.battleMusicProgressionIndex = (this.battleMusicProgressionIndex + 1) % BATTLE_MUSIC_CHORDS.length;
+          const chord = BATTLE_MUSIC_CHORDS[this.battleMusicProgressionIndex];
+          if (!chord) return;
+          const time = context.currentTime;
+          chord.forEach((frequency, index) => {
+            const voice = this.battleMusicVoices[index];
+            if (voice) voice.frequency.setTargetAtTime(frequency, time, 1.4);
+          });
+        }, 6500);
+      }
+      return;
+    }
+
+    this.battleMusicStopTimer = window.setTimeout(() => {
+      this.battleMusicStopTimer = null;
+      if (this.battleMusicActive || this.battleMusicProgressionTimer === null) return;
+      window.clearInterval(this.battleMusicProgressionTimer);
+      this.battleMusicProgressionTimer = null;
+      this.battleMusicProgressionIndex = 0;
+      const time = context.currentTime;
+      BATTLE_MUSIC_CHORDS[0]?.forEach((frequency, index) => {
+        const voice = this.battleMusicVoices[index];
+        if (voice) voice.frequency.setTargetAtTime(frequency, time, .2);
+      });
+    }, 2200);
+  }
+
+  private disposeBattleMusic(): void {
+    if (this.battleMusicStopTimer !== null) window.clearTimeout(this.battleMusicStopTimer);
+    if (this.battleMusicProgressionTimer !== null) window.clearInterval(this.battleMusicProgressionTimer);
+    this.battleMusicStopTimer = null;
+    this.battleMusicProgressionTimer = null;
+    this.battleMusicActive = false;
+    this.battleMusicVoices.forEach(voice => {
+      try { voice.stop(); } catch { /* The audio context may already be closing. */ }
+      voice.disconnect();
+    });
+    this.battleMusicVoiceGains.forEach(gain => gain.disconnect());
+    this.battleMusicFilters.forEach(filter => filter.disconnect());
+    this.battleMusicGain?.disconnect();
+    this.battleMusicVoices = [];
+    this.battleMusicVoiceGains = [];
+    this.battleMusicFilters = [];
+    this.battleMusicGain = null;
   }
 
   suspend(): void {
@@ -228,6 +482,7 @@ export class FishingAudioController {
   }
 
   dispose(): void {
+    this.disposeBattleMusic();
     this.enabled = false;
     this.clearPulseTimers();
     this.ambientSource?.stop();
