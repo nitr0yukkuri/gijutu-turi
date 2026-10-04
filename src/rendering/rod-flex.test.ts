@@ -10,6 +10,7 @@ test("Docker rod carries visible bend earlier through the belly", () => {
   assert.equal(rodFlexProfileFor("js-001"), JS_EEL_ROD_FLEX_PROFILE);
   assert.ok(DOCKER_ROD_FLEX_PROFILE.bendGain > STANDARD_ROD_FLEX_PROFILE.bendGain);
   assert.ok(DOCKER_ROD_FLEX_PROFILE.bendGain >= .58,'Docker should show a clearly heavier sustained bow');
+  assert.ok(DOCKER_ROD_FLEX_PROFILE.recoveryResponse < STANDARD_ROD_FLEX_PROFILE.recoveryResponse,'Docker should unload more slowly than a light fish');
   assert.ok(DOCKER_ROD_FLEX_PROFILE.tipDirectionBlend > STANDARD_ROD_FLEX_PROFILE.tipDirectionBlend);
 });
 

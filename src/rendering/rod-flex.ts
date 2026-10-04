@@ -31,7 +31,7 @@ export const STANDARD_ROD_FLEX_PROFILE: RodFlexProfile = {
 export const DOCKER_ROD_FLEX_PROFILE: RodFlexProfile = {
   bendGain: .60,
   loadingResponse: 4.8,
-  recoveryResponse: 2.8,
+  recoveryResponse: 2.4,
   directionInfluence: .24,
   verticalInfluence: .16,
   tipDirectionBlend: .64,
