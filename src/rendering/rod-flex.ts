@@ -29,13 +29,19 @@ export const STANDARD_ROD_FLEX_PROFILE: RodFlexProfile = {
  * change the distribution of curvature, not the game's authoritative tension.
  */
 export const DOCKER_ROD_FLEX_PROFILE: RodFlexProfile = {
-  bendGain: .49,
-  loadingResponse: 3.8,
+  bendGain: .60,
+  loadingResponse: 4.8,
   recoveryResponse: 2.4,
   directionInfluence: .24,
   verticalInfluence: .16,
   tipDirectionBlend: .64,
 };
+
+/** A short, damped blank response when Docker begins a heavy run. */
+export function dockerWhaleRodKick(age: number): number {
+  if (age < 0 || age >= .82) return 0;
+  return Math.exp(-age * 5.4) * Math.sin(age * 18);
+}
 
 export const K8S_ROD_FLEX_PROFILE: RodFlexProfile = {
   ...DOCKER_ROD_FLEX_PROFILE,

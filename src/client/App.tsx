@@ -6,6 +6,7 @@ import { canContinueAfterCatchSave } from "../ocean-contract.js";
 import { k8sLungeForSnapshot } from "../rendering/k8s-fight-presentation.js";
 import { resolveFishingRoute } from "./fishing-route.js";
 import { TECH_TREE_BRANCHES, TECH_TREE_NODE_DETAILS } from "./tech-tree.js";
+import { techTreeReveal } from "./tech-tree-preview.js";
 import { useOceanRuntime } from "./useOceanRuntime.js";
 import { PhoneReelControl } from "./PhoneReelControl.js";
 import type { Collection, CollectionEntry, OceanPhase } from "./types.js";
@@ -87,7 +88,7 @@ function CollectionSilhouette({ silhouetteKey, label }: { silhouetteKey: FishSil
         <path className="silhouette-body" d={silhouetteKey === "rust-striped-marlin"
           ? "M75 91C84 70 105 57 132 55c42-4 91 11 138 35-22 24-58 36-105 39-47 3-79-11-90-38Z"
           : silhouetteKey === "js-eel"
-          ? "M36 92C68 78 104 75 145 78c43 3 83 10 117 14 21 2 39-1 59-7-17 12-38 18-61 18-37 0-76 4-116 8-42 4-79-2-108-19Z"
+          ? "M30 91C45 79 61 71 85 70c27-4 54 0 84 5 37 7 69 15 98 19 25 3 48-2 73-10-17 15-37 23-62 26-31 3-58-2-91-5-43 7-75 10-102 3-26-5-44-11-55-17Z"
           : silhouetteKey === "docker-whale"
           ? "M47 94C54 56 101 35 169 45c48 7 81 26 96 49-15 28-48 45-98 48-67 4-113-15-120-48Z"
           : silhouetteKey === "cluster-leviathan"
@@ -103,19 +104,26 @@ function CollectionSilhouette({ silhouetteKey, label }: { silhouetteKey: FishSil
           <path className="silhouette-tail" d={silhouetteKey === "rust-striped-marlin"
             ? "M261 91c22-20 45-28 69-31-10 12-12 22-7 32-6 10-4 20 7 31-24-4-47-15-69-32Z"
             : silhouetteKey === "js-eel"
-            ? "M287 88c19-7 38-8 54-5-9 7-11 12-5 18-8 5-17 6-28 3Z"
+            ? "M302 91c19-7 38-8 54-5-10 6-12 11-6 17-9 5-19 6-35 1Z"
             : silhouetteKey === "go-school"
             ? "M237 91c25-22 51-31 79-34-14 13-18 25-12 36-6 11-2 23 12 37-29-4-55-16-79-35Z"
             : silhouetteKey === "cluster-leviathan"
               ? "M242 91c24-19 47-27 72-31-11 12-13 23-7 34-6 11-4 22 7 34-25-4-48-15-72-31Z"
               : "M227 92c22-18 44-25 67-27-9 12-10 21-4 29-6 9-4 19 5 29-25-3-46-13-68-29Z"} />
-          <path className="silhouette-fin" d={silhouetteKey === "rust-striped-marlin" ? "M104 66Q116 56 124 24Q133 23 140 38L164 59Q184 62 204 68Z" : silhouetteKey === "js-eel" ? "M145 78 194 63l38 17-38-4Z" : silhouetteKey === "css-fish" ? "M112 59 142 31l19 32Z" : silhouetteKey === "cluster-leviathan" ? "M111 57 138 34l22 31-28 4Z" : "M117 57 149 27l17 36Z"} />
-          <path className="silhouette-fin silhouette-fin--lower" d={silhouetteKey === "rust-striped-marlin" ? "M139 118 165 141l18-22Z" : silhouetteKey === "js-eel" ? "M148 106 194 121l32-17-32 8Z" : "M137 125 159 151l12-31Z"} />
+          <path className="silhouette-fin" d={silhouetteKey === "rust-striped-marlin" ? "M104 66Q116 56 124 24Q133 23 140 38L164 59Q184 62 204 68Z" : silhouetteKey === "js-eel" ? "M94 75C141 69 190 76 235 88c28 8 52 10 76 3l22-7c-17 15-38 21-64 17-42-7-76-21-119-24-23-2-42 0-56 4Z" : silhouetteKey === "css-fish" ? "M112 59 142 31l19 32Z" : silhouetteKey === "cluster-leviathan" ? "M111 57 138 34l22 31-28 4Z" : "M117 57 149 27l17 36Z"} />
+          <path className="silhouette-fin silhouette-fin--lower" d={silhouetteKey === "rust-striped-marlin" ? "M139 118 165 141l18-22Z" : silhouetteKey === "js-eel" ? "M111 106c37 10 71 7 104 2 35 5 63 8 94-2-20 18-52 18-92 9-43 7-78 6-106-9Z" : "M137 125 159 151l12-31Z"} />
         </>}
         {silhouetteKey === "rust-striped-marlin" && <g className="silhouette-stripes">
           <path d="M124 59Q116 83 128 119M143 56Q136 84 148 124M163 56Q158 84 169 126M184 60Q179 87 190 123M205 65Q201 88 211 118M225 72Q222 91 231 111M244 80Q242 94 249 104" />
         </g>}
-        <circle className="silhouette-eye" cx={silhouetteKey === "rust-striped-marlin" ? 96 : silhouetteKey === "js-eel" ? 78 : silhouetteKey === "css-fish" ? 90 : 77} cy="82" r="4" />
+        {silhouetteKey === "js-eel" && <g className="silhouette-anago-spots">
+          <circle cx="108" cy="91" r="2.2" /><circle cx="127" cy="92" r="2.2" />
+          <circle cx="146" cy="94" r="2.2" /><circle cx="165" cy="96" r="2.2" />
+          <circle cx="184" cy="98" r="2.2" /><circle cx="203" cy="99" r="2.2" />
+          <circle cx="222" cy="100" r="2.2" /><circle cx="241" cy="101" r="2.2" />
+        </g>}
+        {silhouetteKey === "js-eel" && <path className="silhouette-anago-jaw" d="M29 91Q48 87 69 92" />}
+        <circle className="silhouette-eye" cx={silhouetteKey === "rust-striped-marlin" ? 96 : silhouetteKey === "js-eel" ? 78 : silhouetteKey === "css-fish" ? 90 : 77} cy="82" r={silhouetteKey === "js-eel" ? 5 : 4} />
         <path className="silhouette-gill" d={silhouetteKey === "rust-striped-marlin" ? "M112 72c-6 12-6 25 1 37" : silhouetteKey === "js-eel" ? "M101 75c-4 8-4 16 0 24" : silhouetteKey === "docker-whale" ? "M94 73c-7 14-7 27 0 39" : "M101 72c-7 13-7 25 0 37"} />
         {silhouetteKey === "css-fish" && <path className="silhouette-color-trace" d="M92 111c35 10 68 9 103-1" />}
       </svg>
@@ -137,17 +145,38 @@ function CoralIcon({ className }: { className?: string }) {
 }
 
 function FishTechIcon({ speciesId }: { speciesId: string }) {
+  const fish = speciesId === "whale-001" ? <>
+    <path className="tech-tree-fish-fill" d="M6 24c7-10 21-14 38-9 5 2 9 5 11 9-3 8-13 14-28 14C16 38 9 33 6 24Z" />
+    <path className="tech-tree-fish-fill" d="M48 24 61 14l-3 11 3 10Z" />
+    <path className="tech-tree-fish-detail" d="M18 16c2-5 7-8 13-8m-9 24c5 2 12 2 18-1" />
+    <circle className="tech-tree-fish-eye" cx="17" cy="22" r="1.5" />
+  </> : speciesId === "rust-001" ? <>
+    <path className="tech-tree-fish-fill" d="M8 24c8-6 19-8 32-5l9 5-9 5c-13 3-24 1-32-5Z" />
+    <path className="tech-tree-fish-fill" d="M43 24 60 14l-4 10 4 10Z" />
+    <path className="tech-tree-fish-detail" d="M12 22 1 17m24 3 7-11 4 12m-9 8 5 9" />
+    <circle className="tech-tree-fish-eye" cx="15" cy="23" r="1.3" />
+  </> : speciesId === "js-001" ? <>
+    <path className="tech-tree-fish-fill" d="M4 26c7-10 14-11 22-7 8 5 11 13 19 12 5-1 9-5 14-8l-4 11c-8 7-16 9-23 4-8-5-12-13-20-10-3 1-5 1-8-2Z" />
+    <path className="tech-tree-fish-detail" d="M27 20c5 1 8 4 10 7m-16-9 5 4" />
+    <circle className="tech-tree-fish-eye" cx="11" cy="24" r="1.4" />
+  </> : speciesId === "k8s-001" ? <>
+    <path className="tech-tree-fish-fill" d="M5 25c10-9 24-10 40-4l7 5-7 5C27 36 13 33 5 25Z" />
+    <path className="tech-tree-fish-fill" d="M45 26 60 14l-4 12 4 12Z" />
+    <path className="tech-tree-fish-detail" d="m19 19 5-10 6 9m4 13 6 8m-20-8-5 8" />
+    <circle className="tech-tree-fish-eye" cx="14" cy="24" r="1.4" />
+  </> : speciesId === "css-001" ? <>
+    <path className="tech-tree-fish-fill" d="M7 24c7-9 18-12 30-7 5 2 9 5 12 8-3 5-8 8-13 10C23 39 12 34 7 24Z" />
+    <path className="tech-tree-fish-fill" d="M43 25 60 13v24Z" />
+    <path className="tech-tree-fish-detail" d="M22 17v17m8-17v18m-17-9c7 5 20 6 29 1" />
+    <circle className="tech-tree-fish-eye" cx="15" cy="23" r="1.5" />
+  </> : <>
+    <path className="tech-tree-fish-fill" d="M5 27c5-7 13-10 23-7 5 1 9 4 11 7-2 4-6 7-11 8C18 38 10 34 5 27Z" />
+    <path className="tech-tree-fish-fill" d="M35 27 47 18v18Z" />
+    <path className="tech-tree-fish-detail" d="M42 12c4-3 10-3 15 0m-12 6c4-2 8-2 13 0m-7 11c3-1 6 0 9 2" />
+    <circle className="tech-tree-fish-eye" cx="13" cy="26" r="1.4" />
+  </>;
   return (
-    <svg className="tech-tree-fish-icon" viewBox="0 0 48 40" aria-hidden="true" focusable="false">
-      <path className="tech-tree-fish-tail" d="M33 20 45 10v20L33 20Z" />
-      <path className="tech-tree-fish-body" d="M5 20C9 9 20 6 31 12c4 2 7 5 9 8-2 4-5 7-9 8-11 6-22 3-26-8Z" />
-      {speciesId === "whale-001" && <path className="tech-tree-fish-mark" d="M18 13v14m5-15v16m5-14v12" />}
-      {speciesId === "css-001" && <path className="tech-tree-fish-mark" d="M14 25c6 2 12 2 18-1" />}
-      {speciesId === "k8s-001" && <path className="tech-tree-fish-mark" d="M16 12 21 7l5 5m-5-5v5m4 21 5 4 5-4m-5 4v-5" />}
-      {speciesId === "rust-001" && <path className="tech-tree-fish-mark" d="m25 12 5 8-5 8m-8-8h13" />}
-      {speciesId === "js-001" && <path className="tech-tree-fish-mark" d="M13 12c8 5 8 15 16 20m-1-20c-8 5-8 15-16 20" />}
-      <circle className="tech-tree-fish-eye" cx="13" cy="18" r="1.8" />
-    </svg>
+    <svg className="tech-tree-fish-icon" viewBox="0 0 64 48" aria-hidden="true" focusable="false">{fish}</svg>
   );
 }
 
@@ -158,92 +187,141 @@ function TechTreeView({ entries, selectedId, onSelect }: {
 }) {
   const speciesEntries = entries.filter(entry => isFishSpeciesId(entry.id) && entry.catalogStatus === "active");
   const discovered = speciesEntries.filter(entry => entry.status === "caught").length;
+  const [showAllPreview, setShowAllPreview] = useState(false);
+  const previewEnabled = import.meta.env.DEV && showAllPreview;
   const selected = speciesEntries.find(entry => entry.id === selectedId) ?? speciesEntries[0];
   const selectedSpecies = selected && isFishSpeciesId(selected.id) ? getFishSpecies(selected.id) : undefined;
   const selectedDetails = selected && isFishSpeciesId(selected.id) ? TECH_TREE_NODE_DETAILS[selected.id] : undefined;
-  const selectedCaught = selected?.status === "caught";
+  const selectedReveal = techTreeReveal(selected?.status ?? "unknown", showAllPreview, import.meta.env.DEV);
+  const selectedSpeciesId = selected && isFishSpeciesId(selected.id) ? selected.id : undefined;
+  const selectedBranch = selectedSpeciesId
+    ? TECH_TREE_BRANCHES.find(branch => branch.speciesIds.includes(selectedSpeciesId))
+    : undefined;
+  const mapRef = useRef<HTMLDivElement>(null);
+  const [paths, setPaths] = useState<{ width: number; height: number; byId: Record<string, string> }>({ width: 1, height: 1, byId: {} });
+  const pathNodeIds = speciesEntries.map(entry => entry.id).join(",");
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const root = map?.querySelector<HTMLElement>(".tech-tree-root");
+    if (!map || !root) return;
+    const measure = () => {
+      const mapRect = map.getBoundingClientRect();
+      const rootRect = root.getBoundingClientRect();
+      if (!mapRect.width || !mapRect.height) return;
+      const startX = rootRect.left + rootRect.width / 2 - mapRect.left;
+      const startY = rootRect.top + rootRect.height / 2 - mapRect.top;
+      const byId: Record<string, string> = {};
+      map.querySelectorAll<HTMLButtonElement>(".tech-tree-node").forEach(node => {
+        const icon = node.querySelector<HTMLElement>(".tech-tree-node-icon");
+        if (!icon || !node.dataset.speciesId) return;
+        const iconRect = icon.getBoundingClientRect();
+        const endX = iconRect.left + iconRect.width / 2 - mapRect.left;
+        const endY = iconRect.top + iconRect.height / 2 - mapRect.top;
+        const dx = endX - startX;
+        const dy = endY - startY;
+        byId[node.dataset.speciesId] = `M${startX} ${startY} C${startX + dx * .35} ${startY + dy * .1}, ${endX - dx * .18} ${endY - dy * .12}, ${endX} ${endY}`;
+      });
+      setPaths({ width: mapRect.width, height: mapRect.height, byId });
+    };
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(map);
+    map.querySelectorAll<HTMLElement>(".tech-tree-node-icon").forEach(icon => observer?.observe(icon));
+    window.addEventListener("resize", measure);
+    measure();
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [pathNodeIds]);
 
   return (
     <section className="tech-tree" aria-labelledby="tech-tree-heading">
       <header className="tech-tree-intro">
         <div>
-          <p className="tech-tree-kicker">CORAL · TECHNOLOGY TREE</p>
-          <h3 id="tech-tree-heading">釣って、技術をひらく。</h3>
-          <p>魚の動きで技術を体験し、釣り上げるとツリーに知見が刻まれます。</p>
+          <p className="tech-tree-kicker">釣果からひらく、技術の海図</p>
+          <h3 id="tech-tree-heading">技術の海図</h3>
         </div>
-        <div className="tech-tree-progress" aria-live="polite"><span>解放ノード</span><strong>{discovered}<small> / {speciesEntries.length}</small></strong></div>
+        <div className="tech-tree-intro-actions">
+          <div className="tech-tree-progress" aria-live="polite"><span>{previewEnabled ? "表示" : "発見"}</span><strong>{previewEnabled ? speciesEntries.length : discovered}<small> / {speciesEntries.length}</small></strong></div>
+          {import.meta.env.DEV && <button type="button" className="tech-tree-preview-toggle" aria-pressed={showAllPreview} onClick={() => setShowAllPreview(value => !value)}>全開放プレビュー</button>}
+        </div>
       </header>
+      {previewEnabled && <p className="tech-tree-preview-note" role="status">開発用の表示です。実際の発見は {discovered} / {speciesEntries.length}。釣果・DBは変更しません。</p>}
 
       {speciesEntries.length === 0 ? <p className="tech-tree-empty" role="status">技術ツリーを読み込めませんでした。魚図鑑に戻ってください。</p> : <>
-        <div className="tech-tree-root" aria-label="技術ツリーの起点">
-          <span className="tech-tree-root-icon"><CoralIcon /></span>
-          <span><strong>TECH TREE</strong><small>技術の海を調査する</small></span>
-          <span className="tech-tree-root-state">調査中</span>
-        </div>
-        <div className="tech-tree-branches">
-          {TECH_TREE_BRANCHES.map((branch, branchIndex) => {
-            const branchEntries = branch.speciesIds
-              .map(id => speciesEntries.find(entry => entry.id === id))
-              .filter((entry): entry is CollectionEntry => Boolean(entry));
-            if (branchEntries.length === 0) return null;
-            return <section key={branch.id} className={`tech-tree-branch tech-tree-branch--${branch.id}`} aria-labelledby={`tech-branch-${branch.id}`}>
-              <header className="tech-tree-branch-heading">
-                <span className="tech-tree-branch-index">{String(branchIndex + 1).padStart(2, "0")}</span>
-                <div><h4 id={`tech-branch-${branch.id}`}>{branch.label}</h4><p>{branch.summary}</p></div>
-              </header>
-              <div className="tech-tree-nodes">
-                {branchEntries.map(entry => {
-                  const caught = entry.status === "caught";
-                  const species = isFishSpeciesId(entry.id) ? getFishSpecies(entry.id) : undefined;
-                  const details = isFishSpeciesId(entry.id) ? TECH_TREE_NODE_DETAILS[entry.id] : undefined;
-                  const title = caught && details ? details.technology : "？？？";
-                  const subtitle = caught && species ? collectionName(entry) : species?.unknownTitle ?? "まだ見ぬ魚";
-                  return <button
-                    key={entry.id}
-                    type="button"
-                    className={`tech-tree-node tech-tree-node--${entry.id}${caught ? " is-unlocked" : " is-locked"}${entry.id === selected?.id ? " is-selected" : ""}`}
-                    aria-pressed={entry.id === selected?.id}
-                    aria-label={`${title}。${caught ? "解放済み" : "未解放"}。${subtitle}`}
-                    onClick={() => onSelect(entry.id)}
-                  >
-                    <span className="tech-tree-node-icon" aria-hidden="true">
-                      <FishTechIcon speciesId={entry.id} />
-                      <span className="tech-tree-node-mark">{caught ? "✓" : "·"}</span>
-                    </span>
-                    <span className="tech-tree-node-copy"><strong>{title}</strong><small>{subtitle}</small></span>
-                    <span className="tech-tree-node-state">{caught ? "解放" : "未解放"}</span>
-                  </button>;
-                })}
-              </div>
-              {branch.relationship && <p className="tech-tree-relationship"><span aria-hidden="true">↳</span>{branch.relationship}</p>}
-            </section>;
-          })}
-        </div>
-
-        {selected && selectedSpecies && (
-          <section className="tech-tree-inspector" aria-live="polite" aria-label="選択した技術ノード">
-            <div className="tech-tree-inspector-topline"><span>NODE DATA</span><span className={selectedCaught ? "is-unlocked" : "is-locked"}>{selectedCaught ? "解放済み" : "未解放"}</span></div>
-            <div className="tech-tree-inspector-heading">
-              <span className={`tech-tree-inspector-icon${selectedCaught ? " is-unlocked" : ""}`} aria-hidden="true"><FishTechIcon speciesId={selected.id} /></span>
-              <div><p>{selectedCaught && selectedDetails ? selectedDetails.technology : "未解析ノード"}</p><h4>{selectedCaught ? collectionName(selected) : selectedSpecies.unknownTitle}</h4></div>
+        <div className="tech-tree-layout">
+          <div ref={mapRef} className="tech-tree-map" aria-label="技術分野と魚のつながり">
+            <svg className="tech-tree-paths" viewBox={`0 0 ${paths.width} ${paths.height}`} preserveAspectRatio="none" aria-hidden="true">
+              {speciesEntries.map(entry => <path key={entry.id} className={selected?.id === entry.id ? "is-active" : ""} d={paths.byId[entry.id] ?? ""} />)}
+            </svg>
+            <div className="tech-tree-root" aria-label="技術の海図の中心">
+              <span className="tech-tree-root-icon"><CoralIcon /></span>
+              <strong>技術の海</strong>
             </div>
-            {selectedCaught && selectedDetails ? <div className="tech-tree-node-data">
-              <p className="tech-tree-concept">{selectedDetails.concept}</p>
-              <p className="tech-tree-expression"><span>GAMEPLAY</span>{selectedDetails.gameExpression}</p>
-              <p className="tech-tree-fish-note">{selected.description ?? selected.tagline}</p>
-              <p className="tech-tree-catches">観測回数 <strong>{selected.catches}</strong></p>
-            </div> : <div className="tech-tree-node-data">
-              <p className="tech-tree-concept">この魚を釣ると、対応する技術ノードが解放されます。</p>
-              <p className="tech-tree-expression">{selectedSpecies.unknownHint}</p>
-              <ul className="tech-tree-clues" aria-label="魚影の手がかり">
-                {selectedSpecies.traits.map(trait => <li key={trait}>{trait}</li>)}
-              </ul>
-            </div>}
-            <a className="tech-tree-route" href={selectedDetails?.routeHref ?? "/"}>{selectedCaught ? "この技術の魚に会いに行く" : "この技術を釣りに行く"}<span aria-hidden="true">↗</span></a>
-          </section>
-        )}
+            <div className="tech-tree-branches">
+              {TECH_TREE_BRANCHES.map((branch, branchIndex) => {
+                const branchEntries = branch.speciesIds
+                  .map(id => speciesEntries.find(entry => entry.id === id))
+                  .filter((entry): entry is CollectionEntry => Boolean(entry));
+                if (branchEntries.length === 0) return null;
+                return <section key={branch.id} className={`tech-tree-branch tech-tree-branch--${branch.id}${selectedBranch?.id === branch.id ? " is-current" : ""}`} aria-labelledby={`tech-branch-${branch.id}`}>
+                  <header className="tech-tree-branch-heading">
+                    <span className="tech-tree-branch-index">{String(branchIndex + 1).padStart(2, "0")}</span>
+                    <div><h4 id={`tech-branch-${branch.id}`}>{branch.label}</h4><p>{branch.summary}</p></div>
+                  </header>
+                  <div className="tech-tree-nodes">
+                    {branchEntries.map(entry => {
+                      const reveal = techTreeReveal(entry.status, showAllPreview, import.meta.env.DEV);
+                      const species = isFishSpeciesId(entry.id) ? getFishSpecies(entry.id) : undefined;
+                      const details = isFishSpeciesId(entry.id) ? TECH_TREE_NODE_DETAILS[entry.id] : undefined;
+                      const title = reveal.revealed && details ? details.technology : "？？？";
+                      const subtitle = reveal.revealed && species ? collectionName(entry) : species?.unknownTitle ?? "まだ見ぬ魚";
+                      return <button
+                        key={entry.id}
+                        type="button"
+                        className={`tech-tree-node tech-tree-node--${entry.id}${reveal.revealed ? " is-unlocked" : " is-locked"}${reveal.preview ? " is-preview" : ""}${entry.id === selected?.id ? " is-selected" : ""}`}
+                        data-species-id={entry.id}
+                        aria-pressed={entry.id === selected?.id}
+                        aria-label={`${title}。${reveal.caught ? "発見済み" : reveal.preview ? "プレビュー表示" : "未発見"}。${subtitle}`}
+                        onClick={() => onSelect(entry.id)}
+                      >
+                        <span className="tech-tree-node-icon" aria-hidden="true">
+                          <FishTechIcon speciesId={entry.id} />
+                          <span className="tech-tree-node-mark">{reveal.caught ? "✦" : reveal.preview ? "◇" : ""}</span>
+                        </span>
+                        <span className="tech-tree-node-copy"><strong>{title}</strong><small>{subtitle}</small></span>
+                      </button>;
+                    })}
+                  </div>
+                </section>;
+              })}
+            </div>
+          </div>
+
+          {selected && selectedSpecies && (
+            <section className="tech-tree-inspector" aria-live="polite" aria-label="選択した技術ノード">
+              <div className="tech-tree-inspector-topline"><span>{selectedBranch?.label ?? "発見した技術"}</span><span className={selectedReveal.caught ? "is-unlocked" : selectedReveal.preview ? "is-preview" : "is-locked"}>{selectedReveal.caught ? "発見済み" : selectedReveal.preview ? "プレビュー" : "未発見"}</span></div>
+              <div className="tech-tree-inspector-heading">
+                <span className={`tech-tree-inspector-icon${selectedReveal.revealed ? " is-unlocked" : ""}`} aria-hidden="true"><FishTechIcon speciesId={selected.id} /></span>
+                <div><p>{selectedReveal.revealed && selectedDetails ? selectedDetails.technology : "未知の技術"}</p><h4>{selectedReveal.revealed ? collectionName(selected) : selectedSpecies.unknownTitle}</h4></div>
+              </div>
+              {selectedReveal.revealed && selectedDetails ? <div className="tech-tree-node-data">
+                <p className="tech-tree-concept">{selectedDetails.concept}</p>
+                <p className="tech-tree-expression"><span>釣りでは</span>{selectedDetails.gameExpression}</p>
+                {selectedReveal.caught && <p className="tech-tree-catches">釣果 <strong>{selected.catches}</strong> 回</p>}
+              </div> : <div className="tech-tree-node-data">
+                <p className="tech-tree-concept">{selectedSpecies.unknownHint}</p>
+                <ul className="tech-tree-clues" aria-label="魚影の手がかり">
+                  {selectedSpecies.traits.map(trait => <li key={trait}>{trait}</li>)}
+                </ul>
+              </div>}
+              <a className="tech-tree-route" href={selectedDetails?.routeHref ?? "/"}>{selectedReveal.caught ? "もう一度、この魚に会う" : "この魚を釣りに行く"}<span aria-hidden="true">→</span></a>
+            </section>
+          )}
+        </div>
       </>}
-      <p className="tech-tree-legend"><span><i className="is-open" aria-hidden="true" />解放済み</span><span><i aria-hidden="true" />未解放</span><small>魚を釣るとノードが解放されます。枝は技術分野のつながりを表します。</small></p>
+      <p className="tech-tree-legend">{previewEnabled ? "光る紋章は開発用プレビューです。" : "光る紋章は発見済み。"}線は分野のつながりで、解放の順番ではありません。</p>
     </section>
   );
 }
@@ -274,7 +352,7 @@ function CollectionDialog({
         <header className="collection-header">
           <div className="collection-heading">
             <h2 id="collection-title">{activeView === "fish" ? "魚図鑑" : "技術ツリー"}</h2>
-            {collection.activeTotal > 0 && <span id="collection-count" className="collection-count">{activeView === "fish" ? "発見済み" : "解放済み"} {collection.registered} / {collection.activeTotal}</span>}
+            {activeView === "fish" && collection.activeTotal > 0 && <span id="collection-count" className="collection-count">発見済み {collection.registered} / {collection.activeTotal}</span>}
           </div>
           <button className="collection-close" aria-label="図鑑を閉じる" title="海へ戻る" onClick={onClose}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2 14 14M14 2 2 14" /></svg></button>
         </header>

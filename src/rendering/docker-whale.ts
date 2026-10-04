@@ -141,20 +141,38 @@ function animate(material,uniforms,mode='plain') {
   return material;
 }
 
+function makeCargoHaloTexture() {
+  const size=32,data=new Uint8Array(size*size*4);
+  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+    const dx=((x+.5)/size-.5)*2,dy=((y+.5)/size-.5)*2;
+    const alpha=Math.round(255*Math.pow(clamp(1-Math.sqrt(dx*dx+dy*dy),0,1),1.55));
+    const offset=(y*size+x)*4;
+    data[offset]=255;data[offset+1]=255;data[offset+2]=255;data[offset+3]=alpha;
+  }
+  const texture=new THREE.DataTexture(data,size,size,THREE.RGBAFormat,THREE.UnsignedByteType);
+  texture.magFilter=THREE.LinearFilter;texture.minFilter=THREE.LinearFilter;
+  texture.generateMipmaps=false;texture.needsUpdate=true;
+  return texture;
+}
+
 // Cargo details do not use the whale-body deformation. They get their own
-// restrained, server-state-driven pulse when a heavy pull begins.
+// server-state-driven boot glow while a heavy pull is active.
 function cargoPulseMaterial(material,mode,uniforms) {
   const compile=material.onBeforeCompile;
   material.onBeforeCompile=shader=>{
     compile.call(material,shader);
     shader.uniforms.uCargoPulse=uniforms.uCargoPulse;
+    shader.uniforms.uCargoOn=uniforms.uCargoOn;
     if(mode==='glow'){
       shader.uniforms.uGlow=uniforms.uGlow;
-      shader.fragmentShader='uniform float uCargoPulse; uniform float uGlow;\n'+shader.fragmentShader;
-      shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb*=uGlow*(1.0+1.15*uCargoPulse);');
+      shader.fragmentShader='uniform float uCargoPulse; uniform float uCargoOn; uniform float uGlow;\n'+shader.fragmentShader;
+      shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb*=uGlow*(1.0+.95*uCargoOn+.75*uCargoPulse);');
+    }else if(mode==='halo'){
+      shader.fragmentShader='uniform float uCargoPulse; uniform float uCargoOn;\n'+shader.fragmentShader;
+      shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\nfloat cargoHaloSignal=clamp(.95*uCargoOn+.5*uCargoPulse,0.0,1.0);diffuseColor.a*=cargoHaloSignal;');
     }else{
-      shader.fragmentShader='uniform float uCargoPulse;\n'+shader.fragmentShader;
-      shader.fragmentShader=shader.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance+=vec3(.012,.11,.16)*uCargoPulse;');
+      shader.fragmentShader='uniform float uCargoPulse; uniform float uCargoOn;\n'+shader.fragmentShader;
+      shader.fragmentShader=shader.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance+=vec3(.02,.18,.28)*(uCargoPulse+.9*uCargoOn);');
     }
   };
   material.customProgramCacheKey=()=>`docker-whale-cargo-${mode}-v1`;
@@ -167,7 +185,7 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   const uniforms={
     uWhalePhase:{value:phase},uWhaleFrequency:{value:.78},uWhaleWavelength:{value:.94},
     uWhaleAmplitude:{value:.1},uWhaleEffort:{value:.38},uWhaleTurn:{value:0},
-    uPower:{value:.45},uGlow:{value:1},uCargoPulse:{value:0},
+    uPower:{value:.45},uGlow:{value:1},uCargoPulse:{value:0},uCargoOn:{value:0},
   };
   const geometries=new Set(),materials=new Set(),parts=[];
   // Cargo is a rigid load with its own inertial mount. Keeping the mount
@@ -186,6 +204,12 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   cargoAccent.name='docker-cargo-accent';
   const cargoGlow=cargoPulseMaterial(new THREE.MeshBasicMaterial({color:new THREE.Color(.04,1.65,2.8),toneMapped:false}),'glow',uniforms);
   cargoGlow.name='docker-cargo-status-glow';
+  const cargoHaloMap=makeCargoHaloTexture();
+  const cargoHalo=cargoPulseMaterial(new THREE.MeshBasicMaterial({
+    color:new THREE.Color(.22,1.25,1.8),map:cargoHaloMap,transparent:true,opacity:.92,
+    depthWrite:false,toneMapped:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
+  }),'halo',uniforms);
+  cargoHalo.name='docker-cargo-status-halo';
   const ribs=new THREE.MeshStandardMaterial({color:0x237596,roughness:.4,metalness:.6});
   const deck=new THREE.MeshStandardMaterial({color:0x061b29,roughness:.48,metalness:.65});
   const finWaterSides=new Map();
@@ -285,6 +309,14 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
       box(.025,h,.027,[x+w/2,y,z+side*(d/2+.04)],cargoAccent,'container-corner',false,cargoMount);
       // Three tiny status windows, not text pasted onto the creature.
       for(let i=0;i<3;i++)box(.082,.035,.018,[x-.16+i*.16,y-h*.33,z+side*(d/2+.065)],cargoGlow,'container-status',false,cargoMount);
+      for(let i=0;i<3;i++){
+        // The combat camera shows the whale at a fraction of model scale; a
+        // sub-decimeter halo collapses to a single pixel after that projection.
+        const halo=new THREE.PlaneGeometry(.96,.58);
+        if(side<0)halo.rotateY(Math.PI);
+        halo.translate(x-.16+i*.16,y-h*.33,z+side*(d/2+.08));
+        add(halo,cargoHalo,'container-status-halo',cargoMount);
+      }
     }
     for(const side of [-1,1])for(const offset of [-.20,.20])box(.027,h*.76,.027,[x+side*(w/2+.038),y,z+offset],cargoAccent,'door-bar',false,cargoMount);
   }
@@ -302,16 +334,16 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
       if(g!==mesh.geometry)g.dispose();mesh.parent?.remove(mesh);geometries.delete(mesh.geometry);mesh.geometry.dispose();
     }
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
-    add(g,m,'batched-'+(m===glow?'lights':m===cargo?'containers':m===ribs?'ribs':'details'),parent);
+    add(g,m,'batched-'+(m===glow?'lights':m===cargo?'containers':m===cargoHalo?'container-status-halos':m===ribs?'ribs':'details'),parent);
   }
   if(habitatUniforms){
     for(const material of materials){
        const finSide=finWaterSides.get(material)??0;
-       const part=finSide!==0?'fin':material===skin?'body':material===glow||material===cargoGlow?'light':material===cargo||material===cargoAccent?'cargo':'detail';
+       const part=finSide!==0?'fin':material===skin?'body':material===glow?'light':material===cargo||material===cargoAccent||material===cargoGlow||material===cargoHalo?'cargo':'detail';
       applyFishWater(material,habitatUniforms,part,DOCKER_WHALE_WATER_PROFILE,finSide);
     }
   }
-  let disposed=false,cargoYaw=0,cargoRoll=0,cargoSide=0,cargoLift=.12,cargoLag=0,cargoPulse=0,cargoMomentActive=false;
+  let disposed=false,cargoYaw=0,cargoRoll=0,cargoSide=0,cargoLift=.12,cargoLag=0,cargoPulse=0,cargoGlowOn=0,cargoMomentActive=false;
   return {
     group,body,flippers,flukes,cargoMount,containerCount:containers.length,waterUniforms:habitatUniforms,
     update(time,{power=.45,glow=1,visibility=1,bodyPhase,bodyFrequency,bodyWavelength,effort=.38,turn=0,amplitude,tetherLoad=0,cargoMoment=false,styleDelta=1/60}={}){
@@ -329,7 +361,11 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
       if(cargoMoment&&!cargoMomentActive)cargoPulse=1;
       cargoMomentActive=!!cargoMoment;
       cargoPulse*=Math.exp(-dt*3.8);
-      uniforms.uCargoPulse.value=cargoPulse;
+      // Keep the container boot light readable for a few seconds after the
+      // short server-authored surge ends. This is presentation-only; the
+      // physical cargo pulse keeps its original decay and timing.
+      cargoGlowOn+=(Number(!!cargoMoment)-cargoGlowOn)*(1-Math.exp(-dt*(cargoMoment?12:.62)));
+      uniforms.uCargoPulse.value=cargoPulse;uniforms.uCargoOn.value=cargoGlowOn;
       cargoLag+=(.16*cargoPulse-cargoLag)*(1-Math.exp(-dt*9));
       const settle=1-Math.exp(-dt*1.8);
       // A heavy load resists yaw and settles down instead of bobbing like a
@@ -342,6 +378,6 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
       cargoMount.position.set(cargoLag,cargoLift+.035*cargoPulse,cargoSide);
     },
     get stats(){return {meshes:group.children.length,triangles:[...geometries].reduce((sum,g)=>sum+(g.index?g.index.count:g.attributes.position.count)/3,0)};},
-    dispose(){if(disposed)return;disposed=true;for(const g of geometries)g.dispose();for(const m of materials)m.dispose();contactShadowGeometry.dispose();contactShadowMaterial.dispose();group.clear();},
+    dispose(){if(disposed)return;disposed=true;for(const g of geometries)g.dispose();for(const m of materials)m.dispose();cargoHaloMap.dispose();contactShadowGeometry.dispose();contactShadowMaterial.dispose();group.clear();},
   };
 }

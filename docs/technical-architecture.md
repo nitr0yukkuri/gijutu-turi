@@ -45,7 +45,7 @@ PCブラウザー (React UI + Three.js WebGL)
 | 入力検証 | Zod 4系。HTTPセッション作成とWebSocketから来るゲームアクションを検証 |
 | 永続化 | ローカルはNode組み込みSQLite (`DatabaseSync`)、Cloud RunではD1環境変数設定時にCloudflare D1 APIを利用。`DATABASE_URL` のPostgreSQL接続も任意で残る |
 | PWA | Web App ManifestとService Worker。静的画面・ビルド資産をキャッシュし、API/WSはキャッシュしない |
-| 音 | Web Audio APIで生成する環境音・効果音。外部音源ファイルに依存しない |
+| 音 | Web Audio APIで生成する海の環境音（低い水音と不規則な水面の寄せ引き）・効果音。外部音源ファイルに依存しない |
 | テスト | Node.js `node:test` + `tsx`。純粋関数・ゲーム・DB・ルーム・レンダリング計算を検証。統合/モデル検証スクリプトもある |
 | CI | GitHub Actions、Ubuntu、Node 22。型検査、テスト、ビルド、Ocean統合検証、魚モデル検証、Docker image build |
 | コンテナ | `node:22-slim` のマルチステージDockerfile。ビルド段階と本番依存のみの実行段階を分離 |

@@ -53,7 +53,7 @@ const JS_EEL_ROUTE: FishingRoute = {
   key: "jseel",
   path: FISHING_ROUTE_PATHS.jseel,
   initialFishId: "js-001",
-  title: "JSうなぎ — 技術釣り",
+  title: "JSアナゴ — 技術釣り",
 };
 
 const K8S_FISH_ROUTE: FishingRoute = {

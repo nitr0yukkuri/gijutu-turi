@@ -315,7 +315,10 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       const previousRodStroke = receivedRodStrokeRef.current;
       if (previousRodStroke !== null && (message.rodStroke ?? 0) > previousRodStroke) {
         const newStrokes = Math.min(4, (message.rodStroke ?? 0) - previousRodStroke);
-        for (let index = 0; index < newStrokes; index++) sceneRef.current?.rodStroke?.();
+        for (let index = 0; index < newStrokes; index++) {
+          sceneRef.current?.rodStroke?.();
+          fishingAudioRef.current?.play("rod-pump");
+        }
         setRodStrokeRevision(revision => revision + newStrokes);
       }
       receivedRodStrokeRef.current = message.rodStroke ?? 0;
@@ -475,7 +478,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
           sessionStorage.removeItem("gijutu.ocean-host-v2");
           sessionStorage.removeItem(roomFishStorageKey);
         }
-        scheduleRetry(isPhone ? "接続を再試行しています。接続できない場合は海の画面から新しいURLを開いてください。" : "海との接続が切れました。再接続しています。");
+        scheduleRetry(isPhone ? "接続を再試行しています。接続できない場合は海の画面から新しいURLを開いてください。" : "接続が切れました。再接続しています。");
       });
       socket.addEventListener("error", () => setConnected(false));
     } catch (error) {

@@ -74,6 +74,8 @@ body:has(#collection-dialog[open]) #sea #escape-ui {
 .collection-silhouette .silhouette-body, .collection-silhouette .silhouette-tail, .collection-silhouette .silhouette-fin { fill: currentColor; opacity: .92; stroke: currentColor; stroke-width: 1.2; }
 .collection-silhouette .silhouette-bill { fill: currentColor; opacity: .96; stroke: currentColor; stroke-width: 1; }
 .collection-silhouette .silhouette-stripes { fill: none; stroke: #42aaff; stroke-width: 4; stroke-linecap: round; opacity: .78; }
+.collection-silhouette .silhouette-anago-spots { fill: #e4d7b9; stroke: none; opacity: .92; }
+.collection-silhouette .silhouette-anago-jaw { fill: none; stroke: #b3a080; stroke-width: 1.5; stroke-linecap: round; opacity: .72; }
 .collection-silhouette .silhouette-body { opacity: .98; }
 .collection-silhouette .silhouette-fin { opacity: .86; }
 .collection-silhouette .silhouette-fin--lower { opacity: .78; }
@@ -85,6 +87,9 @@ body:has(#collection-dialog[open]) #sea #escape-ui {
 .collection-silhouette--css-fish { color: #050b10; transform: scale(.82); }
 .collection-silhouette--rust-striped-marlin { color: #061323; transform: scale(1.03); }
 .collection-silhouette--cluster-leviathan { color: #101817; transform: scale(1.04); }
+.collection-silhouette--js-eel { color: #17140f; transform: scale(1.02); }
+.collection-silhouette--js-eel .silhouette-eye { fill: #dfd0ae; stroke: none; opacity: .95; }
+.collection-silhouette--js-eel .silhouette-gill { fill: none; stroke: #b3a080; stroke-width: 1.5; opacity: .62; }
 .collection-silhouette--css-fish::before { background: radial-gradient(ellipse, #000 0%, transparent 70%); opacity: .16; }
 .collection-silhouette-caption { position: absolute; bottom: 8px; color: #b9d4d9; font-size: 10px; letter-spacing: .14em; opacity: .72; }
 .collection-detail-copy { width: min(100%, 480px); margin: 0 auto; padding: 8px 8px 0; text-align: center; overflow-wrap: anywhere; }

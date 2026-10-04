@@ -1,7 +1,10 @@
 import type { FishSpeciesId } from "../fish-species.js";
-import type { OceanPhase, OceanState } from "../client/types.js";
+import type { OceanMode, OceanPhase, OceanState } from "../client/types.js";
 
-export type FishingAudioEvent = "cast" | "splash" | "bite" | "hook-critical" | "catch" | "escape" | "retrieve";
+export type FishingAudioEvent =
+  | "cast" | "splash" | "bite" | "hook-set" | "hook-critical" | "rod-pump" | "line-slack"
+  | "fight-rest" | "fight-surge" | "fight-warning" | "fight-split"
+  | "catch" | "escape" | "retrieve";
 
 export type FishAudioTuning = {
   reelFrequency: number;
@@ -73,12 +76,14 @@ export class FishingAudioController {
   private ambientModulationGain: GainNode | null = null;
   private reelPulseTimer: number | null = null;
   private dragPulseTimer: number | null = null;
+  private waterLapTimer: number | null = null;
   private reelPulseInterval = 0;
   private dragPulseInterval = 0;
   private reelTuning = getFishAudioTuning("fish-001");
   private reelAmount = 0;
   private dragTuning = this.reelTuning;
   private dragAmount = 0;
+  private waterLapAmount = 1;
   private activeVoices = new Set<AudioScheduledSourceNode>();
   private lastEvents = new Map<FishingAudioEvent, number>();
   private lastLoopUpdate = 0;
@@ -96,7 +101,9 @@ export class FishingAudioController {
     const time = context.currentTime;
     inputGain.gain.cancelScheduledValues(time);
     inputGain.gain.setTargetAtTime(this.enabled ? 1 : 0, time, .045);
-    if (!this.enabled) {
+    if (this.enabled) {
+      this.scheduleWaterLap(1500 + Math.random() * 1800);
+    } else {
       this.clearPulseTimers();
       window.setTimeout(() => {
         if (!this.enabled) void context.suspend();
@@ -107,6 +114,7 @@ export class FishingAudioController {
 
   sync(previous: OceanState, next: OceanState): void {
     if (!this.enabled) return;
+    this.waterLapAmount = next.phase === "fighting" ? (next.tension >= .58 ? .3 : .44) : next.phase === "biting" ? .72 : 1;
     if (previous.phase !== next.phase) {
       const eventByPhase: Partial<Record<OceanPhase, FishingAudioEvent>> = {
         casting: "cast",
@@ -118,8 +126,22 @@ export class FishingAudioController {
       const event = eventByPhase[next.phase];
       if (event) this.play(event);
     }
-    if (previous.phase === "biting" && next.phase === "fighting" && next.hookResult === "critical") {
-      this.play("hook-critical");
+    if (previous.phase === "biting" && next.phase === "fighting") {
+      this.play(next.hookResult === "critical" ? "hook-critical" : "hook-set");
+    }
+    if (previous.phase === "fighting" && next.phase === "fighting") {
+      const modeChanged = previous.mode !== next.mode;
+      if (modeChanged) {
+        const eventByMode: Partial<Record<OceanMode, FishingAudioEvent>> = {
+          rest: "fight-rest",
+          surge: "fight-surge",
+          warning: "fight-warning",
+          split: "fight-split",
+        };
+        const event = eventByMode[next.mode];
+        if (event) this.play(event);
+      }
+      if (!modeChanged && previous.tension >= .42 && next.tension <= .32) this.play("line-slack");
     }
     this.syncLoops(next, (next.phase === "fighting" && next.reeling) || next.phase === "retrieving");
   }
@@ -136,7 +158,7 @@ export class FishingAudioController {
     if (!context || !inputGain || this.activeVoices.size >= MAX_ONE_SHOT_VOICES) return;
     const now = context.currentTime + .004;
     const previous = this.lastEvents.get(event) ?? -Infinity;
-    const cooldown = event === "splash" ? .14 : .08;
+    const cooldown = event === "splash" ? .14 : event === "line-slack" ? 1.2 : event.startsWith("fight-") ? .28 : .08;
     if (context.currentTime - previous < cooldown) return;
     this.lastEvents.set(event, context.currentTime);
 
@@ -156,6 +178,28 @@ export class FishingAudioController {
       // A short, soft line-pluck marks a well-timed hook without stacking a loud splash.
       this.playTone(now, 520, 390, .12, .016, "triangle", .004);
       this.playNoise(now, .055, 1180, .009, 720, .003);
+    } else if (event === "hook-set") {
+      // A restrained lower pluck distinguishes a normal hook from the brighter critical cue.
+      this.playTone(now, 278, 205, .13, .011, "sine", .006);
+      this.playNoise(now, .06, 820, .009, 460, .004);
+    } else if (event === "rod-pump") {
+      this.playNoise(now, .095, 540, .009, 980, .012);
+      this.playTone(now, 164, 126, .12, .008, "triangle", .01);
+    } else if (event === "line-slack") {
+      // A small descending line flick marks the return from a tight load.
+      this.playNoise(now, .14, 1120, .01, 380, .008);
+      this.playTone(now, 244, 116, .17, .009, "sine", .012);
+    } else if (event === "fight-warning") {
+      this.playNoise(now, .24, 390, .011, 210, .025);
+      this.playTone(now, 116, 82, .22, .008, "triangle", .025);
+    } else if (event === "fight-surge") {
+      this.playNoise(now, .2, 510, .012, 1420, .018);
+      this.playTone(now, 156, 232, .16, .008, "sine", .018);
+    } else if (event === "fight-split") {
+      this.playNoise(now, .12, 780, .01, 1380, .008);
+      this.playNoise(now + .09, .13, 520, .008, 980, .008);
+    } else if (event === "fight-rest") {
+      this.playNoise(now, .16, 680, .006, 360, .025);
     } else if (event === "catch") {
       // A warm, simultaneous two-note resolution avoids the arcade scale cue.
       this.playTone(now, 330, 330, .27, .019, "sine", .035);
@@ -170,10 +214,17 @@ export class FishingAudioController {
     }
   }
 
-  suspend(): void { void this.context?.suspend(); }
+  suspend(): void {
+    if (this.waterLapTimer !== null) window.clearTimeout(this.waterLapTimer);
+    this.waterLapTimer = null;
+    void this.context?.suspend();
+  }
 
   async resume(): Promise<void> {
     if (this.enabled && this.context?.state === "suspended") await this.context.resume();
+    if (this.enabled && this.context?.state === "running" && this.waterLapTimer === null) {
+      this.scheduleWaterLap(1500 + Math.random() * 1800);
+    }
   }
 
   dispose(): void {
@@ -299,6 +350,43 @@ export class FishingAudioController {
     this.dragPulseTimer = window.setInterval(() => this.playDragPulse(), interval);
   }
 
+  /** Add an irregular, soft surface lap over the continuous low water bed. */
+  private scheduleWaterLap(delayMs: number): void {
+    if (!this.enabled || this.waterLapTimer !== null) return;
+    this.waterLapTimer = window.setTimeout(() => {
+      this.waterLapTimer = null;
+      if (!this.enabled) return;
+      this.playWaterLap();
+      this.scheduleWaterLap(4600 + Math.random() * 3900);
+    }, delayMs);
+  }
+
+  private playWaterLap(): void {
+    const context = this.context;
+    if (!context || context.state !== "running" || this.activeVoices.size >= MAX_ONE_SHOT_VOICES - 2) return;
+    const now = context.currentTime + .012;
+    const amount = this.waterLapAmount;
+    const duration = 1.7 + Math.random() * .8;
+    const peak = (.008 + Math.random() * .002) * amount;
+    const startFrequency = 320 + Math.random() * 220;
+    const endFrequency = 720 + Math.random() * 430;
+    this.playNoise(now, duration, startFrequency, peak, endFrequency, .24 + Math.random() * .12);
+
+    // A much quieter high ripple gives some laps a little surface fizz.
+    if (Math.random() < .55) {
+      const rippleStart = now + .32 + Math.random() * .24;
+      const rippleDuration = .72 + Math.random() * .36;
+      this.playNoise(
+        rippleStart,
+        rippleDuration,
+        1050 + Math.random() * 360,
+        peak * (.24 + Math.random() * .12),
+        1780 + Math.random() * 620,
+        .12,
+      );
+    }
+  }
+
   private playReelPulse(): void {
     const context = this.context;
     if (!context || context.state !== "running") return;
@@ -324,8 +412,10 @@ export class FishingAudioController {
   private clearPulseTimers(): void {
     if (this.reelPulseTimer !== null) window.clearInterval(this.reelPulseTimer);
     if (this.dragPulseTimer !== null) window.clearInterval(this.dragPulseTimer);
+    if (this.waterLapTimer !== null) window.clearTimeout(this.waterLapTimer);
     this.reelPulseTimer = null;
     this.dragPulseTimer = null;
+    this.waterLapTimer = null;
     this.reelPulseInterval = 0;
     this.dragPulseInterval = 0;
   }

@@ -17,7 +17,7 @@ test("public fish routes select only the initial species", () => {
     key: "rustfish", path: "/rustfish", initialFishId: "rust-001", title: "Rustカジキ — 技術釣り",
   });
   assert.deepEqual(resolveFishingRoute("/jseel/"), {
-    key: "jseel", path: "/jseel", initialFishId: "js-001", title: "JSうなぎ — 技術釣り",
+    key: "jseel", path: "/jseel", initialFishId: "js-001", title: "JSアナゴ — 技術釣り",
   });
   assert.deepEqual(resolveFishingRoute("/k8sfish"), {
     key: "k8sfish", path: "/k8sfish", initialFishId: "k8s-001", title: "K8sレヴィアタン — 技術釣り",

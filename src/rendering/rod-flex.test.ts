@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CSS_ROD_FLEX_PROFILE, DOCKER_ROD_FLEX_PROFILE, JS_EEL_ROD_FLEX_PROFILE, RUST_BILLFISH_ROD_FLEX_PROFILE, STANDARD_ROD_FLEX_PROFILE, rodCenterAt, rodFlexProfileFor } from "./rod-flex.js";
+import { CSS_ROD_FLEX_PROFILE, DOCKER_ROD_FLEX_PROFILE, JS_EEL_ROD_FLEX_PROFILE, RUST_BILLFISH_ROD_FLEX_PROFILE, STANDARD_ROD_FLEX_PROFILE, dockerWhaleRodKick, rodCenterAt, rodFlexProfileFor } from "./rod-flex.js";
 
 test("Docker rod carries visible bend earlier through the belly", () => {
   assert.equal(rodFlexProfileFor("whale-001"), DOCKER_ROD_FLEX_PROFILE);
@@ -9,7 +9,17 @@ test("Docker rod carries visible bend earlier through the belly", () => {
   assert.equal(rodFlexProfileFor("rust-001"), RUST_BILLFISH_ROD_FLEX_PROFILE);
   assert.equal(rodFlexProfileFor("js-001"), JS_EEL_ROD_FLEX_PROFILE);
   assert.ok(DOCKER_ROD_FLEX_PROFILE.bendGain > STANDARD_ROD_FLEX_PROFILE.bendGain);
+  assert.ok(DOCKER_ROD_FLEX_PROFILE.bendGain >= .58,'Docker should show a clearly heavier sustained bow');
+  assert.ok(DOCKER_ROD_FLEX_PROFILE.recoveryResponse < STANDARD_ROD_FLEX_PROFILE.recoveryResponse,'Docker should unload more slowly than a light fish');
   assert.ok(DOCKER_ROD_FLEX_PROFILE.tipDirectionBlend > STANDARD_ROD_FLEX_PROFILE.tipDirectionBlend);
+});
+
+test("Docker surge gives the rod tip one short damped response", () => {
+  assert.equal(dockerWhaleRodKick(-.01),0);
+  assert.equal(dockerWhaleRodKick(0),0);
+  assert.ok(dockerWhaleRodKick(.1)>.5,'the tip should react shortly after the surge begins');
+  assert.ok(dockerWhaleRodKick(.25)<0,'the blank should recoil instead of continuing to wag');
+  assert.equal(dockerWhaleRodKick(.82),0);
 });
 
 test("rod centerline stays attached at the butt and tip anchors", () => {
