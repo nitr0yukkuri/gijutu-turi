@@ -19,6 +19,7 @@ import { schoolCatchFormationScale } from './school-catch.js';
 import { fishBodyWaveOffsetAt, K8S_LEVIATHAN_SWIM_VISUAL_PROFILE } from './fish-swim-visual-profile.js';
 import { K8S_ECHO_COUNT, k8sFightPresentation, k8sLungeForSnapshot } from './k8s-fight-presentation.js';
 import { K8S_SURFACE_BODY_PROBES, interpolateK8sPresentationSample, k8sSurfaceWakeStrength, updateK8sSurfaceExposure } from './k8s-surface-motion.js';
+import type { FishSurfaceImpactCue } from '../fish-surface-impact.js';
 
 // Keep the escape result on screen while the camera returns to the normal view.
 const ESCAPE_FADE_MS = 420;
@@ -125,7 +126,13 @@ void main(){
   #include <colorspace_fragment>
 }`;
 
-export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurfaceImpact=()=>{} }={}) {
+export type OceanSceneOptions = {
+  onLand?: () => void;
+  onRenderError?: () => void;
+  onSurfaceImpact?: (impact: FishSurfaceImpactCue) => void;
+};
+
+export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurfaceImpact=()=>{} }: OceanSceneOptions = {}) {
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
   const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.25));
@@ -363,7 +370,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   };
   const clusterEchoOffsets=[new THREE.Vector3(-.92,.06,-1.24),new THREE.Vector3(.92,-.08,-1.36)];
   let clusterEchoAmount=0;
-  let previousK8sSurfaceGap=null,lastK8sBreachAt=-100,k8sSurfaceExposed=false,k8sSurfaceContactGap=-Infinity;
+  let previousK8sSurfaceGap=null,lastK8sBreachAt=-100,k8sSurfaceExposed=false,k8sSurfaceContactGap=-Infinity,k8sFirstBreachPlayed=false;
   const schoolOffsets=[
     new THREE.Vector3(-.68,.04,1.12),new THREE.Vector3(.76,-.02,.78),
     new THREE.Vector3(-.98,-.08,.18),new THREE.Vector3(.94,.09,.08),
@@ -463,6 +470,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if(Number.isFinite(serverNow)) serverOffset=serverNow-Date.now();
     tackleStore.update(next,Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset);
     const previousPhase=state.phase,changed=next.revision!==state.revision;
+    if(next.phase==='fighting'&&previousPhase!=='fighting')k8sFirstBreachPlayed=false;
     if(next.phase==='escaped'&&previousPhase!=='escaped'){
       // A newly connected display may receive the escaped snapshot without
       // having rendered the bite/fight first. Keep its silhouette readable.
@@ -856,7 +864,9 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
             ? 1.65+THREE.MathUtils.clamp(crossingSpeed/3,0,1)*.55
             : 2.0+THREE.MathUtils.clamp(crossingSpeed/3,0,1)*.7;
           launchSplash(k8sSurfaceContactWorld.x,k8sSurfaceContactWorld.z,impactPower);
-          onSurfaceImpact(exposure.transition);
+          const firstBreach=exposure.transition==='breach'&&!k8sFirstBreachPlayed;
+          if(exposure.transition==='breach')k8sFirstBreachPlayed=true;
+          onSurfaceImpact({fishId:state.fishId,transition:exposure.transition,impactPower,firstBreach});
           lastK8sBreachAt=time;
         }
       }
