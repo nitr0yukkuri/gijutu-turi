@@ -1,0 +1,91 @@
+/* Small-screen fixes for modal content and the phone controller. */
+#help-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+#help-dialog .help-content {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+#collection-dialog .collection-header {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  padding-block: 8px;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+body:has(#collection-dialog[open]) #sea .masthead,
+body:has(#collection-dialog[open]) #sea .shore-controls {
+  visibility: hidden;
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .phone {
+    justify-content: flex-start;
+    padding: max(10px, env(safe-area-inset-top)) max(22px, env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left));
+  }
+
+  .phone-brand {
+    position: absolute;
+    top: max(10px, env(safe-area-inset-top));
+    left: max(22px, env(safe-area-inset-left));
+  }
+
+  .phone-connection {
+    position: absolute;
+    top: max(10px, env(safe-area-inset-top));
+    right: max(22px, env(safe-area-inset-right));
+    margin: 0;
+  }
+
+  .phone-instruction {
+    margin-top: 38px;
+  }
+
+  .phone-instruction > p:first-child {
+    margin: 0 0 3px;
+  }
+
+  .phone h1 {
+    margin: 4px 0 5px;
+    font-size: 24px;
+    line-height: 1.2;
+  }
+
+  .phone-instruction > p:last-child {
+    margin: 3px 0 0;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .rod-symbol {
+    flex: 0 0 54px;
+    width: 90px;
+    height: 54px;
+    min-height: 54px;
+    max-height: 54px;
+    margin: 3px 0 6px;
+  }
+
+  .phone .primary-button {
+    min-height: 40px;
+    padding: 8px 16px;
+  }
+
+  .phone-cast {
+    min-height: 42px;
+    padding: 8px 12px;
+  }
+
+  .sensor-status {
+    font-size: 10px;
+    line-height: 1.3;
+  }
+}
