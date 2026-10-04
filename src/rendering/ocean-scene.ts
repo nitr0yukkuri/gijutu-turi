@@ -5,7 +5,7 @@ import { createDockerWhale,setDockerWhaleMouthAnchor } from './docker-whale.js';
 import { fishApparentPoint,waterHeightAt,waterHeightGLSL } from './fish-water.js';
 import { fishFightCues,lineSagForLoad } from './fish-fight-cues.js';
 import { updateFishingLineBuffers } from './fishing-line.js';
-import { rodCenterAt, rodFlexProfileFor, smoothRodLoad } from './rod-flex.js';
+import { dockerWhaleRodKick, rodCenterAt, rodFlexProfileFor, smoothRodLoad } from './rod-flex.js';
 import { escapeFishVisibility, fishVisibilityTarget, WAIT_APPROACH_FRACTION } from '../fish-approach.js';
 import { ESCAPE_ANIMATION_MS } from '../ocean-game.js';
 import { OCEAN_RENDER_DELAY_MS, RETRIEVE_DURATION_MS } from '../ocean-timing.js';
@@ -387,6 +387,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const tackleStore=new TackleStateStore();
   let time=0,lastFrame=0,lastRenderedFrame=0,overlayOpen=false,landedRevision=-1,splashAt=-100,rodStrokeAt=-100,sprayPower=1,rippleIndex=0,charge=0,chargeAim=0,lastWake=0,lastStroke=0,reelPhase=0;
   let serverOffset=0,cameraProgress=0,frame,fishSamples=[],catchOrigin=null,displayedWave=null,displayedGlow=.65,displayedSwim=null,displayedLoad=0,displayedRodLoad=0,displayedFishVisibility=0,escapeStartVisibility=0,hookImpactAt=-100;
+  let dockerRodSurgeAt=-100,wasDockerSurging=false,displayedDockerSurgeLoad=0;
   const cameraLookTarget=new THREE.Vector3(0,-3.8,-35);
   const cameraLookDesired=new THREE.Vector3();
   const whaleCameraOffset=new THREE.Vector3(),whaleCameraDesiredOffset=new THREE.Vector3();
@@ -629,6 +630,12 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     const rodLoadTarget=THREE.MathUtils.clamp((tackle.phase==='fighting'?strain+surfaceLunge*.26:retrieveLoad)+hookImpact*.075,0,1);
     const rodResponse=rodLoadTarget>displayedRodLoad?rodFlexProfile.loadingResponse:rodFlexProfile.recoveryResponse;
     displayedRodLoad=smoothRodLoad(displayedRodLoad,rodLoadTarget,dt,rodResponse);
+    const dockerSurging=state.fishId==='whale-001'&&tackle.phase==='fighting'&&state.mode==='surge';
+    if(dockerSurging&&!wasDockerSurging)dockerRodSurgeAt=time;
+    wasDockerSurging=dockerSurging;
+    displayedDockerSurgeLoad=smoothRodLoad(displayedDockerSurgeLoad,dockerSurging ? .18 : 0,dt,dockerSurging ? 10 : 3.2);
+    const rodBendLoad=THREE.MathUtils.clamp(displayedRodLoad+(state.fishId==='whale-001'?displayedDockerSurgeLoad:0),0,1);
+    const dockerSurgeImpulse=state.fishId==='whale-001'&&tackle.phase==='fighting'?dockerWhaleRodKick(time-dockerRodSurgeAt):0;
     const rodStrokeAge=time-rodStrokeAt;
     const rodStrokeImpulse=rodStrokeAge>=0&&rodStrokeAge<.72?Math.exp(-rodStrokeAge*6.5)*Math.sin(rodStrokeAge*17):0;
     const lateralPull=THREE.MathUtils.clamp(visibleFish?.position.x||0,-3,3)*.055*cues.load;
@@ -652,18 +659,19 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       rodLineDirection.subVectors(rodFishTarget,rodTip);
       if(rodLineDirection.lengthSq()>.0001){
         rodLineDirection.normalize();
-        rodTip.x+=rodLineDirection.x*displayedRodLoad*rodFlexProfile.directionInfluence*rodHorizontalScale;
-        rodTip.y+=rodLineDirection.y*displayedRodLoad*rodFlexProfile.verticalInfluence;
+        rodTip.x+=rodLineDirection.x*rodBendLoad*rodFlexProfile.directionInfluence*rodHorizontalScale;
+        rodTip.y+=rodLineDirection.y*rodBendLoad*rodFlexProfile.verticalInfluence;
+        if(state.fishId==='whale-001')rodTip.addScaledVector(rodLineDirection,dockerSurgeImpulse*.34);
       }
     }
     // During retrieval the angler lifts the tip slightly while the line comes
     // home. The lift eases out with the same progress as the bobber and reel.
     const retrieveLift=retrievePresentation?.rodLift??0;
-    rodTip.y+=charge*1.1-fling*.5-displayedRodLoad*.43+retrieveLift+rodStrokeImpulse*.58;
+    rodTip.y+=charge*1.1-fling*.5-rodBendLoad*.43+retrieveLift+rodStrokeImpulse*.58;
     rodTip.z+=charge*.6+rodStrokeImpulse*.22;
     if(rod.visible){
       const positions=rodGeometry.attributes.position.array,sheenPositions=rodSheenGeometry.attributes.position.array;
-      const blankLoad=THREE.MathUtils.clamp(fling*.62+displayedRodLoad*1.35+charge*.12+Math.abs(rodStrokeImpulse)*.8,0,1.65);
+      const blankLoad=THREE.MathUtils.clamp(fling*.62+rodBendLoad*1.35+charge*.12+Math.abs(rodStrokeImpulse)*.8+Math.abs(dockerSurgeImpulse)*.28,0,1.65);
       for(let i=0;i<rodPointCount;i++){
         const p=i/(rodPointCount-1);
         // One centerline drives the blank, guides, reel seat and line entry.
@@ -687,7 +695,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         if(rodNormal.lengthSq()<.0001)rodNormal.set(0,1,0);else rodNormal.normalize();
         rodBinormal.crossVectors(rodTangent,rodNormal).normalize();
         const taper=blankRadiusAt(p);
-        const radius=taper*(1+displayedRodLoad*(.08-.035*p));
+        const radius=taper*(1+rodBendLoad*(.08-.035*p));
         for(let j=0;j<rodRadialCount;j++){
           const angle=j/rodRadialCount*Math.PI*2,cos=Math.cos(angle),sin=Math.sin(angle),offset=(i*rodRadialCount+j)*3;
           positions[offset]=center.x+(rodNormal.x*cos+rodBinormal.x*sin)*radius;
