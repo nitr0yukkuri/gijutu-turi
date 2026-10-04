@@ -7,6 +7,9 @@ import { OutputPass } from '../../vendor/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from '../../vendor/addons/environments/RoomEnvironment.js';
 import { createGoFish } from './go-fish.js';
 import { createDockerWhale } from './docker-whale.js';
+import { cssFishPreviewStateAt } from '../css-fish-style.js';
+import { dockerWhalePreviewMotionAt } from './docker-whale-motion.js';
+import { K8S_ECHO_COUNT } from './k8s-fight-presentation.js';
 
 export function mountCollectionFish(mount, modelKey = 'go-fish') {
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'high-performance' });
@@ -23,12 +26,25 @@ export function mountCollectionFish(mount, modelKey = 'go-fish') {
   const rig = new THREE.Group();
   scene.add(rig);
   const isDockerWhale = modelKey === 'docker-whale';
+  const isCssFish = modelKey === 'css-fish';
+  const isClusterFish = modelKey === 'cluster-leviathan';
+  const isRustFish = modelKey === 'rust-swordfish';
+  const isJsEel = modelKey === 'js-eel';
   const fish = isDockerWhale
     ? createDockerWhale({ detail: 'high' })
-    : createGoFish({ detail: 'high', naturalSwim: true, visualProfile: 'catalog' });
+    : createGoFish({ detail: 'high', naturalSwim: true, visualProfile: isClusterFish ? 'cluster' : isCssFish ? 'css' : isRustFish ? 'rust' : isJsEel ? 'eel' : 'catalog' });
   if (isDockerWhale) fish.group.scale.setScalar(.42);
+  if (isClusterFish) fish.group.scale.setScalar(.62);
+  if (isJsEel) fish.group.scale.setScalar(.76);
   rig.add(fish.group);
-  const bounds = new THREE.Box3().setFromObject(fish.group);
+  const echoes = isClusterFish ? Array.from({ length: K8S_ECHO_COUNT }, (_, index) => {
+    const echo = createGoFish({ detail: 'low', naturalSwim: true, visualProfile: 'cluster', phase: index * 1.2 });
+    echo.group.scale.setScalar(.2);
+    echo.group.position.set(index ? 2.82 : 2.35, index ? -.28 : .31, index ? -.13 : .16);
+    rig.add(echo.group);
+    return echo;
+  }) : [];
+  const bounds = new THREE.Box3().setFromObject(rig);
   const size = bounds.getSize(new THREE.Vector3());
   const center = bounds.getCenter(new THREE.Vector3());
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -68,7 +84,7 @@ export function mountCollectionFish(mount, modelKey = 'go-fish') {
   // beetle-like front view.
   const maxPreviewYaw = THREE.MathUtils.degToRad(54);
   const clampPreviewYaw = value => THREE.MathUtils.clamp(value, -maxPreviewYaw, maxPreviewYaw);
-  let yaw = .12;
+  let yaw = .22;
 
   const resize = () => {
     const width = mount.clientWidth;
@@ -111,20 +127,41 @@ export function mountCollectionFish(mount, modelKey = 'go-fish') {
   mount.addEventListener('lostpointercapture', stopDragging);
   mount.addEventListener('keydown', keyDown);
 
-  const previewFrequency = .82;
   const render = now => {
     if (disposed) return;
     frame = requestAnimationFrame(render);
     const delta = Math.min(.05, (now - (last || now)) / 1000);
     last = now;
     if (!reducedMotion) time += delta;
-    const swimPhase = time * previewFrequency * Math.PI * 2;
-    // The catalog is a specimen view: keep the user's rotation stable and
-    // drive the body, fins, tail and gentle hover from one idle swim clock.
+    // The catalog is a specimen view: keep the user's rotation stable, but
+    // let the whale use the same stroke/glide clock for body, root and cargo.
     rig.rotation.y = yaw;
-    fish.group.position.y = Math.sin(swimPhase) * .018;
-    if (isDockerWhale) fish.update(time, { power: .24, glow: .44 });
-    else fish.update(time, { power: .24, glow: .58, bodyPhase: swimPhase, bodyFrequency: previewFrequency, bodyWavelength: .92, effort: .34 });
+    if (isDockerWhale) {
+      const motion = dockerWhalePreviewMotionAt(time);
+      fish.group.position.set(motion.forwardOffset, motion.buoyancy, 0);
+      fish.update(time, {
+        power: motion.power,
+        glow: .44,
+        bodyPhase: motion.bodyPhase,
+        bodyFrequency: motion.bodyFrequency,
+        bodyWavelength: motion.bodyWavelength,
+        amplitude: motion.amplitude,
+        effort: motion.effort,
+        turn: motion.turn,
+        tetherLoad: motion.cargoLoad,
+        styleDelta: delta,
+      });
+    }
+    else {
+      const swimPhase = time * .82 * Math.PI * 2;
+      if (isCssFish) fish.setVisualState(reducedMotion ? 'normal' : cssFishPreviewStateAt(time));
+      fish.group.position.y = Math.sin(swimPhase) * .018;
+      fish.update(time, { power: isRustFish ? .34 : isJsEel ? .56 : .24, glow: isRustFish ? .42 : isJsEel ? .36 : .58, bodyPhase: swimPhase, bodyFrequency: isRustFish ? 1.08 : isJsEel ? 1.14 : .82, bodyWavelength: isRustFish ? 1.18 : isJsEel ? 1.02 : .92, effort: isRustFish ? .52 : isJsEel ? .62 : .34, styleDelta: delta });
+      for (let index = 0; index < echoes.length; index++) {
+        echoes[index].group.position.y = (index ? -.28 : .31) + Math.sin(swimPhase + index * 1.2) * .018;
+        echoes[index].update(time, { power: .2, glow: .2, bodyPhase: swimPhase + index * 1.2, bodyFrequency: .82, bodyWavelength: .92, effort: .28, styleDelta: delta });
+      }
+    }
     composer.render();
   };
   frame = requestAnimationFrame(render);
@@ -142,6 +179,7 @@ export function mountCollectionFish(mount, modelKey = 'go-fish') {
       mount.removeEventListener('lostpointercapture', stopDragging);
       mount.removeEventListener('keydown', keyDown);
       fish.dispose();
+      for (const echo of echoes) echo.dispose();
       for (const pass of composer.passes) pass.dispose?.();
       composer.dispose();
       environment.dispose();

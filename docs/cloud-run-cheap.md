@@ -14,7 +14,7 @@
 | リクエストタイムアウト | `3600s` | WebSocketの長時間接続を許容する |
 | CPU割り当て | リクエスト課金 | 待機中のCPU割り当てを抑える |
 | セッションアフィニティ | 有効 | 同じインスタンスへ寄せる。ただし保証ではない |
-| DB | `/tmp/gijutu-turi.sqlite` | 永続DBを使わない最安構成。再起動時に消える |
+| DB | 初期状態は `/tmp/gijutu-turi.sqlite`。D1環境変数を設定するとCloudflare D1 | SQLiteは再起動時に消える。永続化は[D1ガイド](./cloudflare-d1-persistence.md)を参照 |
 | リージョン | `asia-northeast1` | 日本からの操作遅延を優先する場合 |
 
 ## デプロイ前の準備
@@ -70,7 +70,7 @@ Vercelと分離する場合、Application Load Balancerは使いません。Verc
 
 Cloud Runのファイルシステムはインスタンス固有で、インスタンス停止時に永続保存されません。今回の設定では捕獲履歴はデモ中だけ保持し、再起動・再デプロイ・スケール移動で消える前提です。
 
-履歴を残す必要が出たら、Cloud SQL、Firestore、または外部PostgreSQLへ移行します。これは料金・運用・認証設定が増えるため、最安デモ構成には含めません。
+永続化が必要な場合はCloudflare D1を選べます。Cloud RunからD1 APIへ接続し、起動時に図鑑スキーマと魚種マスタを初期化します。Cloud SQLを作成せずに済みますが、D1 APIトークンの設定と無料枠上限の確認が必要です。設定は[Cloudflare D1永続化ガイド](./cloudflare-d1-persistence.md)を参照してください。
 
 ### 4. WebSocketの料金
 
@@ -93,16 +93,18 @@ WebSocketは接続中、HTTPリクエストが開いたままになるため、�
 ```powershell
 $serviceUrl = gcloud run services describe gijutu-turi --region asia-northeast1 --format='value(status.url)'
 Invoke-WebRequest "$serviceUrl/health"
+Invoke-WebRequest "$serviceUrl/ready"
 Write-Output $serviceUrl
 ```
 
 確認項目は次のとおりです。
 
-1. `/health`が`ok: true`を返す。
-2. PCでトップ画面を開き、ペアリングダイアログにQRが表示される。
-3. スマホでQRを読み取り、PCと同じ部屋へ接続できる。
-4. スマホの「振る」「引く」「巻く」でPC側の釣り状態が同期する。
-5. HTTPS配下でスマホのモーション許可が表示される。
+1. `/health`が`ok: true`を返す（プロセスの生存確認）。
+2. `/ready`が`ok: true`を返す（図鑑DBを含む準備完了確認）。DBが使えない場合は`503`になる。
+3. PCでトップ画面を開き、ペアリングダイアログにQRが表示される。
+4. スマホでQRを読み取り、PCと同じ部屋へ接続できる。
+5. スマホの「振る」「引く」「巻く」でPC側の釣り状態が同期する。
+6. HTTPS配下でスマホのモーション許可が表示される。
 
 ## 料金を抑える運用チェック
 

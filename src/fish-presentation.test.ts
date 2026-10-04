@@ -3,12 +3,14 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three.module.js';
 import {createGoFish} from './rendering/go-fish.js';
+import {createDockerWhale,setDockerWhaleMouthAnchor,whaleSection} from './rendering/docker-whale.js';
 import {fishOrientation} from './rendering/ocean-scene.js';
 import {OceanFishingGame} from './ocean-game.js';
-import {applyFishWater,fishApparentPoint,fishWaterCoverage} from './rendering/fish-water.js';
+import {applyFishWater,fishApparentPoint,fishWaterCoverage,DOCKER_WHALE_WATER_PROFILE,CSS_FISH_WATER_PROFILE} from './rendering/fish-water.js';
 import {fishFightCues} from './rendering/fish-fight-cues.js';
 import {FishLocomotion} from './fish.js';
-import {fishVisibilityTarget} from './fish-approach.js';
+import {escapeFishVisibility,fishVisibilityTarget} from './fish-approach.js';
+import {DOCKER_WHALE_PREVIEW_CYCLE_SECONDS,dockerWhalePreviewMotionAt} from './rendering/docker-whale-motion.js';
 
 test('fish visibility progresses from hidden wait to shadow, reveal, then full fight visibility',()=>{
   assert.equal(fishVisibilityTarget('waiting',0),0);
@@ -22,7 +24,69 @@ test('fish visibility progresses from hidden wait to shadow, reveal, then full f
   assert.equal(biteEntry,preBiteShadow,'the float dip does not pop the fish brighter');
   assert.ok(approaching>biteEntry&&approaching<nearBait,'the fish clarifies smoothly as it closes in');
   assert.equal(fishVisibilityTarget('fighting',.46),1);
-  assert.equal(fishVisibilityTarget('escaped',1),0,'escape fade owns the final visibility');
+  assert.ok(fishVisibilityTarget('waiting',.46,'whale-001')>preBiteShadow,'Docker gets a species-specific silhouette budget');
+});
+
+test('escape keeps the entry silhouette and only fades it during the terminal fade',()=>{
+  assert.equal(escapeFishVisibility(.82,1),.82,'the fish remains visible during its escape burst');
+  assert.equal(escapeFishVisibility(.82,.5),.41,'the terminal fade scales the entry visibility');
+  assert.equal(escapeFishVisibility(.82,0),0,'the fish is hidden when the fade completes');
+  assert.equal(escapeFishVisibility(0,1),0,'an empty entry visibility stays hidden');
+});
+
+test('Docker leader anchor sits on the visible-side mouth fold, not the nose center',()=>{
+  const nearSide=new THREE.Vector3(),farSide=new THREE.Vector3();
+  assert.equal(setDockerWhaleMouthAnchor(nearSide,1),nearSide);
+  assert.equal(setDockerWhaleMouthAnchor(farSide,-1),farSide);
+  assert.ok(nearSide.x>-5.8&&nearSide.x<-5.3,'the anchor sits just behind the tapered nose tip');
+  assert.ok(nearSide.z>0&&farSide.z<0,'the anchor follows either visible-side mouth fold');
+  assert.ok(Math.abs(nearSide.y-farSide.y)<1e-6,'the two lip points remain symmetric');
+});
+
+test('Docker renderer consumes authoritative body waves and a reusable whale water profile',()=>{
+  const waterUniforms={uWaterBackdrop:{value:null},uTime:{value:0}};
+  const model=createDockerWhale({waterUniforms});
+  model.update(2,{bodyPhase:1.25,bodyFrequency:.78,bodyWavelength:.94,amplitude:.1,effort:.4,turn:.2,visibility:.42});
+  const source=THREE.ShaderLib.physical;
+  const shader={uniforms:{...source.uniforms},vertexShader:source.vertexShader,fragmentShader:source.fragmentShader};
+  model.body.material.onBeforeCompile(shader);
+  assert.equal(shader.uniforms.uWhalePhase.value,1.25);
+  assert.equal(shader.uniforms.uWhaleFrequency.value,.78);
+  assert.equal(shader.uniforms.uWhaleAmplitude.value,.1);
+  assert.match(shader.vertexShader,/uWhalePhase/);
+  assert.match(shader.vertexShader,/uWhaleEffort/);
+  assert.match(shader.vertexShader,/flukeStroke/,'Docker propulsion is driven by a distinct fluke stroke');
+  assert.match(shader.vertexShader,/flukeBeat/,'fluke amplitude grows toward the tip');
+  assert.equal(model.containerCount,9,'Docker whale cargo matches the nine-container logo stack');
+  const snout=whaleSection(0),torso=whaleSection(.4),peduncle=whaleSection(1);
+  assert.ok(torso.height>1.6,'the whale keeps enough body volume beneath its cargo');
+  assert.ok(snout.height<torso.height*.1&&peduncle.height<torso.height*.1,'the silhouette tapers at both the head and tail instead of reading as a ring');
+  assert.ok(model.body.material.roughness>=.5&&model.body.material.clearcoat<.3,'matte skin avoids an inflated-plastic highlight');
+  const cargoBounds=new THREE.Box3().setFromObject(model.cargoMount);
+  assert.ok(cargoBounds.min.y<2,'Docker cargo sits slightly into the whale silhouette');
+  assert.equal(model.group.userData.cargoVerticalOffset,-.16,'Docker cargo is intentionally lowered');
+  assert.ok(fishWaterCoverage(2.2,35,.5,'body',DOCKER_WHALE_WATER_PROFILE)>fishWaterCoverage(2.2,35,.5), 'whale profile preserves a readable mass');
+  assert.ok(fishWaterCoverage(2.2,35,.5,'cargo',DOCKER_WHALE_WATER_PROFILE)>fishWaterCoverage(2.2,35,.5,'detail',DOCKER_WHALE_WATER_PROFILE)*3, 'Docker cargo keeps its own readability budget');
+  model.dispose();
+});
+
+test('Docker catalog preview shares one stroke/glide clock and seats its cargo',()=>{
+  const strokeAt=DOCKER_WHALE_PREVIEW_CYCLE_SECONDS*(Math.PI/2+.35)/(Math.PI*2);
+  const stroke=dockerWhalePreviewMotionAt(strokeAt);
+  const glide=dockerWhalePreviewMotionAt(strokeAt+DOCKER_WHALE_PREVIEW_CYCLE_SECONDS/2);
+  assert.ok(stroke.stroke>.9,'the preview has a distinct power stroke');
+  assert.ok(glide.stroke<.01,'the preview has a real glide window');
+  assert.ok(stroke.amplitude>glide.amplitude);
+  assert.ok(stroke.cargoLoad>glide.cargoLoad);
+
+  const model=createDockerWhale();
+  model.update(strokeAt,stroke);
+  const source=THREE.ShaderLib.physical;
+  const shader={uniforms:{...source.uniforms},vertexShader:source.vertexShader,fragmentShader:source.fragmentShader};
+  model.body.material.onBeforeCompile(shader);
+  assert.equal(shader.uniforms.uWhalePhase.value,stroke.bodyPhase);
+  assert.ok(model.group.getObjectByName('cargo-contact-shadow'),'catalog whale needs a cargo contact cue');
+  model.dispose();
 });
 
 test('fish heading preserves dorsal-up through both sides of a pitched turn',()=>{
@@ -32,6 +96,24 @@ test('fish heading preserves dorsal-up through both sides of a pitched turn',()=
     assert.ok(new THREE.Vector3(-1,0,0).applyQuaternion(q).distanceTo(heading)<1e-6);
     assert.ok(new THREE.Vector3(0,1,0).applyQuaternion(q).y>.9,'dorsal fin must not roll below the belly');
   }
+});
+
+test('fish orientation can reuse a caller-owned quaternion and scratch vectors',()=>{
+  const target=new THREE.Quaternion();
+  const scratch={forward:new THREE.Vector3(),z:new THREE.Vector3(),y:new THREE.Vector3(),worldUp:new THREE.Vector3(0,1,0),basis:new THREE.Matrix4()};
+  const forward=scratch.forward,z=scratch.z,basis=scratch.basis;
+  const firstHeading=new THREE.Vector3(.3,.2,-.9).normalize();
+  const firstExpected=fishOrientation(firstHeading);
+  assert.equal(fishOrientation(firstHeading,target,scratch),target);
+  assert.ok(target.angleTo(firstExpected)<1e-6);
+
+  const nextHeading=new THREE.Vector3(-.4,-.1,.8).normalize();
+  const nextExpected=fishOrientation(nextHeading);
+  assert.equal(fishOrientation(nextHeading,target,scratch),target);
+  assert.ok(target.angleTo(nextExpected)<1e-6);
+  assert.equal(scratch.forward,forward);
+  assert.equal(scratch.z,z);
+  assert.equal(scratch.basis,basis);
 });
 
 test('ocean optics cover every anatomical material but do not alter catalog materials',()=>{
@@ -45,12 +127,103 @@ test('ocean optics cover every anatomical material but do not alter catalog mate
     assert.match(shader.vertexShader,/gl_Position=fishWaterProjection\((transformed|p)\)/);
     assert.equal(shader.uniforms.uFishCenter.value,submerged.group.position,'one coherent optical origin for every part');
     assert.match(shader.fragmentShader,/gl_FragColor.rgb=throughWater\(gl_FragColor.rgb\)/);
-    assert.match(shader.fragmentShader,/background\*\(1.0-coverage\)\+transmission\*extinction/,'anatomy contributes contrast while water reflection survives');
+    assert.match(shader.fragmentShader,/background\*\(1.0-finCoverage\)\+transmission\*extinction/,'anatomy contributes contrast while water reflection survives');
     assert.equal(shader.uniforms.uNaturalSwim.value,1);
   }
   for(const mesh of catalog.group.children)assert.ok(!mesh.material.customProgramCacheKey().includes('underwater'));
   assert.equal(catalog.group.children.find(mesh=>mesh.name==='merged-lights').material.toneMapped,false);
   submerged.dispose();catalog.dispose();
+});
+
+test('CSS fish has its own compact silhouette and exposes smooth state-material uniforms',()=>{
+  const model=createGoFish({visualProfile:'css'}),go=createGoFish({visualProfile:'catalog'});
+  assert.equal(model.group.name,'CSS fish');
+  assert.match(model.body.material.customProgramCacheKey(),/-css$/);
+  const cssBounds=new THREE.Box3().setFromObject(model.group),goBounds=new THREE.Box3().setFromObject(go.group);
+  assert.ok(cssBounds.max.x<goBounds.max.x-.25,'CSS fish uses a shorter tail silhouette');
+  assert.ok(cssBounds.max.y<goBounds.max.y-.18,'CSS fish uses a lower, compact fin profile');
+  assert.ok(model.group.children.some(mesh=>mesh.name.startsWith('forked-tail-')),'CSS fish uses a readable forked tail');
+  assert.ok(model.group.children.some(mesh=>mesh.name==='merged-eyes-and-anatomy'),'CSS fish keeps its eye, gill, and mouth anatomy in the merged detail pass');
+  assert.ok(!model.group.children.some(mesh=>mesh.name.startsWith('tail-filament-')),'CSS fish has no Go tail streamers');
+  assert.equal(model.group.userData.cssFriendly,true,'CSS fish keeps its friendly visual identity');
+  model.setVisualState('hit');
+  model.update(0,{styleDelta:.5});
+  const shader={uniforms:{...THREE.ShaderLib.physical.uniforms},vertexShader:THREE.ShaderLib.physical.vertexShader,fragmentShader:THREE.ShaderLib.physical.fragmentShader};
+  model.body.material.onBeforeCompile(shader);
+  for(const uniform of ['uStyleBody','uStyleShade','uStyleAccent','uStyleEmission','uStyleGlow','uStylePattern'])assert.ok(shader.uniforms[uniform],`missing ${uniform}`);
+  assert.match(shader.fragmentShader,/uStyleBody/);
+  assert.match(shader.fragmentShader,/uStyleEmission/);
+  assert.match(shader.fragmentShader,/cascadeBand/);
+  assert.match(shader.fragmentShader,/bubbleMark/);
+  model.dispose();go.dispose();
+});
+
+test('K8s leviathan uses fused armor, a clean jaw seam, and an asymmetric powerful tail',()=>{
+  const cluster=createGoFish({visualProfile:'cluster'}),go=createGoFish({visualProfile:'catalog'});
+  assert.equal(cluster.group.name,'K8s Leviathan');
+  assert.match(cluster.body.material.customProgramCacheKey(),/-cluster$/);
+  assert.ok(cluster.group.children.some(mesh=>mesh.name==='dorsal-head-shield'),'the crown carries a connected, low-relief armor shield');
+  assert.ok(cluster.group.children.some(mesh=>mesh.name==='merged-eyes-and-anatomy'),'the jaw seam and eye anatomy remain in one detail draw');
+  assert.ok(!cluster.group.children.some(mesh=>mesh.name.includes('cheek-armor')||mesh.name.includes('jaw-plate')),'the face avoids floating, contrasting oval plates');
+  assert.ok(cluster.group.children.some(mesh=>mesh.name.startsWith('forked-tail-')),'the tail remains an anatomical fin');
+  assert.ok(!cluster.group.children.some(mesh=>mesh.name.startsWith('tail-filament-')),'the monster does not inherit Go’s glowing streamers');
+  const upperTail=cluster.group.children.find(mesh=>mesh.name==='forked-tail-1');
+  const lowerTail=cluster.group.children.find(mesh=>mesh.name==='forked-tail--1');
+  assert.ok(upperTail&&lowerTail,'both caudal lobes are modeled');
+  const upperTailBounds=new THREE.Box3().setFromObject(upperTail),lowerTailBounds=new THREE.Box3().setFromObject(lowerTail);
+  assert.ok(upperTailBounds.max.y>Math.abs(lowerTailBounds.min.y)*1.5,'the upper caudal lobe gives the silhouette an ancient-fish profile');
+  const bounds=new THREE.Box3().setFromObject(cluster.group),goBounds=new THREE.Box3().setFromObject(go.group);
+  assert.ok(bounds.max.x<goBounds.max.x-.45,'its caudal shape does not reuse the extra-long Go silhouette');
+  const shader={uniforms:{...THREE.ShaderLib.physical.uniforms},vertexShader:THREE.ShaderLib.physical.vertexShader,fragmentShader:THREE.ShaderLib.physical.fragmentShader};
+  cluster.body.material.onBeforeCompile(shader);
+  assert.match(shader.vertexShader,/uBodyFlexStart/,'K8s uses its own compact-body flex origin');
+  assert.match(shader.vertexShader,/uBodyFlexLength/,'K8s reaches the caudal peduncle over its own body length');
+  assert.match(shader.vertexShader,/uFinPhaseLag/,'K8s fins trail the authoritative body-wave phase');
+  assert.match(shader.fragmentShader,/vec3\(\.105,\.155,\.145\)/,'the main body uses a muted mineral palette');
+  assert.doesNotMatch(shader.fragmentShader,/uStyleBody/,'it is not using CSS fish styling');
+  cluster.dispose();go.dispose();
+});
+
+test('CSS fish keeps a readable state palette through the underwater shadow',()=>{
+  assert.ok(fishWaterCoverage(2.2,35,.5,'body',CSS_FISH_WATER_PROFILE)>fishWaterCoverage(2.2,35,.5));
+  assert.equal(CSS_FISH_WATER_PROFILE.redStateRetention,.76);
+  assert.ok(fishVisibilityTarget('waiting',.46,'css-001')>.32);
+});
+
+test('fish body-wave profiles keep easing across consecutive gait-transition frames',()=>{
+  const fish=new FishLocomotion({x:0,y:-2,z:-12},{x:0,y:0,z:-1});
+  fish.update(.05,{direction:{x:0,y:0,z:-1},speed:1,gait:'css_cruise'});
+  const before=fish.snapshot().bodyWave.amplitude;
+  fish.update(.05,{direction:{x:0,y:0,z:-1},speed:1,gait:'burst'});
+  const first=fish.snapshot().bodyWave.amplitude;
+  fish.update(.05,{direction:{x:0,y:0,z:-1},speed:1,gait:'burst'});
+  const second=fish.snapshot().bodyWave.amplitude;
+
+  assert.ok(first>before&&first<.22,'the first resistance frame eases toward burst amplitude');
+  assert.ok(second>first&&second<.22,'the following frame continues easing instead of snapping');
+});
+
+test('K8s fish keeps a readable single-body approach before its replicas appear in the fight',()=>{
+  assert.equal(fishVisibilityTarget('waiting',0,'k8s-001'),0);
+  assert.ok(fishVisibilityTarget('waiting',.46,'k8s-001')<fishVisibilityTarget('waiting',.46,'css-001'));
+  assert.equal(fishVisibilityTarget('biting',1,'k8s-001'),.7,'the bite keeps the leviathan readable without fully revealing the fight silhouette');
+  assert.equal(fishVisibilityTarget('fighting',1,'k8s-001'),1);
+});
+
+test('CSS fish fight state reaches underwater optics and preserves red during escape',()=>{
+  const waterUniforms={uWaterBackdrop:{value:null},uTime:{value:0}};
+  const model=createGoFish({waterUniforms,visualProfile:'css'});
+  model.setVisualState('escape');
+  model.update(0,{styleDelta:1});
+  const shader={uniforms:{...THREE.ShaderLib.physical.uniforms},vertexShader:THREE.ShaderLib.physical.vertexShader,fragmentShader:THREE.ShaderLib.physical.fragmentShader};
+  model.body.material.onBeforeCompile(shader);
+  assert.ok(shader.uniforms.uCssRedState.value>.99,'escape red-state reaches the water shader');
+  assert.match(shader.fragmentShader,/uniform float uCssRedState/);
+  assert.match(shader.fragmentShader,/redExtinction=mix\(\.58/,'red extinction is reduced only for the CSS red state');
+  model.setVisualState('normal');
+  model.update(1,{styleDelta:1});
+  assert.ok(shader.uniforms.uCssRedState.value<.001,'normal state restores ordinary water extinction');
+  model.dispose();
 });
 
 test('refracted Go silhouette retains volume, an intact nose/tail, and its emerged pose',()=>{
@@ -74,7 +247,7 @@ test('reeling changes translation without making the hooked fish turn toward the
     const a=games[0].snapshot().fish,b=games[1].snapshot().fish;
     assert.ok(b.heading.z<0,'self-propulsion remains away from the rod');
     const yawA=Math.atan2(a.heading.x,-a.heading.z),yawB=Math.atan2(b.heading.x,-b.heading.z);
-    assert.ok(Math.abs(yawA-yawB)<1e-8,'reel toggles cannot flip yaw (pitch may change with depth)');
+    assert.ok(Math.abs(yawA-yawB)<.1,'reel-driven side resistance may change yaw slightly but must not turn the fish toward the player');
     if(b.velocity.z>0&&b.heading.z<0)resistsReel++;
     if(b.velocity.z<0&&b.heading.z<0)takesLine++;
     assert.ok(b.swim.effort>=a.swim.effort);

@@ -6,12 +6,16 @@ import react from "@vitejs/plugin-react";
 const backendPort = process.env.BACKEND_PORT ?? (process.env.PORT === "8788" ? "8787" : process.env.PORT ?? "8787");
 const backendHttp = `http://127.0.0.1:${backendPort}`;
 const backendWs = `ws://127.0.0.1:${backendPort}`;
+const publicOrigin = (process.env.VITE_PUBLIC_ORIGIN ?? "").trim().replace(/\/+$/, "");
 
 export default defineConfig({
   plugins: [
     react(),
     {
       name: "copy-third-party-notices",
+      transformIndexHtml(html) {
+        return html.replaceAll("__OG_ORIGIN__", publicOrigin);
+      },
       closeBundle() {
         copyFileSync(
           resolve(process.cwd(), "LICENSE"),
@@ -25,6 +29,18 @@ export default defineConfig({
         copyFileSync(
           resolve(process.cwd(), "assets/gijutu-turi-logo.png"),
           resolve(process.cwd(), "dist/client/assets/gijutu-turi-logo.png"),
+        );
+        copyFileSync(
+          resolve(process.cwd(), "assets/gijutu-turi-favicon-generated.png"),
+          resolve(process.cwd(), "dist/client/assets/gijutu-turi-favicon-generated.png"),
+        );
+        copyFileSync(
+          resolve(process.cwd(), "assets/gijutu-turi-og.png"),
+          resolve(process.cwd(), "dist/client/assets/gijutu-turi-og.png"),
+        );
+        copyFileSync(
+          resolve(process.cwd(), "favicon.svg"),
+          resolve(process.cwd(), "dist/client/favicon.svg"),
         );
       },
     },
@@ -43,11 +59,14 @@ export default defineConfig({
     proxy: {
       "/api": { target: backendHttp, changeOrigin: true },
       "/health": { target: backendHttp, changeOrigin: true },
+      "/ready": { target: backendHttp, changeOrigin: true },
       "/ocean-ws": { target: backendWs, ws: true },
-      "/ws": { target: backendWs, ws: true },
       "/manifest.webmanifest": { target: backendHttp },
       "/service-worker.js": { target: backendHttp },
+      "/favicon.svg": { target: backendHttp },
       "/assets/gijutu-turi-logo.png": { target: backendHttp },
+      "/assets/gijutu-turi-favicon-generated.png": { target: backendHttp },
+      "/assets/gijutu-turi-og.png": { target: backendHttp },
     },
   },
   build: {
