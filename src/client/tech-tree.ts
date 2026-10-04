@@ -1,5 +1,4 @@
 import type { FishSpeciesId } from "../fish-species.js";
-import { K8S_FISH_ROUTE_PATH } from "../fishing-routes.js";
 
 export type TechTreeBranch = {
   id: string;
@@ -9,11 +8,19 @@ export type TechTreeBranch = {
   relationship?: string;
 };
 
+export type TechTreeFishLink = {
+  id: string;
+  from: FishSpeciesId;
+  to: FishSpeciesId;
+  route: "direct" | "bridge";
+};
+
 export type TechTreeNodeDetails = {
+  name: string;
   technology: string;
+  nodeLabel?: string;
   concept: string;
   gameExpression: string;
-  routeHref: string;
 };
 
 /**
@@ -23,66 +30,74 @@ export type TechTreeNodeDetails = {
 export const TECH_TREE_BRANCHES: readonly TechTreeBranch[] = [
   {
     id: "logic",
-    label: "プログラムを設計する",
+    label: "設計",
     summary: "処理の並行性と、値の所有を考える。",
     speciesIds: ["fish-001", "rust-001"],
   },
   {
+    id: "asynchronous",
+    label: "非同期",
+    summary: "イベントを待ち、順番に次へ渡す。",
+    speciesIds: ["js-001"],
+  },
+  {
     id: "interface",
-    label: "見た目を組み立てる",
+    label: "見た目",
     summary: "構造を保ちながら、状態を表現する。",
     speciesIds: ["css-001"],
   },
   {
     id: "runtime",
-    label: "実行環境を運用する",
+    label: "実行環境",
     summary: "アプリを包み、まとまりとして動かす。",
     speciesIds: ["whale-001", "k8s-001"],
     relationship: "コンテナ実行と、コンテナ群のオーケストレーションは関連する技術です。",
   },
-  {
-    id: "asynchronous",
-    label: "処理を流し続ける",
-    summary: "イベントを待ち、順番に次へ渡す。",
-    speciesIds: ["js-001"],
-  },
+];
+
+/** Dashed links show related ideas, never unlock order or prerequisites. */
+export const TECH_TREE_FISH_LINKS: readonly TechTreeFishLink[] = [
+  { id: "systems", from: "fish-001", to: "rust-001", route: "direct" },
+  { id: "presentation", from: "css-001", to: "js-001", route: "bridge" },
+  { id: "operations", from: "whale-001", to: "k8s-001", route: "direct" },
 ];
 
 export const TECH_TREE_NODE_DETAILS: Record<FishSpeciesId, TechTreeNodeDetails> = {
   "fish-001": {
+    name: "Go",
     technology: "並行処理",
     concept: "複数の処理を同時に進める考え方。",
-    gameExpression: "一匹から群れに分かれ、複数の方向から同時に引く動きで表現しています。",
-    routeHref: "/gofish",
+    gameExpression: "一匹が群れに分かれ、複数の方向から同時に引く。",
   },
   "whale-001": {
+    name: "Docker",
     technology: "コンテナ化",
-    concept: "アプリと実行環境をまとめ、同じ条件で動かしやすくする考え方。",
-    gameExpression: "環境ごと背負う重さや、動きに残る慣性をクジラの引きで表現しています。",
-    routeHref: "/dockerwhale",
+    concept: "アプリと実行環境をまとめ、同じ条件で動かしやすくする。",
+    gameExpression: "重い引きと慣性を残しながら、ゆっくり泳ぐ。",
   },
   "css-001": {
+    name: "CSS",
     technology: "構造と見た目の分離",
-    concept: "コンテンツの構造を保ちながら、見た目を別に調整する考え方。",
-    gameExpression: "魚の形は保ったまま、状態に応じて色・模様・発光が変わります。",
-    routeHref: "/cssfish",
+    concept: "構造を保ちながら、見た目を別に調整する。",
+    gameExpression: "形を保ったまま、色・模様・発光が変わる。",
   },
   "k8s-001": {
+    name: "Kubernetes",
     technology: "オーケストレーション",
-    concept: "複数のコンテナ化されたアプリをまとめて運用し、必要な数を保つ考え方。",
-    gameExpression: "一匹の本体に二つの影が追従します。影は別の釣果として数えません。",
-    routeHref: K8S_FISH_ROUTE_PATH,
+    concept: "コンテナ化されたアプリをまとめて運用し、必要な数を保つ。",
+    gameExpression: "本体に二つの影が追従する。釣れるのは本体だけ。",
   },
   "rust-001": {
+    name: "Rust",
     technology: "所有権とムーブ",
-    concept: "値を安全に扱うため、誰が使うかと所有権の移動を明示する考え方。",
-    gameExpression: "鋭く短い突進のあとに軌道を残さず向きを変える動きで、所有権の移動を表現しています。",
-    routeHref: "/rustfish",
+    concept: "値を安全に扱うため、所有者と所有権の移動を明確にする。",
+    gameExpression: "短く鋭く突進し、軌道を残さず向きを変える。",
   },
   "js-001": {
+    name: "JavaScript",
     technology: "イベントループと非同期処理",
-    concept: "待ち時間で処理を止めず、完了したイベントを順番に扱う考え方。",
-    gameExpression: "頭から尾へ遅延する連続波と、全身が途切れず進むくねりで表現しています。",
-    routeHref: "/jseel",
+    nodeLabel: "イベントループ\n非同期処理",
+    concept: "待ち時間で処理を止めず、完了したイベントを順番に扱う。",
+    gameExpression: "頭から尾へ波を伝え、途切れず泳ぎ続ける。",
   },
 };

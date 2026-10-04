@@ -5,12 +5,13 @@ import { OCEAN_RENDER_DELAY_MS } from "../ocean-timing.js";
 import { canContinueAfterCatchSave } from "../ocean-contract.js";
 import { k8sLungeForSnapshot } from "../rendering/k8s-fight-presentation.js";
 import { resolveFishingRoute } from "./fishing-route.js";
-import { TECH_TREE_BRANCHES, TECH_TREE_NODE_DETAILS } from "./tech-tree.js";
-import { techTreeReveal } from "./tech-tree-preview.js";
+import { TECH_TREE_BRANCHES, TECH_TREE_FISH_LINKS, TECH_TREE_NODE_DETAILS } from "./tech-tree.js";
+import { isCompletePreviewPath, techTreeReveal } from "./tech-tree-preview.js";
 import { useOceanRuntime } from "./useOceanRuntime.js";
 import { PhoneReelControl } from "./PhoneReelControl.js";
 import type { Collection, CollectionEntry, OceanPhase } from "./types.js";
 import "./tech-tree.css";
+import "./responsive.css";
 
 
 const phaseLabels: Record<OceanPhase, string> = {
@@ -51,7 +52,7 @@ const collectionName = (entry: CollectionEntry): string => {
   return entry.name ?? "名前のない魚";
 };
 
-function CollectionModel({ entry }: { entry: CollectionEntry }) {
+function CollectionModel({ entry, modelKey = entry.modelKey ?? "go-fish", silhouette = false }: { entry: CollectionEntry; modelKey?: string; silhouette?: boolean }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -61,13 +62,16 @@ function CollectionModel({ entry }: { entry: CollectionEntry }) {
     setFailed(false);
     void import("../rendering/collection-preview.js").then(({ mountCollectionFish }) => {
       if (disposed || !mountRef.current) return;
-      try { preview = mountCollectionFish(mountRef.current, entry.modelKey ?? "go-fish"); }
+      try { preview = mountCollectionFish(mountRef.current, modelKey, { silhouette }); }
       catch { setFailed(true); }
     }).catch(() => setFailed(true));
     return () => { disposed = true; preview?.dispose(); };
-  }, [entry.id, entry.modelKey]);
+  }, [entry.id, modelKey, silhouette]);
+  const label = silhouette ? "未発見の魚影" : collectionName(entry);
   return <>
-    <div id="collection-model" ref={mountRef} hidden={failed} role="img" aria-label={`${collectionName(entry)}の3Dモデル。ドラッグまたは左右の矢印キーで回転。`} tabIndex={failed ? -1 : 0} />
+    <div id="collection-model" ref={mountRef} hidden={failed} role="img" aria-label={`${label}。ドラッグまたは左右の矢印キーで回転。`} tabIndex={failed ? -1 : 0}>
+      {silhouette && <span className="collection-silhouette-caption">魚影を観察中</span>}
+    </div>
     {failed && <p className="collection-model-error" role="status">魚の表示を読み込めませんでした。図鑑を開き直してください。</p>}
   </>;
 }
@@ -132,18 +136,6 @@ function CollectionSilhouette({ silhouetteKey, label }: { silhouetteKey: FishSil
   );
 }
 
-function CoralIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-      <path d="M23 43c2-6 1-11-2-16m2 11c-4-3-9-4-14-4m14-6c-3-5-7-7-12-7m10 9c-1-6 0-11 3-15m-2 17c4-5 8-7 14-7m-12 4c5-1 8 1 11 5m-12-5c5-4 7-8 7-13m-8 21c-1-5 1-9 5-12m-16-3c-1-3-3-5-6-6m9 15c-3 0-6 1-8 4m21-16c2-2 4-3 7-3" />
-      <circle cx="9" cy="34" r="2.2" /><circle cx="11" cy="21" r="2.2" />
-      <circle cx="6" cy="15" r="2.2" /><circle cx="26" cy="10" r="2.2" />
-      <circle cx="33" cy="11" r="2.2" /><circle cx="37" cy="25" r="2.2" />
-      <circle cx="38" cy="34" r="2.2" />
-    </svg>
-  );
-}
-
 function FishTechIcon({ speciesId }: { speciesId: string }) {
   const fish = speciesId === "whale-001" ? <>
     <path className="tech-tree-fish-fill" d="M6 24c7-10 21-14 38-9 5 2 9 5 11 9-3 8-13 14-28 14C16 38 9 33 6 24Z" />
@@ -180,19 +172,30 @@ function FishTechIcon({ speciesId }: { speciesId: string }) {
   );
 }
 
-function TechTreeView({ entries, selectedId, onSelect }: {
+function TechTreeView({ entries, selectedId, onSelect, completePreview, isOpen }: {
   entries: CollectionEntry[];
   selectedId: string;
   onSelect: (id: string) => void;
+  completePreview: boolean;
+  isOpen: boolean;
 }) {
   const speciesEntries = entries.filter(entry => isFishSpeciesId(entry.id) && entry.catalogStatus === "active");
   const discovered = speciesEntries.filter(entry => entry.status === "caught").length;
-  const [showAllPreview, setShowAllPreview] = useState(false);
-  const previewEnabled = import.meta.env.DEV && showAllPreview;
+  const [showAllPreview, setShowAllPreview] = useState(completePreview);
+  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 760px)").matches);
+  const [detailExpanded, setDetailExpanded] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 760px)");
+    const update = () => setCompact(media.matches);
+    media.addEventListener("change", update);
+    update();
+    return () => media.removeEventListener("change", update);
+  }, []);
+  const previewEnabled = import.meta.env.DEV && completePreview && showAllPreview;
   const selected = speciesEntries.find(entry => entry.id === selectedId) ?? speciesEntries[0];
   const selectedSpecies = selected && isFishSpeciesId(selected.id) ? getFishSpecies(selected.id) : undefined;
   const selectedDetails = selected && isFishSpeciesId(selected.id) ? TECH_TREE_NODE_DETAILS[selected.id] : undefined;
-  const selectedReveal = techTreeReveal(selected?.status ?? "unknown", showAllPreview, import.meta.env.DEV);
+  const selectedReveal = techTreeReveal(selected?.status ?? "unknown", previewEnabled, import.meta.env.DEV);
   const selectedSpeciesId = selected && isFishSpeciesId(selected.id) ? selected.id : undefined;
   const selectedBranch = selectedSpeciesId
     ? TECH_TREE_BRANCHES.find(branch => branch.speciesIds.includes(selectedSpeciesId))
@@ -204,7 +207,7 @@ function TechTreeView({ entries, selectedId, onSelect }: {
   useEffect(() => {
     const map = mapRef.current;
     const root = map?.querySelector<HTMLElement>(".tech-tree-root");
-    if (!map || !root) return;
+    if (!map || !root || !isOpen) return;
     const measure = () => {
       const mapRect = map.getBoundingClientRect();
       const rootRect = root.getBoundingClientRect();
@@ -212,15 +215,37 @@ function TechTreeView({ entries, selectedId, onSelect }: {
       const startX = rootRect.left + rootRect.width / 2 - mapRect.left;
       const startY = rootRect.top + rootRect.height / 2 - mapRect.top;
       const byId: Record<string, string> = {};
+      const centers: Record<string, { x: number; y: number }> = {};
       map.querySelectorAll<HTMLButtonElement>(".tech-tree-node").forEach(node => {
         const icon = node.querySelector<HTMLElement>(".tech-tree-node-icon");
         if (!icon || !node.dataset.speciesId) return;
         const iconRect = icon.getBoundingClientRect();
         const endX = iconRect.left + iconRect.width / 2 - mapRect.left;
         const endY = iconRect.top + iconRect.height / 2 - mapRect.top;
+        centers[node.dataset.speciesId] = { x: endX, y: endY };
         const dx = endX - startX;
         const dy = endY - startY;
         byId[node.dataset.speciesId] = `M${startX} ${startY} C${startX + dx * .35} ${startY + dy * .1}, ${endX - dx * .18} ${endY - dy * .12}, ${endX} ${endY}`;
+      });
+      TECH_TREE_FISH_LINKS.forEach(link => {
+        const from = centers[link.from];
+        const to = centers[link.to];
+        if (!from || !to) return;
+        if (link.route === "direct") {
+          const middleX = (from.x + to.x) / 2;
+          const arc = Math.min(16, Math.abs(to.x - from.x) * .12);
+          byId[`fish-link-${link.id}`] = `M${from.x} ${from.y} C${middleX} ${from.y - arc}, ${middleX} ${to.y - arc}, ${to.x} ${to.y}`;
+          return;
+        }
+        if (mapRect.width <= 700) {
+          const railX = mapRect.width - 14;
+          const direction = Math.sign(to.y - from.y) || 1;
+          byId[`fish-link-${link.id}`] = `M${from.x} ${from.y} C${from.x + 30} ${from.y}, ${railX} ${from.y}, ${railX} ${from.y + direction * 14} L${railX} ${to.y - direction * 14} C${railX} ${to.y}, ${to.x + 30} ${to.y}, ${to.x} ${to.y}`;
+          return;
+        }
+        const railX = mapRect.width - 18;
+        const direction = Math.sign(to.y - from.y) || 1;
+        byId[`fish-link-${link.id}`] = `M${from.x} ${from.y} C${from.x + 32} ${from.y}, ${railX} ${from.y}, ${railX} ${from.y + direction * 18} C${railX} ${from.y + direction * 42}, ${railX} ${to.y - direction * 42}, ${railX} ${to.y - direction * 18} C${railX} ${to.y}, ${to.x + 32} ${to.y}, ${to.x} ${to.y}`;
       });
       setPaths({ width: mapRect.width, height: mapRect.height, byId });
     };
@@ -233,101 +258,116 @@ function TechTreeView({ entries, selectedId, onSelect }: {
       observer?.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [pathNodeIds]);
+  }, [pathNodeIds, compact, isOpen]);
+
+  const inspector = selected && selectedSpecies && (
+    <section id="tech-tree-inspector" className={`tech-tree-inspector tech-tree-node--${selected.id}`} aria-label="選択した技術ノード">
+      <div className="tech-tree-inspector-topline">
+        <span className={selectedReveal.caught ? "is-unlocked" : selectedReveal.preview ? "is-preview" : "is-locked"}>
+          <i aria-hidden="true" />{selectedReveal.caught ? "発見済み" : selectedReveal.preview ? "プレビュー" : "未発見"}
+        </span>
+      </div>
+      <div className="tech-tree-specimen">
+        {isOpen && <CollectionModel key={`${selected.id}:${selectedReveal.revealed}`} entry={selected} modelKey={selectedSpecies.modelKey} silhouette={!selectedReveal.revealed} />}
+      </div>
+      <div className="tech-tree-inspector-heading" aria-live="polite">
+        <h4>{selectedReveal.revealed ? collectionName(selected) : selectedSpecies.unknownTitle}</h4>
+      </div>
+      {selectedReveal.revealed && selectedDetails ? <div className="tech-tree-node-data">
+        <h5>{selectedDetails.technology}</h5>
+        <p className="tech-tree-concept">{selectedDetails.concept}</p>
+        <p className="tech-tree-expression"><span>魚の動き</span>{selectedDetails.gameExpression}</p>
+        {selectedReveal.caught && <p className="tech-tree-catches">釣果 <strong>{selected.catches} 回</strong></p>}
+      </div> : <div className="tech-tree-node-data">
+        <p className="tech-tree-concept">{selectedSpecies.unknownHint}</p>
+      </div>}
+      {compact && <button className="tech-tree-detail-close" type="button" onClick={() => {
+        mapRef.current?.querySelector<HTMLButtonElement>('.tech-tree-node[aria-pressed="true"]')?.focus();
+        setDetailExpanded(false);
+      }}>詳細を閉じる <span aria-hidden="true">↑</span></button>}
+    </section>
+  );
 
   return (
     <section className="tech-tree" aria-labelledby="tech-tree-heading">
       <header className="tech-tree-intro">
-        <div>
-          <p className="tech-tree-kicker">釣果からひらく、技術の海図</p>
-          <h3 id="tech-tree-heading">技術の海図</h3>
-        </div>
+        <h3 id="tech-tree-heading" className="visually-hidden">技術ツリー</h3>
         <div className="tech-tree-intro-actions">
-          <div className="tech-tree-progress" aria-live="polite"><span>{previewEnabled ? "表示" : "発見"}</span><strong>{previewEnabled ? speciesEntries.length : discovered}<small> / {speciesEntries.length}</small></strong></div>
-          {import.meta.env.DEV && <button type="button" className="tech-tree-preview-toggle" aria-pressed={showAllPreview} onClick={() => setShowAllPreview(value => !value)}>全開放プレビュー</button>}
+          <div className="tech-tree-progress" aria-live="polite">
+            <div><span>発見</span><strong>{discovered}<small> / {speciesEntries.length}</small></strong></div>
+            <div className="tech-tree-progress-track" aria-hidden="true">{speciesEntries.map(entry => <i key={entry.id} className={entry.status === "caught" ? "is-discovered" : undefined} />)}</div>
+          </div>
+          {import.meta.env.DEV && completePreview && <button type="button" className="tech-tree-preview-toggle" aria-pressed={showAllPreview} title="発見記録は変わりません" onClick={() => setShowAllPreview(value => !value)}>全種プレビュー</button>}
         </div>
       </header>
-      {previewEnabled && <p className="tech-tree-preview-note" role="status">開発用の表示です。実際の発見は {discovered} / {speciesEntries.length}。釣果・DBは変更しません。</p>}
 
       {speciesEntries.length === 0 ? <p className="tech-tree-empty" role="status">技術ツリーを読み込めませんでした。魚図鑑に戻ってください。</p> : <>
         <div className="tech-tree-layout">
           <div ref={mapRef} className="tech-tree-map" aria-label="技術分野と魚のつながり">
             <svg className="tech-tree-paths" viewBox={`0 0 ${paths.width} ${paths.height}`} preserveAspectRatio="none" aria-hidden="true">
-              {speciesEntries.map(entry => <path key={entry.id} className={selected?.id === entry.id ? "is-active" : ""} d={paths.byId[entry.id] ?? ""} />)}
+              {speciesEntries.map(entry => <path key={entry.id} className={`tech-tree-root-link${selected?.id === entry.id ? " is-active" : ""}`} d={paths.byId[entry.id] ?? ""} />)}
+              {TECH_TREE_FISH_LINKS.map(link => <path
+                key={link.id}
+                className={`tech-tree-fish-link${selected?.id === link.from || selected?.id === link.to ? " is-related" : ""}`}
+                d={paths.byId[`fish-link-${link.id}`] ?? ""}
+              />)}
             </svg>
-            <div className="tech-tree-root" aria-label="技術の海図の中心">
-              <span className="tech-tree-root-icon"><CoralIcon /></span>
-              <strong>技術の海</strong>
-            </div>
+            <div className="tech-tree-root" aria-hidden="true" />
             <div className="tech-tree-branches">
-              {TECH_TREE_BRANCHES.map((branch, branchIndex) => {
+              {TECH_TREE_BRANCHES.map(branch => {
                 const branchEntries = branch.speciesIds
                   .map(id => speciesEntries.find(entry => entry.id === id))
                   .filter((entry): entry is CollectionEntry => Boolean(entry));
                 if (branchEntries.length === 0) return null;
                 return <section key={branch.id} className={`tech-tree-branch tech-tree-branch--${branch.id}${selectedBranch?.id === branch.id ? " is-current" : ""}`} aria-labelledby={`tech-branch-${branch.id}`}>
                   <header className="tech-tree-branch-heading">
-                    <span className="tech-tree-branch-index">{String(branchIndex + 1).padStart(2, "0")}</span>
-                    <div><h4 id={`tech-branch-${branch.id}`}>{branch.label}</h4><p>{branch.summary}</p></div>
+                    <h4 id={`tech-branch-${branch.id}`}>{branch.label}</h4>
                   </header>
                   <div className="tech-tree-nodes">
                     {branchEntries.map(entry => {
-                      const reveal = techTreeReveal(entry.status, showAllPreview, import.meta.env.DEV);
+                      const reveal = techTreeReveal(entry.status, previewEnabled, import.meta.env.DEV);
                       const species = isFishSpeciesId(entry.id) ? getFishSpecies(entry.id) : undefined;
                       const details = isFishSpeciesId(entry.id) ? TECH_TREE_NODE_DETAILS[entry.id] : undefined;
-                      const title = reveal.revealed && details ? details.technology : "？？？";
-                      const subtitle = reveal.revealed && species ? collectionName(entry) : species?.unknownTitle ?? "まだ見ぬ魚";
+                      const title = reveal.revealed && details ? details.name : "未発見";
+                      const subtitle = reveal.revealed && details ? details.technology : species?.unknownTitle ?? "まだ見ぬ魚";
                       return <button
                         key={entry.id}
                         type="button"
                         className={`tech-tree-node tech-tree-node--${entry.id}${reveal.revealed ? " is-unlocked" : " is-locked"}${reveal.preview ? " is-preview" : ""}${entry.id === selected?.id ? " is-selected" : ""}`}
                         data-species-id={entry.id}
                         aria-pressed={entry.id === selected?.id}
-                        aria-label={`${title}。${reveal.caught ? "発見済み" : reveal.preview ? "プレビュー表示" : "未発見"}。${subtitle}`}
-                        onClick={() => onSelect(entry.id)}
+                        aria-controls={!compact || detailExpanded ? "tech-tree-inspector" : undefined}
+                        aria-expanded={compact ? entry.id === selected?.id && detailExpanded : undefined}
+                        aria-label={`${reveal.revealed ? `${title}。` : ""}${reveal.caught ? "発見済み" : reveal.preview ? "プレビュー表示" : "未発見"}。${subtitle}`}
+                        onClick={() => {
+                          setDetailExpanded(entry.id === selected?.id ? !detailExpanded : true);
+                          onSelect(entry.id);
+                        }}
                       >
                         <span className="tech-tree-node-icon" aria-hidden="true">
                           <FishTechIcon speciesId={entry.id} />
-                          <span className="tech-tree-node-mark">{reveal.caught ? "✦" : reveal.preview ? "◇" : ""}</span>
+                          <span className="tech-tree-node-mark">{reveal.caught ? "✓" : reveal.preview ? "◇" : "?"}</span>
                         </span>
-                        <span className="tech-tree-node-copy"><strong>{title}</strong><small>{subtitle}</small></span>
+                        <span className="tech-tree-node-copy"><strong>{title}</strong><small>{reveal.revealed ? details?.nodeLabel ?? subtitle : subtitle}</small></span>
                       </button>;
                     })}
                   </div>
+                  {compact && detailExpanded && selectedBranch?.id === branch.id && inspector}
                 </section>;
               })}
             </div>
           </div>
 
-          {selected && selectedSpecies && (
-            <section className="tech-tree-inspector" aria-live="polite" aria-label="選択した技術ノード">
-              <div className="tech-tree-inspector-topline"><span>{selectedBranch?.label ?? "発見した技術"}</span><span className={selectedReveal.caught ? "is-unlocked" : selectedReveal.preview ? "is-preview" : "is-locked"}>{selectedReveal.caught ? "発見済み" : selectedReveal.preview ? "プレビュー" : "未発見"}</span></div>
-              <div className="tech-tree-inspector-heading">
-                <span className={`tech-tree-inspector-icon${selectedReveal.revealed ? " is-unlocked" : ""}`} aria-hidden="true"><FishTechIcon speciesId={selected.id} /></span>
-                <div><p>{selectedReveal.revealed && selectedDetails ? selectedDetails.technology : "未知の技術"}</p><h4>{selectedReveal.revealed ? collectionName(selected) : selectedSpecies.unknownTitle}</h4></div>
-              </div>
-              {selectedReveal.revealed && selectedDetails ? <div className="tech-tree-node-data">
-                <p className="tech-tree-concept">{selectedDetails.concept}</p>
-                <p className="tech-tree-expression"><span>釣りでは</span>{selectedDetails.gameExpression}</p>
-                {selectedReveal.caught && <p className="tech-tree-catches">釣果 <strong>{selected.catches}</strong> 回</p>}
-              </div> : <div className="tech-tree-node-data">
-                <p className="tech-tree-concept">{selectedSpecies.unknownHint}</p>
-                <ul className="tech-tree-clues" aria-label="魚影の手がかり">
-                  {selectedSpecies.traits.map(trait => <li key={trait}>{trait}</li>)}
-                </ul>
-              </div>}
-              <a className="tech-tree-route" href={selectedDetails?.routeHref ?? "/"}>{selectedReveal.caught ? "もう一度、この魚に会う" : "この魚を釣りに行く"}<span aria-hidden="true">→</span></a>
-            </section>
-          )}
+          {!compact && inspector}
         </div>
       </>}
-      <p className="tech-tree-legend">{previewEnabled ? "光る紋章は開発用プレビューです。" : "光る紋章は発見済み。"}線は分野のつながりで、解放の順番ではありません。</p>
+      <div className="tech-tree-legend"><span><i className="tech-tree-legend-caught" aria-hidden="true" />発見済み</span><span><i className="tech-tree-legend-link" aria-hidden="true" />関連</span></div>
     </section>
   );
 }
 
-function CollectionDialog({
-  dialogRef, collection, selectedId, isOpen, onSelect, onClose, onClosed,
+export function CollectionDialog({
+  dialogRef, collection, selectedId, isOpen, onSelect, onClose, onClosed, completePreview,
 }: {
   dialogRef: RefObject<HTMLDialogElement | null>;
   collection: Collection;
@@ -336,30 +376,32 @@ function CollectionDialog({
   onSelect: (id: string) => void;
   onClose: () => void;
   onClosed: () => void;
+  completePreview: boolean;
 }) {
-  const [activeView, setActiveView] = useState<"fish" | "tech">("fish");
+  const [activeView, setActiveView] = useState<"fish" | "tech">(completePreview ? "tech" : "fish");
   const entries = collection.entries ?? [];
   const selected = entries.find(entry => entry.id === selectedId) ?? entries[0];
   const caught = selected?.status === "caught";
   const preview = selected?.status === "preview";
   const selectedSpecies = selected && isFishSpeciesId(selected.id) ? getFishSpecies(selected.id) : undefined;
   const hasModel = Boolean(caught && selected?.modelKey && selectedSpecies?.modelKey === selected.modelKey);
+  const hasSilhouetteModel = Boolean(selected?.status === "unknown" && selectedSpecies?.modelKey);
   const silhouetteKey = selectedSpecies?.silhouetteKey ?? "css-fish";
 
   return (
-    <dialog ref={dialogRef} id="collection-dialog" className="collection-dialog" aria-labelledby="collection-title" onClose={onClosed} onClick={event => dialogClick(event.currentTarget, event)}>
+    <dialog ref={dialogRef} id="collection-dialog" className="collection-dialog" data-view={activeView} aria-labelledby={activeView === "tech" ? "tech-tree-heading" : "collection-title"} onClose={onClosed} onClick={event => dialogClick(event.currentTarget, event)}>
       <div className="collection-shell">
         <header className="collection-header">
-          <div className="collection-heading">
-            <h2 id="collection-title">{activeView === "fish" ? "魚図鑑" : "技術ツリー"}</h2>
-            {activeView === "fish" && collection.activeTotal > 0 && <span id="collection-count" className="collection-count">発見済み {collection.registered} / {collection.activeTotal}</span>}
-          </div>
+          {activeView === "fish" && <div className="collection-heading">
+            <h2 id="collection-title">魚図鑑</h2>
+            {collection.activeTotal > 0 && <span id="collection-count" className="collection-count">発見済み {collection.registered} / {collection.activeTotal}</span>}
+          </div>}
+          <nav className="collection-views" aria-label="釣果の表示">
+            <button type="button" aria-pressed={activeView === "fish"} onClick={() => setActiveView("fish")}>魚図鑑</button>
+            <button type="button" aria-pressed={activeView === "tech"} onClick={() => setActiveView("tech")}>技術ツリー</button>
+          </nav>
           <button className="collection-close" aria-label="図鑑を閉じる" title="海へ戻る" onClick={onClose}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2 14 14M14 2 2 14" /></svg></button>
         </header>
-        <nav className="collection-views" aria-label="釣果の表示">
-          <button type="button" aria-pressed={activeView === "fish"} onClick={() => setActiveView("fish")}>魚図鑑</button>
-          <button type="button" aria-pressed={activeView === "tech"} onClick={() => setActiveView("tech")}><CoralIcon />技術ツリー</button>
-        </nav>
         {activeView === "fish" ? <>
           {entries.length > 1 && (
             <nav className="collection-picker" aria-label="魚を選ぶ">
@@ -373,8 +415,9 @@ function CollectionDialog({
           )}
           <section className="collection-detail" aria-labelledby="collection-detail-name">
             <div id="collection-preview" className="collection-preview">
-              {hasModel && isOpen && selected && <CollectionModel key={selected.id} entry={selected} />}
-              {!hasModel && <CollectionSilhouette silhouetteKey={silhouetteKey} label={selectedSpecies?.unknownTitle ?? "未発見の魚影"} />}
+              {hasModel && isOpen && selected && <CollectionModel key={`${selected.id}:caught`} entry={selected} />}
+              {hasSilhouetteModel && isOpen && selected && selectedSpecies?.modelKey && <CollectionModel key={`${selected.id}:silhouette`} entry={selected} modelKey={selectedSpecies.modelKey} silhouette />}
+              {!hasModel && !hasSilhouetteModel && <CollectionSilhouette silhouetteKey={silhouetteKey} label={selectedSpecies?.unknownTitle ?? "未発見の魚影"} />}
             </div>
             <div className="collection-detail-copy" aria-live="polite">
               {caught && selected ? <>
@@ -386,19 +429,12 @@ function CollectionDialog({
                 <h3 id="collection-detail-name">これから出会う魚</h3>
                 <p id="collection-detail-description" className="collection-detail-description">この魚は、まだ釣ることができません。</p>
               </> : <>
-                <p className="collection-eyebrow">観察メモ</p>
                 <h3 id="collection-detail-name">{selectedSpecies?.unknownTitle ?? "まだ見ぬ魚"}</h3>
                 <p id="collection-detail-description" className="collection-detail-description">{selectedSpecies?.unknownHint ?? "魚影の特徴を調査中です。"}</p>
-                {selectedSpecies && <>
-                  <ul className="collection-traits" aria-label="観察された特徴">
-                    {selectedSpecies.traits.map(trait => <li key={trait}>{trait}</li>)}
-                  </ul>
-                  <p className="collection-observation">{selectedSpecies.observation}</p>
-                </>}
               </>}
             </div>
           </section>
-        </> : <TechTreeView entries={entries} selectedId={selectedId} onSelect={onSelect} />}
+        </> : <TechTreeView entries={entries} selectedId={selectedId} onSelect={onSelect} completePreview={completePreview} isOpen={isOpen} />}
       </div>
     </dialog>
   );
@@ -407,6 +443,7 @@ export function App() {
   const params = new URLSearchParams(window.location.search);
   const controllerId = params.get("controller");
   const isPhone = Boolean(controllerId);
+  const completePreview = isCompletePreviewPath(window.location.pathname, import.meta.env.DEV) && !isPhone;
   const fishingRoute = resolveFishingRoute(window.location.pathname, params.get("fish"));
   const oceanMountRef = useRef<HTMLDivElement>(null);
   const helpDialogRef = useRef<HTMLDialogElement>(null);
@@ -462,7 +499,7 @@ export function App() {
   const phoneCastLabel = state.phase === "idle" ? "タッチで投げる" : fighting ? (reelHeld ? "巻いている — 離すと緩む" : "押して巻く / 離して緩める") : phaseLabels[state.phase];
   const isLocalDevelopment = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
 
-  useEffect(() => { document.title = isPhone ? "釣り竿 — 技術釣り" : fishingRoute.title; }, [fishingRoute.title, isPhone]);
+  useEffect(() => { document.title = isPhone ? "釣り竿 — 技術釣り" : import.meta.env.DEV && completePreview ? "技術ツリー（全開放プレビュー）— 技術釣り" : fishingRoute.title; }, [completePreview, fishingRoute.title, isPhone]);
   useEffect(() => { document.body.dataset.phase = state.phase; }, [state.phase]);
   useEffect(() => { document.body.classList.toggle("is-charging", chargeProgress > 0); }, [chargeProgress]);
   useEffect(() => {
@@ -478,6 +515,11 @@ export function App() {
     }
   };
   const closeDialog = (dialog: RefObject<HTMLDialogElement | null>) => { if (dialog.current?.open) dialog.current.close(); };
+  useEffect(() => {
+    if (!completePreview || !collectionDialogRef.current || collectionDialogRef.current.open) return;
+    collectionDialogRef.current.showModal();
+    setCollectionOpen(true);
+  }, [completePreview]);
   useEffect(() => {
     let active = true;
     if (!controllerUrl) { setQrDataUrl(""); return () => { active = false; }; }
@@ -543,20 +585,22 @@ export function App() {
       </section>
       <dialog ref={helpDialogRef} id="help-dialog" aria-labelledby="help-title" onClick={event => dialogClick(event.currentTarget, event)}>
         <button className="close-dialog quiet-button" aria-label="閉じる" onClick={() => closeDialog(helpDialogRef)}>×</button>
-        <header className="help-header"><p className="eyebrow">操作方法</p><h2 id="help-title">釣り方</h2><p className="help-lead">画面中央のボタンを順番に使います。</p></header>
-        <ol className="instructions">
-          <li><span>1</span><div><div className="instruction-heading"><strong>投げる</strong></div><p>「投げる」を長押しし、好きなタイミングで離します。長く押すほど遠くへ飛びます。スペースキーでも操作できます。</p></div></li>
-          <li><span>2</span><div><div className="instruction-heading"><strong>合わせる</strong></div><p>ウキが沈み、ボタンが「合わせる」に変わったら押します。</p></div></li>
-          <li><span>3</span><div><div className="instruction-heading"><strong>巻く・竿を引く</strong></div><p>魚が走っている間は巻かずに待ちます。落ち着いたら「巻く」を押し、糸の張りが赤くなったらいったん離します。スマホでは、手前に引いて元の位置へ戻すと竿を引けます。これはリールを巻く操作とは別です。</p></div></li>
-        </ol>
-        <p className="fine-print">スマホを使う場合は「スマホを接続」からQRコードを読み取り、スマホ画面の指示に従ってください。</p>
+        <div className="help-content">
+          <header className="help-header"><p className="eyebrow">操作方法</p><h2 id="help-title">釣り方</h2><p className="help-lead">画面中央のボタンを順番に使います。</p></header>
+          <ol className="instructions">
+            <li><span>1</span><div><div className="instruction-heading"><strong>投げる</strong></div><p>「投げる」を長押しし、好きなタイミングで離します。長く押すほど遠くへ飛びます。スペースキーでも操作できます。</p></div></li>
+            <li><span>2</span><div><div className="instruction-heading"><strong>合わせる</strong></div><p>ウキが沈み、ボタンが「合わせる」に変わったら押します。</p></div></li>
+            <li><span>3</span><div><div className="instruction-heading"><strong>巻く・竿を引く</strong></div><p>魚が走っている間は巻かずに待ちます。落ち着いたら「巻く」を押し、糸の張りが赤くなったらいったん離します。スマホでは、手前に引いて元の位置へ戻すと竿を引けます。これはリールを巻く操作とは別です。</p></div></li>
+          </ol>
+          <p className="fine-print">スマホを使う場合は「スマホを接続」からQRコードを読み取り、スマホ画面の指示に従ってください。</p>
+        </div>
       </dialog>
       <dialog ref={connectDialogRef} id="connect-dialog" aria-label="スマホを接続" aria-describedby="pairing-description" onClick={event => dialogClick(event.currentTarget, event)}>
         <button className="close-dialog quiet-button" aria-label="閉じる" onClick={() => closeDialog(connectDialogRef)}>×</button><p id="pairing-description">スマホで読み取って接続</p>
         <div className={`pairing-qr${qrDataUrl ? "" : " is-loading"}`} aria-live="polite">{qrDataUrl ? <img id="controller-qr" src={qrDataUrl} alt="スマホ接続用QRコード" /> : controllerUrlError || "QRコードを準備中…"}</div>
         {isLocalDevelopment && <p id="pairing-note" className="fine-print">{controllerHost ? <>接続先: <code>{controllerHost}{window.location.port ? `:${window.location.port}` : ""}</code>。PCとスマホを同じWi-Fiに接続してください。<br /></> : null}ローカルHTTPではタッチ操作が使えます。モーションセンサーにはHTTPSが必要です。</p>}
       </dialog>
-      <CollectionDialog dialogRef={collectionDialogRef} collection={collection} selectedId={selectedCollectionId} isOpen={collectionOpen} onSelect={runtime.setSelectedCollectionId} onClose={() => closeDialog(collectionDialogRef)} onClosed={() => setCollectionOpen(false)} />
+      <CollectionDialog dialogRef={collectionDialogRef} collection={collection} selectedId={selectedCollectionId} isOpen={collectionOpen} onSelect={runtime.setSelectedCollectionId} onClose={() => closeDialog(collectionDialogRef)} onClosed={() => setCollectionOpen(false)} completePreview={completePreview} />
       <div id="toast" className={`toast${toast ? " visible" : ""}`} role="status">{toast}</div>
       <noscript><p className="render-notice">この海を動かすにはJavaScriptを有効にしてください。</p></noscript>
     </>

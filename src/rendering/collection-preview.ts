@@ -10,8 +10,9 @@ import { createDockerWhale } from './docker-whale.js';
 import { cssFishPreviewStateAt } from '../css-fish-style.js';
 import { dockerWhalePreviewMotionAt } from './docker-whale-motion.js';
 import { K8S_ECHO_COUNT } from './k8s-fight-presentation.js';
+import { applyCollectionSilhouette } from './collection-silhouette.js';
 
-export function mountCollectionFish(mount, modelKey = 'go-fish') {
+export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = false } = {}) {
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.25));
   renderer.setClearColor(0x000000, 0);
@@ -44,6 +45,16 @@ export function mountCollectionFish(mount, modelKey = 'go-fish') {
     rig.add(echo.group);
     return echo;
   }) : [];
+  if (silhouette) {
+    try { applyCollectionSilhouette(rig); }
+    catch (error) {
+      fish.dispose();
+      for (const echo of echoes) echo.dispose();
+      renderer.dispose();
+      renderer.domElement.remove();
+      throw error;
+    }
+  }
   const bounds = new THREE.Box3().setFromObject(rig);
   const size = bounds.getSize(new THREE.Vector3());
   const center = bounds.getCenter(new THREE.Vector3());
