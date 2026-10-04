@@ -324,6 +324,37 @@ function makeFinGeometry(base, edge, low, surfaceBulge = .065, freeEdgeMotion = 
   return geometry;
 }
 
+function bodyParameterAtX(shape, x) {
+  let low = 0, high = 1;
+  for (let i = 0; i < 28; i++) {
+    const middle = (low + high) * .5;
+    if (shape.profileCurve.getPoint(middle).x < x) low = middle;
+    else high = middle;
+  }
+  return (low + high) * .5;
+}
+
+/** A folded billfish fin is a narrow body-hugging ribbon, not a generic fan. */
+function makeFoldedMarlinFinGeometry(shape, { xStart, xEnd, side, flankAngle, spread, droop, sweep, tipAt }, low, freeEdgeMotion) {
+  const stations = low ? 7 : 13;
+  const root = [], freeEdge = [];
+  for (let i = 0; i < stations; i++) {
+    const u = i / (stations - 1);
+    const x = xStart + (xEnd - xStart) * u;
+    const surface = bodySurfaceAt(shape, bodyParameterAtX(shape, x), flankAngle, .004);
+    const tipEnvelope = u <= tipAt
+      ? Math.sin((u / tipAt) * Math.PI * .5)
+      : Math.sin(((1 - u) / (1 - tipAt)) * Math.PI * .5);
+    root.push(surface.toArray());
+    freeEdge.push(surface.clone().add(new THREE.Vector3(
+      sweep * tipEnvelope,
+      -droop * tipEnvelope,
+      side * spread * tipEnvelope,
+    )).toArray());
+  }
+  return makeFinGeometry(root, freeEdge, low, .002, freeEdgeMotion);
+}
+
 function finMaterial(uniforms, rays, cssStyle = false, clusterStyle = false, rustStyle = false, eelStyle = false) {
   return new THREE.ShaderMaterial({
     uniforms: { ...uniforms, uRays: { value: rays } },
@@ -446,7 +477,7 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
   const fins = [];
   const finProfile = points => points.map(([x,y,z]) => [x,y*finHeightScale,z*finDepthScale]);
   const tailFinProfile = points => points.map(([x,y,z]) => [x,y*tailHeightScale,z*tailDepthScale]);
-  function fin(name, base, edge, rays = 22, profile = finProfile, side = 0, freeEdgeMotion = 1) {
+  function attachFin(name, geometry, rays = 22, side = 0) {
     // Rust fins use a solid, softly lit surface. The other fish keep their
     // species-specific translucent shader and ray patterns unchanged.
     const material = rustStyle
@@ -457,8 +488,18 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
       }), uniforms, 'fin', false, false, true)
       : finMaterial(uniforms, rays, cssStyle, clusterStyle, rustStyle, eelStyle);
     if (rustStyle) material.userData.fishFinSide = side;
-    const mesh = add(makeFinGeometry(profile(base), profile(edge), low, rustStyle ? .008 : .065, freeEdgeMotion), material, name);
+    const mesh = add(geometry, material, name);
     fins.push(mesh);
+    return mesh;
+  }
+  function fin(name, base, edge, rays = 22, profile = finProfile, side = 0, freeEdgeMotion = 1) {
+    return attachFin(name, makeFinGeometry(profile(base), profile(edge), low, rustStyle ? .008 : .065, freeEdgeMotion), rays, side);
+  }
+  function foldedMarlinFin(name, xStart, xEnd, side, flankAngle, options, rays, freeEdgeMotion) {
+    const geometry = makeFoldedMarlinFinGeometry(shape, {
+      xStart, xEnd, side, flankAngle, ...options,
+    }, low, freeEdgeMotion);
+    return attachFin(name, geometry, rays, side);
   }
   if (rustStyle) {
     // Striped marlin: the first dorsal is high and long-based, but not a
@@ -482,19 +523,17 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
       tube(keel, .0025, rustAnatomy, `marlin-caudal-keel-${sign}`);
     }
     for (const sign of [-1, 1]) {
-      // Folded striped-marlin pectorals lie along the flank: keep the root and
-      // free edge on matched stations so the membrane narrows into one swept,
-      // pointed blade instead of ballooning into a paddle. Only the free edge
-      // gets a small delayed swim response; the shoulder remains planted.
-      fin(`marlin-pectoral-${sign}`,
-        [[-.82,-.055,.16*sign],[-.66,-.086,.17*sign],[-.49,-.118,.16*sign],[-.31,-.147,.145*sign],[-.16,-.16,.13*sign]],
-        [[-.82,-.055,.16*sign],[-.60,-.105,.24*sign],[-.39,-.153,.32*sign],[-.13,-.183,.34*sign],[-.16,-.16,.13*sign]], 12, finProfile, sign, .42);
-      // Pelvic fins stay slimmer and closer to the belly than the pectorals;
-      // their free edges respond less so they do not become a second flapping
-      // pair or read as dark lobes beneath the body.
-      fin(`marlin-pelvic-${sign}`,
-        [[.22,-.24,.09*sign],[.33,-.22,.085*sign],[.45,-.19,.075*sign],[.57,-.16,.065*sign],[.68,-.12,.06*sign]],
-        [[.22,-.24,.09*sign],[.34,-.243,.115*sign],[.47,-.218,.14*sign],[.61,-.176,.135*sign],[.68,-.12,.06*sign]], 10, finProfile, sign, .2);
+      // The pectoral follows the flank from shoulder to a swept-back tip.
+      // Root points come from the actual body surface; the folded free edge
+      // stays close and receives only a restrained, phase-lagged response.
+      foldedMarlinFin(`marlin-pectoral-${sign}`, -.82, -.16, sign,
+        sign > 0 ? -.46 : Math.PI + .46,
+        { spread: .045, droop: .035, sweep: .14, tipAt: .84 }, 12, .42);
+      // The pelvic pair is shorter, more ventral, and less mobile; this keeps
+      // the far-side pair from forming a second silhouette under the belly.
+      foldedMarlinFin(`marlin-pelvic-${sign}`, .22, .68, sign,
+        sign > 0 ? -1.0 : Math.PI + 1.0,
+        { spread: .02, droop: .014, sweep: .04, tipAt: .72 }, 10, .2);
     }
     // The caudal fin is one continuous crescent, not two nearly coplanar
     // left/right fins. A single double-sided membrane avoids the bright seam
