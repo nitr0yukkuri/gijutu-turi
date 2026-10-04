@@ -14,12 +14,36 @@ test("Docker rod carries visible bend earlier through the belly", () => {
   assert.ok(DOCKER_ROD_FLEX_PROFILE.tipDirectionBlend > STANDARD_ROD_FLEX_PROFILE.tipDirectionBlend);
 });
 
-test("Docker surge gives the rod tip one short damped response", () => {
+test("Docker surge gives the rod tip one sustained, damped response", () => {
   assert.equal(dockerWhaleRodKick(-.01),0);
   assert.equal(dockerWhaleRodKick(0),0);
   assert.ok(dockerWhaleRodKick(.1)>.5,'the tip should react shortly after the surge begins');
-  assert.ok(dockerWhaleRodKick(.25)<0,'the blank should recoil instead of continuing to wag');
-  assert.equal(dockerWhaleRodKick(.82),0);
+  assert.ok(dockerWhaleRodKick(.5)>.3,'the run load should remain visible beyond its first snap');
+  assert.ok(dockerWhaleRodKick(1.1)<dockerWhaleRodKick(.5),'the load should decay gradually');
+  assert.equal(dockerWhaleRodKick(1.25),0);
+});
+
+test("Docker fight bend remains visible across the upper blank on screen", () => {
+  const butt={x:0,y:0,z:0},tip={x:0,y:0,z:-5},pull={x:1,y:0,z:-.1};
+  const frame={load:.64,gain:.6,screenDown:{x:0,y:-1,z:0},screenRight:{x:1,y:0,z:0}};
+  const ordinary=rodCenterAt(2/3,butt,tip,pull,.64,DOCKER_ROD_FLEX_PROFILE);
+  const fighting=rodCenterAt(2/3,butt,tip,pull,.64,DOCKER_ROD_FLEX_PROFILE,frame);
+  assert.ok(ordinary.y-fighting.y>.20,'the progressive fight bend should exceed the old subtle bow');
+  assert.deepEqual(rodCenterAt(0,butt,tip,pull,.64,DOCKER_ROD_FLEX_PROFILE,frame),butt);
+  assert.deepEqual(rodCenterAt(1,butt,tip,pull,.64,DOCKER_ROD_FLEX_PROFILE,frame),tip);
+
+  const nearTip=.999;
+  const unloadedFightFrame={...frame,gain:0};
+  const ordinaryTip=rodCenterAt(1,butt,tip,pull,.64,DOCKER_ROD_FLEX_PROFILE,unloadedFightFrame);
+  const loadedTip=rodCenterAt(1,butt,tip,pull,.64,DOCKER_ROD_FLEX_PROFILE,frame);
+  const ordinaryNearTip=rodCenterAt(nearTip,butt,tip,pull,.64,DOCKER_ROD_FLEX_PROFILE,unloadedFightFrame);
+  const loadedNearTip=rodCenterAt(nearTip,butt,tip,pull,.64,DOCKER_ROD_FLEX_PROFILE,frame);
+  const tangentDifference=Math.hypot(
+    (loadedTip.x-loadedNearTip.x)-(ordinaryTip.x-ordinaryNearTip.x),
+    (loadedTip.y-loadedNearTip.y)-(ordinaryTip.y-ordinaryNearTip.y),
+    (loadedTip.z-loadedNearTip.z)-(ordinaryTip.z-ordinaryNearTip.z),
+  )/(1-nearTip);
+  assert.ok(tangentDifference<.02,'added screen-down load should not kink the fixed tip tangent');
 });
 
 test("rod centerline stays attached at the butt and tip anchors", () => {
