@@ -353,6 +353,15 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     followerHeading:new THREE.Vector3(),orientation:new THREE.Quaternion(),
     orientationScratch:createFishOrientationScratch(),initialized:false,
   }));
+  // Reusable scratch vectors avoid transient Three.js allocations in the
+  // per-frame school layout. They are consumed synchronously, never retained.
+  const schoolNeighborPositions=Array.from({length:schoolMotion.length},()=>new THREE.Vector3());
+  const schoolNeighborValid=Array(schoolMotion.length).fill(false);
+  const schoolScratch=Array.from({length:schoolMotion.length},()=>({
+    side:new THREE.Vector3(),desired:new THREE.Vector3(),away:new THREE.Vector3(),previous:new THREE.Vector3(),
+    catchOffset:new THREE.Vector3(),
+  }));
+  const schoolCatchRotationDelta=new THREE.Quaternion(),schoolCatchOriginInverse=new THREE.Quaternion();
   // Visual-only replicas follow the authoritative fish snapshot. They never
   // receive a line, hook, or independent game state.
   let clusterEchoes=[],clusterEchoMotion=[];
@@ -384,6 +393,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(27*3),3));
     const wake=new THREE.Line(geometry,new THREE.LineBasicMaterial({color:0xa2d7db,transparent:true,opacity:.58}));wake.frustumCulled=false;wake.visible=false;scene.add(wake);return wake;
   });
+  const wakeHeadings=Array.from({length:wakes.length},()=>new THREE.Vector3());
   const k8sContactProbes=K8S_SURFACE_BODY_PROBES.map(probe=>new THREE.Vector3(probe.x,probe.y,probe.z));
   const k8sContactProbeWorld=new THREE.Vector3(),k8sSurfaceContactWorld=new THREE.Vector3();
   const k8sWakeHistory=Array.from({length:27},()=>({position:new THREE.Vector3(),at:-Infinity}));
@@ -437,7 +447,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   }:copyFish(a||b);
   const waveHeight=(x,z,t)=>waterHeightAt(x,z,t,ripples);
   const lineSurfaceHeight=(x,z)=>waveHeight(x,z,time);
-  const fishWorldPosition=fish=>new THREE.Vector3(fish.position.x,fish.position.y,fish.position.z);
+  const fishWorldPosition=(fish,result=new THREE.Vector3())=>result.set(fish.position.x,fish.position.y,fish.position.z);
+  const rodFishWorldPosition=new THREE.Vector3();
   const deformK8sBodyProbe=(probe,fish,result)=>{
     result.copy(probe);
     const power=THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1);
@@ -677,7 +688,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       const fishScale=liveFishScale(state.fishId,'fighting');
       fishMouthLocal(state.fishId,rodFishTarget)
         .applyQuaternion(fishOrientation(heading,fightSwimQuaternion,fightOrientationScratch))
-        .multiplyScalar(fishScale).add(fishWorldPosition(visibleFish));
+        .multiplyScalar(fishScale).add(fishWorldPosition(visibleFish,rodFishWorldPosition));
       rodLineDirection.subVectors(rodFishTarget,rodTip);
       if(rodLineDirection.lengthSq()>.0001){
         rodLineDirection.normalize();
@@ -924,37 +935,45 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     const schoolVisible=(schoolPresentationActive||schoolAmount>.02)&&(fishInWater||schoolCatchActive)&&Boolean(visibleFish);
     if(!schoolVisible&&schoolWasVisible)for(const motion of schoolMotion)motion.initialized=false;
     schoolWasVisible=schoolVisible;
-    const neighbors=schoolVisible?schoolMotion.map(motion=>motion.initialized?motion.position.clone():null):[];
+    if(schoolVisible){
+      for(let index=0;index<schoolMotion.length;index++){
+        schoolNeighborValid[index]=schoolMotion[index].initialized;
+        if(schoolNeighborValid[index])schoolNeighborPositions[index].copy(schoolMotion[index].position);
+      }
+    }
+    const schoolCatchRotation=schoolCatchActive
+      ? schoolCatchRotationDelta.copy(activeFightFish.group.quaternion).multiply(schoolCatchOriginInverse.copy(catchOrigin.quaternion).invert())
+      : null;
     for(let index=0;index<schoolFish.length;index++){
       const model=schoolFish[index],motion=schoolMotion[index];model.group.visible=schoolVisible;if(!schoolVisible)continue;
       if(schoolCatchActive){
         const origin=schoolCatchOrigins[index];
         model.group.visible=Boolean(origin);
         if(!origin)continue;
-        const rotationDelta=activeFightFish.group.quaternion.clone().multiply(catchOrigin.quaternion.clone().invert());
-        model.group.position.copy(activeFightFish.group.position).add(origin.formationOffset.clone().applyQuaternion(rotationDelta).multiplyScalar(schoolCatchFormationScale(caughtEase)));
+        const catchOffset=schoolScratch[index].catchOffset.copy(origin.formationOffset).applyQuaternion(schoolCatchRotation).multiplyScalar(schoolCatchFormationScale(caughtEase));
+        model.group.position.copy(activeFightFish.group.position).add(catchOffset);
         model.group.quaternion.slerpQuaternions(origin.quaternion,activeFightFish.group.quaternion,caughtEase);
         model.group.scale.setScalar(origin.scale);
         const fish=visibleFish,phase=fish.bodyWave.phase+index*.87;
         model.update(time,{power:THREE.MathUtils.lerp(THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1),.15,caughtEase),glow:.55,bodyPhase:phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,turn:(fish.swim?.turn||0)*(1-caughtEase),effort:THREE.MathUtils.lerp(fish.swim?.effort||.2,.15,caughtEase),visibility:schoolAmount});
         continue;
       }
-      const fish=visibleFish,offset=schoolOffsets[index],heading=motion.heading.set(fish.heading.x,fish.heading.y,fish.heading.z);
+      const fish=visibleFish,offset=schoolOffsets[index],scratch=schoolScratch[index],heading=motion.heading.set(fish.heading.x,fish.heading.y,fish.heading.z);
       if(heading.lengthSq()<.0001)heading.set(-1,0,0);else heading.normalize();
-      const side=new THREE.Vector3(-heading.z,0,heading.x);
+      const side=scratch.side.set(-heading.z,0,heading.x);
       if(side.lengthSq()<.0001)side.set(0,0,1);else side.normalize();
       const phase=fish.bodyWave.phase+index*.87,spread=1+THREE.MathUtils.clamp(fish.speed/2.5,0,.45);
-      const desired=new THREE.Vector3(fish.position.x,fish.position.y,fish.position.z)
+      const desired=scratch.desired.set(fish.position.x,fish.position.y,fish.position.z)
         .addScaledVector(side,offset.x*spread).addScaledVector(heading,offset.z*spread);
       desired.y+=offset.y;
-      for(let other=0;other<neighbors.length;other++){
-        if(other===index||!neighbors[other])continue;
-        const away=desired.clone().sub(neighbors[other]),distance=away.length();
+      for(let other=0;other<schoolMotion.length;other++){
+        if(other===index||!schoolNeighborValid[other])continue;
+        const away=scratch.away.subVectors(desired,schoolNeighborPositions[other]),distance=away.length();
         if(distance>.001&&distance<.65)desired.addScaledVector(away,(.65-distance)*.35/distance);
       }
       if(!motion.initialized){motion.position.copy(desired);motion.velocity.set(0,0,0);motion.initialized=true;}
       else{
-        const previous=motion.position.clone();motion.position.lerp(desired,1-Math.exp(-dt*(4.5+fish.speed*.4)));
+        const previous=scratch.previous.copy(motion.position);motion.position.lerp(desired,1-Math.exp(-dt*(4.5+fish.speed*.4)));
         motion.velocity.subVectors(motion.position,previous).multiplyScalar(1/Math.max(dt,.001));
       }
       // Follow the leader's self-propulsion, not the line-imposed drift toward
@@ -1043,7 +1062,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       const surface=waveHeight(position.x,position.z,time);
       const shallow=THREE.MathUtils.clamp(1-(surface-position.y)/.85,0,1);
       wake.visible=fishInWater&&model.group.visible&&shallow>.02;if(!wake.visible)return;
-      const heading=new THREE.Vector3(-1,0,0).applyQuaternion(model.group.quaternion);heading.y=0;heading.normalize();
+      const heading=wakeHeadings[index].set(-1,0,0).applyQuaternion(model.group.quaternion);heading.y=0;heading.normalize();
       const positions=wake.geometry.attributes.position.array;
       const wakeLength=1.9;
       for(let i=0;i<27;i++){const p=i/26,x=position.x-heading.x*p*wakeLength,z=position.z-heading.z*p*wakeLength;positions[i*3]=x;positions[i*3+1]=waveHeight(x,z,time)+.018;positions[i*3+2]=z;}
