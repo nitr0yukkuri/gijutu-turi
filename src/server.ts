@@ -11,6 +11,7 @@ import { createOceanRooms } from "./ocean-room.js";
 import { isPlayerId, type CollectionRepository } from "./collection-contract.js";
 import { createCollectionRepository } from "./collection-repository.js";
 import { CANONICAL_FISH_ROUTE_PATHS, FISHING_ROUTE_PATHS, LEGACY_FISH_PATH_ALIASES } from "./fishing-routes.js";
+import { apiCorsHeaders } from "./api-cors.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "0.0.0.0";
@@ -18,13 +19,7 @@ const app = new Hono();
 app.use("/api/*", async (c, next) => {
   const requestOrigin = c.req.header("Origin");
   const configuredOrigins = new Set((process.env.FRONTEND_ORIGIN ?? "").split(",").map(origin => origin.trim()).filter(Boolean));
-  if (configuredOrigins.has("*")) c.header("Access-Control-Allow-Origin", "*");
-  else if (requestOrigin && configuredOrigins.has(requestOrigin)) {
-    c.header("Access-Control-Allow-Origin", requestOrigin);
-    c.header("Vary", "Origin");
-  }
-  c.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  c.header("Access-Control-Allow-Headers", "Content-Type");
+  for (const [name, value] of Object.entries(apiCorsHeaders(requestOrigin, configuredOrigins))) c.header(name, value);
   if (c.req.method === "OPTIONS") return c.body(null, 204);
   await next();
 });
