@@ -30,9 +30,9 @@ export type FishAudioTuning = {
 };
 
 const MAX_ONE_SHOT_VOICES = 6;
-const MAX_ONE_SHOT_GAIN = .11;
-const ONE_SHOT_GAIN_BOOST = 1.5;
-const OUTPUT_GAIN = .62;
+const MAX_ONE_SHOT_GAIN = .22;
+const ONE_SHOT_GAIN_BOOST = 3.2;
+const OUTPUT_GAIN = .82;
 const AMBIENT_GAIN = .022;
 const BATTLE_MUSIC_GAIN = .012;
 const BATTLE_MUSIC_CHORDS: readonly (readonly [number, number, number])[] = [
@@ -647,7 +647,8 @@ export class FishingAudioController {
     if (!context || context.state !== "running") return;
     const now = context.currentTime + .004;
     const tuning = this.reelTuning;
-    const gain = clampAudioGain(tuning.reelGain * this.reelAmount);
+    // playNoise/playTone apply the shared gain boost and safety clamp once.
+    const gain = tuning.reelGain * this.reelAmount;
     this.playNoise(now, .036, 1250 + tuning.reelFrequency, gain, 900, .0025);
     this.playTone(now, tuning.reelFrequency, tuning.reelFrequency * .88, .032, gain * .48, "triangle", .0025);
   }
@@ -658,7 +659,8 @@ export class FishingAudioController {
     const now = context.currentTime + .004;
     const tuning = this.dragTuning;
     const amount = this.dragAmount;
-    const gain = clampAudioGain(tuning.strainGain * amount);
+    // Keep this raw for the same single clamp in each voice's playback method.
+    const gain = tuning.strainGain * amount;
     const filterFrequency = tuning.dragFilterFrequency * (.82 + amount * .55);
     this.playNoise(now, .052, filterFrequency, gain, filterFrequency * .68, .003);
     this.playTone(now, tuning.dragFrequency, tuning.dragFrequency * (.92 - amount * .16), .047, gain * .46, "triangle", .003);

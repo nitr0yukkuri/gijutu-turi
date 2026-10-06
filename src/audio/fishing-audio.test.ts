@@ -19,8 +19,8 @@ test("surface sound envelopes stay finite, short, and under the one-shot gain ce
         profile.sprayDelay,
       ]) assert.ok(Number.isFinite(value) && value > 0, `${fishId}/${kind} has a positive finite parameter`);
       assert.ok(profile.bodyDuration < .6 && profile.sprayDuration < .4, `${fishId}/${kind} remains a brief cue`);
-      assert.ok(clampAudioGain(profile.bodyPeak) <= .11);
-      assert.ok(clampAudioGain(profile.sprayPeak) <= .11);
+      assert.ok(clampAudioGain(profile.bodyPeak) <= .22);
+      assert.ok(clampAudioGain(profile.sprayPeak) <= .22);
     }
   }
 });
@@ -44,5 +44,5 @@ test("invalid impact strength falls back safely and one-shot gains remain capped
   );
   assert.equal(clampAudioGain(Number.POSITIVE_INFINITY), 0);
   assert.equal(clampAudioGain(-10), 0);
-  assert.equal(clampAudioGain(100), .11);
+  assert.equal(clampAudioGain(100), .22);
 });
