@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefOb
 import { isOceanMessage } from "../ocean-contract.js";
 import { FishingAudioController } from "../audio/fishing-audio.js";
 import type { FishSurfaceImpactCue } from "../fish-surface-impact.js";
-import { CastMotionGesture, ReelMotionGesture, castStrengthFromMotion, reelAngularSignal } from "./cast-motion.js";
+import { CastMotionGesture, ReelMotionGesture, castStrengthFromMotion, isScreenReelBlockingMotion, reelAngularSignal } from "./cast-motion.js";
 import { createControllerLink, isLoopbackHost } from "./controller-url.js";
 import { RodStrokeMotion } from "./rod-stroke-motion.js";
 import { isFirstCatch } from "./catch-discovery.js";
@@ -698,7 +698,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
             return;
           }
           if (!canRecognizeRodStroke) rodStrokeMotionRef.current.reset();
-          if (reelHeldRef.current) {
+          if (isScreenReelBlockingMotion(reelHeldRef.current, motionReelRef.current)) {
             reelMotionGestureRef.current.reset();
             return;
           }
