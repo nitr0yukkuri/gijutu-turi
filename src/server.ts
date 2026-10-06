@@ -11,6 +11,7 @@ import { createOceanRooms } from "./ocean-room.js";
 import { isPlayerId, type CollectionRepository } from "./collection-contract.js";
 import { createCollectionRepository } from "./collection-repository.js";
 import { CANONICAL_FISH_ROUTE_PATHS, FISHING_ROUTE_PATHS, LEGACY_FISH_PATH_ALIASES } from "./fishing-routes.js";
+import { publicAssetCandidates, resolveContainedAssetPath } from "./public-asset-path.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "0.0.0.0";
@@ -74,6 +75,7 @@ const publicAssets = new Map<string, string[]>([
   ["/third-party-notices.txt", ["third-party-notices.txt", "text/plain; charset=utf-8"]],
   ["/manifest.webmanifest", ["manifest.webmanifest", "application/manifest+json"]],
   ["/service-worker.js", ["src/service-worker.ts", "text/javascript"]],
+  ["/precache-manifest.json", ["precache-manifest.json", "application/json; charset=utf-8"]],
   ["/favicon.svg", ["favicon.svg", "image/svg+xml"]],
   ["/assets/gijutu-turi-logo.png", ["assets/gijutu-turi-logo.png", "image/png"]],
   ["/assets/gijutu-turi-favicon-generated.png", ["assets/gijutu-turi-favicon-generated.png", "image/png"]],
@@ -97,11 +99,11 @@ for (const [route, asset] of publicAssets) {
       const preferred = new Set([
         "/", "/index.html", ...CANONICAL_FISH_ROUTE_PATHS, FISHING_ROUTE_PATHS.docker,
         ...LEGACY_FISH_PATH_ALIASES, "/ocean.css", "/ocean-app.js", "/go-fish.html",
-        "/docker-whale.html", "/service-worker.js", "/manifest.webmanifest", "/favicon.svg",
+        "/docker-whale.html", "/service-worker.js", "/precache-manifest.json", "/manifest.webmanifest", "/favicon.svg",
         "/assets/gijutu-turi-favicon-generated.png", "/assets/gijutu-turi-og.png",
         "/license.txt", "/third-party-notices.txt",
       ]);
-      const candidates = preferred.has(route) ? [`dist/client/${asset[0]}`, asset[0]] : [asset[0]];
+      const candidates = publicAssetCandidates(route, asset[0]!, preferred.has(route));
       let bytes: Buffer | undefined;
       for (const candidate of candidates) {
         try { bytes = await readFile(new URL(`../${candidate}`, import.meta.url)); break; } catch { /* try the source fallback */ }
@@ -113,9 +115,11 @@ for (const [route, asset] of publicAssets) {
 }
 const serveBuiltAsset = async (c: Context, prefix: "assets" | "chunks") => {
   const relative = c.req.path.slice(`/${prefix}/`.length);
-  if (!relative || relative.includes("..") || !/^[A-Za-z0-9._/-]+$/.test(relative)) return c.notFound();
+  if (!/^[A-Za-z0-9._/-]+$/.test(relative)) return c.notFound();
+  const assetPath = resolveContainedAssetPath(resolve(process.cwd(), "dist", "client", prefix), relative);
+  if (!assetPath) return c.notFound();
   try {
-    const bytes = await readFile(resolve(process.cwd(), "dist", "client", prefix, relative));
+    const bytes = await readFile(assetPath);
     const contentType = relative.endsWith(".css") ? "text/css" : relative.endsWith(".svg") ? "image/svg+xml" : relative.endsWith(".png") ? "image/png" : relative.endsWith(".map") ? "application/json" : "text/javascript";
     return new Response(bytes as unknown as BodyInit, { headers: { "Content-Type": contentType, "Cache-Control": "no-cache" } });
   } catch { return c.notFound(); }

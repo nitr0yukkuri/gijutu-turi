@@ -1,7 +1,8 @@
 import { defineConfig } from "vite";
-import { copyFileSync, mkdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { relative, resolve, sep } from "node:path";
 import react from "@vitejs/plugin-react";
+import { createPrecacheManifest } from "./src/precache-manifest.js";
 
 const backendPort = process.env.BACKEND_PORT ?? (process.env.PORT === "8788" ? "8787" : process.env.PORT ?? "8787");
 const backendHttp = `http://127.0.0.1:${backendPort}`;
@@ -17,6 +18,7 @@ export default defineConfig({
         return html.replaceAll("__OG_ORIGIN__", publicOrigin);
       },
       closeBundle() {
+        const clientOutput = resolve(process.cwd(), "dist/client");
         copyFileSync(
           resolve(process.cwd(), "LICENSE"),
           resolve(process.cwd(), "dist/client/license.txt"),
@@ -42,6 +44,19 @@ export default defineConfig({
           resolve(process.cwd(), "favicon.svg"),
           resolve(process.cwd(), "dist/client/favicon.svg"),
         );
+        const builtFiles = (directory: string): string[] => !existsSync(directory) ? [] : readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+          const path = resolve(directory, entry.name);
+          if (entry.isDirectory()) return builtFiles(path);
+          if (!entry.isFile()) return [];
+          return [relative(clientOutput, path).split(sep).join("/")];
+        });
+        writeFileSync(
+          resolve(clientOutput, "precache-manifest.json"),
+          `${JSON.stringify(createPrecacheManifest([
+            ...builtFiles(resolve(clientOutput, "assets")),
+            ...builtFiles(resolve(clientOutput, "chunks")),
+          ]), null, 2)}\n`,
+        );
       },
     },
   ],
@@ -63,6 +78,7 @@ export default defineConfig({
       "/ocean-ws": { target: backendWs, ws: true },
       "/manifest.webmanifest": { target: backendHttp },
       "/service-worker.js": { target: backendHttp },
+      "/precache-manifest.json": { target: backendHttp },
       "/favicon.svg": { target: backendHttp },
       "/assets/gijutu-turi-logo.png": { target: backendHttp },
       "/assets/gijutu-turi-favicon-generated.png": { target: backendHttp },
