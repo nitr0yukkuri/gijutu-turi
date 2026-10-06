@@ -147,6 +147,11 @@ export function isReelMotionStop(angularSpeed: number): boolean {
   return !Number.isFinite(angularSpeed) || Math.abs(angularSpeed) < 45;
 }
 
+/** A screen-held reel blocks sensor input, but motion must be allowed to release its own reel. */
+export function isScreenReelBlockingMotion(reelHeld: boolean, motionOwnsReel: boolean): boolean {
+  return reelHeld && !motionOwnsReel;
+}
+
 /** Debounces a deliberate wrist turn so one sensor spike cannot start reeling. */
 export class ReelMotionGesture {
   private active = false;
