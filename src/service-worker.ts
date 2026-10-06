@@ -1,5 +1,6 @@
 // @ts-nocheck -- service-worker globals require a dedicated worker tsconfig; runtime code remains TypeScript.
-const CACHE_NAME = "gijutu-turi-ocean-v9-og";
+
+const CACHE_NAME = "gijutu-turi-ocean-v10-assets";
 const BASE_URL = new URL("./", self.registration.scope);
 const PRECACHE_PATHS = [
   "",
@@ -23,11 +24,27 @@ const PRECACHE_PATHS = [
 ];
 const PRECACHE_URLS = PRECACHE_PATHS.map((path) => new URL(path, BASE_URL).toString());
 
+const isSafePrecachePath = (path) => {
+  if (typeof path !== "string") return false;
+  const segments = path.replaceAll("\\", "/").split("/");
+  return (segments[0] === "assets" || segments[0] === "chunks")
+    && segments.length > 1
+    && segments.slice(1).every(segment => segment.length > 0 && segment !== "." && segment !== ".." && /^[A-Za-z0-9._-]+$/.test(segment))
+    && /\.(?:js|css)$/.test(segments.at(-1) ?? "");
+};
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
+    fetch(new URL("precache-manifest.json", BASE_URL), { cache: "no-store" })
+      .then(response => response.ok ? response.json() : [])
+      .catch(() => [])
+      .then((manifest) => {
+        const builtPaths = Array.isArray(manifest)
+          ? manifest.filter(isSafePrecachePath)
+          : [];
+        const urls = [...PRECACHE_URLS, ...builtPaths.map(path => new URL(path, BASE_URL).toString())];
+        return caches.open(CACHE_NAME).then(cache => cache.addAll(urls));
+      })
       .then(() => self.skipWaiting()),
   );
 });
