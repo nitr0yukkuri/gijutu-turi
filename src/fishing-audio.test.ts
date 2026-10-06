@@ -5,8 +5,8 @@ import { clampAudioGain, getDragPulseInterval, getFishAudioTuning, getTensionSou
 test("audio gain is finite and capped before voices are mixed", () => {
   assert.equal(clampAudioGain(Number.POSITIVE_INFINITY), 0);
   assert.equal(clampAudioGain(-1), 0);
-  assert.equal(clampAudioGain(.03), .045);
-  assert.equal(clampAudioGain(.5), .11);
+  assert.equal(clampAudioGain(.03), .096);
+  assert.equal(clampAudioGain(.5), .22);
   assert.equal(clampAudioGain(.08, .05), .05);
 });
 
