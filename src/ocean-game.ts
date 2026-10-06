@@ -21,6 +21,7 @@ const BITE_DURATION_SECONDS=6;
 const SLACK_TENSION_THRESHOLD=.06;
 const SLACK_ESCAPE_SECONDS=5.5;
 const MAX_FIGHT_DISTANCE_METERS=50;
+const CATCH_DISTANCE_METERS=0;
 const clamp=(x:number,min:number,max:number)=>Math.max(min,Math.min(max,x));
 const fresh=(fish:FishMotionSnapshot,fishId:FishSpeciesId):OceanState=>({phase:'idle',strength:.65,aim:0,revision:0,castAt:0,retrieveAt:0,tension:0,distance:0,initialDistance:0,reeling:false,biteRemaining:0,fightTime:0,mode:'rest',school:1,resultAt:0,approach:0,stamina:1,canReel:false,criticalWindow:false,hookResult:null,reason:'',catches:0,fishX:0,fishSpeed:0,fishId,fish});
 
@@ -75,7 +76,7 @@ export class OceanFishingGame {
     if(input.action==='hook'&&s.phase==='biting'){
       s.hookResult=getHookResult(this.age);
       s.criticalWindow=false;
-      s.fishX=s.fish.position.x;s.distance=Math.max(1.7,-s.fish.position.z);this.fishDepth=s.fish.position.y;
+      s.fishX=s.fish.position.x;s.distance=Math.max(0,-s.fish.position.z);this.fishDepth=s.fish.position.y;
       s.phase='fighting';s.tension=getFishFightProfile(s.fishId).initialTension;s.biteRemaining=0;s.mode='surge';s.stamina=1;s.canReel=false;this.age=0;
       this.lineVelocity=s.fishId==='whale-001'||s.fishId==='k8s-001'?.9:0;
       const hookHeading=normalise(s.fish.heading);
@@ -227,7 +228,7 @@ export class OceanFishingGame {
         this.lineVelocity+=
           (targetLineVelocity-this.lineVelocity)*(1-Math.exp(-profile.lineResponse*dt));
       }else this.lineVelocity=targetLineVelocity;
-      s.distance=clamp(s.distance+this.lineVelocity*dt,1.7,MAX_FIGHT_DISTANCE_METERS);
+      s.distance=clamp(s.distance+this.lineVelocity*dt,CATCH_DISTANCE_METERS,MAX_FIGHT_DISTANCE_METERS);
       this.overload=s.tension>=.97?this.overload+dt:Math.max(0,this.overload-dt*2);
       this.slack=s.tension<SLACK_TENSION_THRESHOLD?this.slack+dt:0;
       // Continuous steering and bounded acceleration: changing fight mode no
@@ -293,7 +294,7 @@ export class OceanFishingGame {
       if(this.overload>1.4)this.escape('line',now);
       else if(s.distance>=MAX_FIGHT_DISTANCE_METERS||t>150)this.escape('distance',now);
       else if(this.slack>SLACK_ESCAPE_SECONDS)this.escape('slack',now);
-      else if(s.distance<=2.2&&t>6){s.phase='caught';s.resultAt=now;s.catches++;s.reeling=false;s.canReel=false;s.tension=.15;s.school=1;}
+      else if(s.distance<=CATCH_DISTANCE_METERS){s.distance=CATCH_DISTANCE_METERS;s.phase='caught';s.resultAt=now;s.catches++;s.reeling=false;s.canReel=false;s.tension=.15;s.school=1;}
     }
   }
   private syncFishSnapshot():void {

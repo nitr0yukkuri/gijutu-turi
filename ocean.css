@@ -117,9 +117,25 @@ body:has(#collection-dialog[open]) #sea #escape-ui {
 #connect-dialog #pairing-description{margin:0 0 18px}
 #connect-dialog .fine-print{margin:0;text-align:center}
 
-.distance-meter{position:absolute;right:40px;bottom:max(82px,calc(env(safe-area-inset-bottom) + 68px));color:#e0edefd9;font:500 15px/1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.04em;font-variant-numeric:tabular-nums;text-shadow:0 1px 12px #092a36;pointer-events:none;z-index:2}
-.phone-distance{display:block;margin:0 0 10px;color:#eaf5f2;font:500 16px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.03em;font-variant-numeric:tabular-nums}
+.distance-meter,.phone-distance{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:max-content;padding:7px 10px;border:1px solid #d8eef021;border-radius:8px;background:#071a24a6;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 3px 14px #04151c35;color:#eaf5f2;pointer-events:none;font-variant-numeric:tabular-nums}
+.distance-meter{position:absolute;right:40px;bottom:max(82px,calc(env(safe-area-inset-bottom) + 68px));z-index:2}
+.distance-meter-label{color:#c3d8dc;font:500 9px/1.1 system-ui,sans-serif;letter-spacing:.08em}
+.distance-meter-reading{display:flex;align-items:baseline;gap:4px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;line-height:1;letter-spacing:.02em}
+.distance-meter-reading strong{font-size:21px;font-weight:600}
+.distance-meter-reading small{color:#c2d4d8;font-size:11px;font-weight:500}
+.phone-distance{margin:0 0 10px}
+.fight-meters{display:flex;align-items:center;gap:12px;width:100%;margin:17px 0 12px}
+.fight-meters .fight-distance-meter{position:static;right:auto;bottom:auto;left:auto;z-index:auto;flex:0 0 auto;align-items:center;transform:none;padding:5px 8px}
+.fight-distance-meter .distance-meter-label{font-size:8px}
+.fight-distance-meter .distance-meter-reading strong{font-size:20px}
+.fight-meters .tension-track{flex:1;min-width:0;margin:0}
+.distance-meter[data-caught="true"],.phone-distance[data-caught="true"]{animation:distance-catch-response .32s cubic-bezier(.2,.8,.25,1) both}
+@keyframes distance-catch-response{0%{scale:.92;opacity:.7}62%{scale:1.055;border-color:#d8eef080}100%{scale:1;opacity:1}}
+@keyframes phone-distance-catch-out{to{opacity:0;scale:.98}}
 @media(max-width:600px){.distance-meter{right:22px;bottom:max(82px,calc(env(safe-area-inset-bottom) + 72px));font-size:14px}}
+#phone-tension[data-caught="true"]{margin:0 0 14px}
+#phone-tension[data-caught="true"] .phone-distance{animation:distance-catch-response .32s cubic-bezier(.2,.8,.25,1) both,phone-distance-catch-out .18s 1s forwards}
+@media(prefers-reduced-motion:reduce){.distance-meter[data-caught="true"],.phone-distance[data-caught="true"]{animation:none!important}}
 
 .fight-button-icon{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
 
