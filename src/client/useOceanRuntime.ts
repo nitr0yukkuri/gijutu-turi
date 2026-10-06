@@ -5,9 +5,11 @@ import type { FishSurfaceImpactCue } from "../fish-surface-impact.js";
 import { CastMotionGesture, ReelMotionGesture, castStrengthFromMotion, reelAngularSignal } from "./cast-motion.js";
 import { createControllerLink, isLoopbackHost } from "./controller-url.js";
 import { RodStrokeMotion } from "./rod-stroke-motion.js";
-import { isFirstCatch } from "./catch-discovery.js";
 import { fetchCollection, type CollectionLoadResult } from "./collection-response.js";
+import { LatestRequestGuard } from "./latest-request.js";
 import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH } from "../cast-distance.js";
+import { OCEAN_RENDER_DELAY_MS } from "../ocean-timing.js";
+import { interpolateOceanPresentationState, OceanPresentationTimeline } from "../ocean-presentation-timeline.js";
 import { FISH_SPECIES, type FishSpeciesId } from "../fish-species.js";
 import type { CatchSaveStatus, Collection, CollectionEntry, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
 
@@ -36,7 +38,7 @@ const clamp = (value: number, min: number, max: number): number => Math.max(min,
 const failureHints: Record<string, [string, string]> = {
   missed: ["合わせが、少し遅かった。", "ウキが沈んだら、Spaceかボタンで合わせよう。"],
   line: ["糸が、切れた。", "赤くなる前に巻く手を止めよう。"],
-  slack: ["針が外れた。", "釣れそうな魚：go fish"],
+  slack: ["針が外れた。", "糸がたるみすぎないよう、ときどき巻こう。"],
   distance: ["沖へ、逃げられた。", "魚が落ち着く間に、少しずつ巻こう。"],
 };
 
@@ -93,6 +95,8 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   // fish-specific routes became fixed cannot be reused after the fix.
   const roomFishKey = initialFishId ? `fixed:${initialFishId}` : "rotate";
   const [state, setState] = useState<OceanState>(initialState);
+  const [presentationState, setPresentationState] = useState<OceanState>(initialState);
+  const presentationTimelineRef = useRef(new OceanPresentationTimeline(OCEAN_RENDER_DELAY_MS));
   const stateRef = useRef(state);
   const [online, setOnline] = useState(false);
   const onlineRef = useRef(false);
@@ -111,6 +115,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const soundEnabledRef = useRef(false);
   const [collection, setCollection] = useState<Collection>(() => initialCollection(false));
   const collectionRef = useRef(collection);
+  const collectionRequestGuardRef = useRef(new LatestRequestGuard());
   const [newEncounter, setNewEncounter] = useState(false);
   const [catchSaveStatus, setCatchSaveStatus] = useState<CatchSaveStatus>("none");
   const catchSaveStatusRef = useRef<CatchSaveStatus>("none");
@@ -221,13 +226,14 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     if (next) getFishingAudio().sync(stateRef.current, stateRef.current, !isPhone);
   }, [getFishingAudio, isPhone]);
 
-  const loadCollection = useCallback(async (): Promise<CollectionLoadResult> => {
+  const loadCollection = useCallback(async (): Promise<{ result: CollectionLoadResult; revision: number }> => {
+    const revision = collectionRequestGuardRef.current.begin();
     const result = await fetchCollection(`${backendUrl("/api/collection")}?playerId=${encodeURIComponent(playerIdRef.current)}`);
-    if (result.ok) {
+    if (result.ok && collectionRequestGuardRef.current.isCurrent(revision)) {
       collectionRef.current = result.value;
       setCollection(result.value);
     }
-    return result;
+    return { result, revision };
   }, []);
 
   const send = useCallback((action: object): boolean => {
@@ -304,6 +310,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     const next = message.state;
     const previousCatchSaveStatus = catchSaveStatusRef.current;
     const nextCatchSaveStatus = message.catchSaveStatus ?? (next.phase === "caught" ? "saved" : "none");
+    presentationTimelineRef.current.push(next, message.serverNow);
     catchSaveStatusRef.current = nextCatchSaveStatus;
     setCatchSaveStatus(nextCatchSaveStatus);
     stateRef.current = next;
@@ -353,11 +360,13 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       // Persistence belongs to the room. The display reloads only after the
       // server confirms the write, and never submits a duplicate catch.
       const previousCatches = collectionRef.current.entries.find(entry => entry.id === next.fishId)?.catches ?? 0;
-      void loadCollection().then(result => {
+      void loadCollection().then(({ result, revision }) => {
+        if (!collectionRequestGuardRef.current.isCurrent(revision)) return;
         if (!result.ok) { showToast(COLLECTION_LOAD_ERROR_MESSAGE); return; }
         const loaded = result.value;
-        const currentCatches = loaded.entries.find(entry => entry.id === next.fishId)?.catches ?? previousCatches;
-        const firstCatch = isFirstCatch(previousCatches, currentCatches);
+        const caughtEntry = loaded.entries.find(entry => entry.id === next.fishId);
+        const currentCatches = caughtEntry?.catches ?? previousCatches;
+        const firstCatch = caughtEntry?.catches === 1;
         setNewEncounter(firstCatch);
         showToast(firstCatch ? "新しい魚が図鑑に登録されました。" : "魚を釣り上げました。");
       });
@@ -384,6 +393,18 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       }
     }
   }, [cancelCharge, getFishingAudio, isPhone, loadCollection, setConnected, showFeedback, showHookFeedback, showToast, stopReel, vibrate]);
+
+  const presentationActive = ["casting", "waiting", "biting", "fighting"].includes(state.phase);
+  useEffect(() => {
+    if (!presentationActive) return;
+    const update = () => {
+      const sampled = presentationTimelineRef.current.sample();
+      if (sampled) setPresentationState(sampled);
+    };
+    update();
+    const timer = window.setInterval(update, 1000 / 30);
+    return () => window.clearInterval(timer);
+  }, [presentationActive]);
 
   const getRoom = useCallback(async (): Promise<{ id: string; host?: string }> => {
     if (isPhone) return { id: controllerId ?? "" };
@@ -455,7 +476,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       const socket = new WebSocket(url);
       socketRef.current = socket;
       let opened = false;
-      socket.addEventListener("open", () => { opened = true; retriesRef.current = 0; setConnected(true); });
+      socket.addEventListener("open", () => { opened = true; retriesRef.current = 0; });
       socket.addEventListener("message", event => {
         if (socketRef.current !== socket) return;
         try {
@@ -481,7 +502,9 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
         }
         scheduleRetry(isPhone ? "接続を再試行しています。接続できない場合は海の画面から新しいURLを開いてください。" : "接続が切れました。再接続しています。");
       });
-      socket.addEventListener("error", () => setConnected(false));
+      socket.addEventListener("error", () => {
+        if (socketRef.current === socket) setConnected(false);
+      });
     } catch (error) {
       setConnected(false);
       if (error instanceof OceanRoomRateLimitError) {
@@ -501,6 +524,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       if (disposed || !oceanMountRef.current) return;
       try {
         scene = createOcean(oceanMountRef.current, {
+          presentationTimeline: presentationTimelineRef.current,
           onLand: () => {
             fishingAudioRef.current?.play("splash");
           },
@@ -541,8 +565,8 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   }, [cancelCharge, connect, setConnected, stopReel]);
 
   useEffect(() => {
-    void loadCollection().then(result => {
-      if (!result.ok) showToast(COLLECTION_LOAD_ERROR_MESSAGE);
+    void loadCollection().then(({ result, revision }) => {
+      if (collectionRequestGuardRef.current.isCurrent(revision) && !result.ok) showToast(COLLECTION_LOAD_ERROR_MESSAGE);
     });
   }, [loadCollection, showToast]);
 
@@ -750,7 +774,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   }, []);
 
   return {
-    state, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle,
+    state, presentationState, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle,
     soundEnabled, collection, selectedCollectionId, setSelectedCollectionId, controllerUrl, controllerHost, controllerUrlError,
     sensorStatus, sensorButtonLabel, sensorsOn,
     actions: {

@@ -18,7 +18,8 @@ import { catchFraming } from './catch-framing.js';
 import { schoolCatchFormationScale } from './school-catch.js';
 import { fishBodyWaveOffsetAt, K8S_LEVIATHAN_SWIM_VISUAL_PROFILE } from './fish-swim-visual-profile.js';
 import { K8S_ECHO_COUNT, k8sFightPresentation, k8sLungeForSnapshot } from './k8s-fight-presentation.js';
-import { K8S_SURFACE_BODY_PROBES, interpolateK8sPresentationSample, k8sSurfaceWakeStrength, updateK8sSurfaceExposure } from './k8s-surface-motion.js';
+import { K8S_SURFACE_BODY_PROBES, k8sSurfaceWakeStrength, updateK8sSurfaceExposure } from './k8s-surface-motion.js';
+import { interpolateOceanPresentationState, OceanPresentationTimeline } from '../ocean-presentation-timeline.js';
 import type { FishSurfaceImpactCue } from '../fish-surface-impact.js';
 
 // Keep the escape result on screen while the camera returns to the normal view.
@@ -130,9 +131,12 @@ export type OceanSceneOptions = {
   onLand?: () => void;
   onRenderError?: () => void;
   onSurfaceImpact?: (impact: FishSurfaceImpactCue) => void;
+  presentationTimeline?: OceanPresentationTimeline;
 };
 
-export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurfaceImpact=()=>{} }: OceanSceneOptions = {}) {
+export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurfaceImpact=()=>{}, presentationTimeline:sharedTimeline }: OceanSceneOptions = {}) {
+  const presentationTimeline=sharedTimeline??new OceanPresentationTimeline(OCEAN_RENDER_DELAY_MS);
+  const ownsPresentationTimeline=!sharedTimeline;
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
   const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.25));
@@ -414,7 +418,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   let state={phase:'idle',castAt:0,strength:.65,aim:0,revision:0};
   const tackleStore=new TackleStateStore();
   let time=0,lastFrame=0,lastRenderedFrame=0,overlayOpen=false,landedRevision=-1,splashAt=-100,rodStrokeAt=-100,sprayPower=1,rippleIndex=0,charge=0,chargeAim=0,lastWake=0,lastStroke=0,reelPhase=0;
-  let serverOffset=0,cameraProgress=0,frame,fishSamples=[],catchOrigin=null,displayedWave=null,displayedGlow=.65,displayedSwim=null,displayedLoad=0,displayedRodLoad=0,displayedFishVisibility=0,escapeStartVisibility=0,hookImpactAt=-100;
+  let serverOffset=0,cameraProgress=0,frame,catchOrigin=null,displayedWave=null,displayedGlow=.65,displayedSwim=null,displayedLoad=0,displayedRodLoad=0,displayedFishVisibility=0,escapeStartVisibility=0,hookImpactAt=-100;
   let dockerRodSurgeAt=-100,wasDockerSurging=false,displayedDockerSurgeLoad=0;
   const cameraLookTarget=new THREE.Vector3(0,-3.8,-35);
   const cameraLookDesired=new THREE.Vector3();
@@ -459,21 +463,12 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     return result;
   };
   const renderSnapshot=()=>{
-    // Interpolate presentation clocks alongside the authoritative fish pose so
-    // K8s camera, rod, splash, and wake cues cannot lead the displayed body.
-    if(!fishSamples.length)return state;
-    const targetServerTime=Date.now()+serverOffset-OCEAN_RENDER_DELAY_MS;
-    while(fishSamples.length>2&&fishSamples[1].serverTime<=targetServerTime)fishSamples.shift();
-    if(fishSamples.length===1)return fishSamples[0];
-    const first=fishSamples[0],second=fishSamples[1];
-    if(targetServerTime<=first.serverTime)return first;
-    if(targetServerTime>=second.serverTime)return second;
-    const amount=(targetServerTime-first.serverTime)/Math.max(1,second.serverTime-first.serverTime);
-    return{
-      ...interpolateK8sPresentationSample(first,second,amount),
-      serverTime:targetServerTime,
+    // The HUD reads this same timeline, so distance and tension cannot lead
+    // the interpolated fish pose by a network snapshot.
+    return presentationTimeline.sampleWith((first,second,amount)=>({
+      ...interpolateOceanPresentationState(first,second,amount),
       fish:interpolateFish(first.fish,second.fish,amount),
-    };
+    }));
   };
   const addRipple=(x,z,power=1)=>{ripples[rippleIndex++%6].set(x,z,time,power);};
   const launchSplash=(x,z,power=1)=>{
@@ -481,6 +476,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   };
   const setState=(next,serverNow)=>{
     if(Number.isFinite(serverNow)) serverOffset=serverNow-Date.now();
+    if(ownsPresentationTimeline)presentationTimeline.push(next,Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset);
     tackleStore.update(next,Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset);
     const previousPhase=state.phase,changed=next.revision!==state.revision;
     if(next.phase==='fighting'&&previousPhase!=='fighting')k8sFirstBreachPlayed=false;
@@ -491,16 +487,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         ? displayedFishVisibility
         : fishVisibilityTarget('biting',1,next.fishId);
     }
-    if(changed){fishSamples=[];schoolAmount=0;schoolWasVisible=false;schoolCatchOrigins=null;clusterEchoAmount=0;previousK8sSurfaceGap=null;lastK8sBreachAt=-100;k8sSurfaceExposed=false;resetK8sWakeHistory();for(const motion of schoolMotion)motion.initialized=false;for(const motion of clusterEchoMotion)motion.initialized=false;}
-    if(next.fish){
-      // Tackle load is sampled/interpolated at the same time as the fish pose.
-      fishSamples.push({
-        serverTime:Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset,
-        fish:copyFish(next.fish,next.tension),phase:next.phase,mode:next.mode,
-        fightTime:next.fightTime??0,distance:next.distance??0,
-      });
-      if(fishSamples.length>16)fishSamples.shift();
-    }
+    if(changed){schoolAmount=0;schoolWasVisible=false;schoolCatchOrigins=null;clusterEchoAmount=0;previousK8sSurfaceGap=null;lastK8sBreachAt=-100;k8sSurfaceExposed=false;resetK8sWakeHistory();for(const motion of schoolMotion)motion.initialized=false;for(const motion of clusterEchoMotion)motion.initialized=false;}
     state={...next};
     target.set(next.aim*7,0,-castDistanceForStrength(next.strength));
     if(['fighting','caught'].includes(next.phase)&&next.fish)target.set(next.fish.position.x,0,next.fish.position.z);
