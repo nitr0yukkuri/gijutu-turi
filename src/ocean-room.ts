@@ -88,8 +88,6 @@ export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eve
   };
   app.use('/api/ocean-sessions',bodyLimit({maxSize:1024}));
   app.post('/api/ocean-sessions',async c=>{
-    const contentType=(c.req.header('content-type')??'').split(';',1)[0]?.trim().toLowerCase();
-    if(contentType!=='application/json')return c.json({error:'unsupported_media_type'},415);
     const source=c.req.header('x-forwarded-for')?.split(',')[0]?.trim()||'unknown';
     const attemptRetryAfter=sessionAttemptLimiter.consume([
       {key:'global',limit:1200,windowMs:sessionCreationWindowMs},
