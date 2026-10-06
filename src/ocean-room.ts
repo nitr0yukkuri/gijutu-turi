@@ -49,9 +49,17 @@ export const isAllowedWebSocketOrigin=(origin:string|undefined,requestHost:strin
   try{return new URL(origin).host===requestHost||configured.has("*")||configured.has(origin);}catch{return false;}
 };
 
+export function removeQueuedCommandsForClient<TClient, TAction>(
+  commands: readonly { client: TClient; action: TAction }[],
+  client: TClient,
+): { client: TClient; action: TAction }[] {
+  return commands.filter(command => command.client !== client);
+}
+
 export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eventKey:string,fishId:FishSpeciesId)=>void|Promise<void>}={}){
   type Client={role:'display'|'controller';reelUntil:number;lastRodPumpAt:number;windowAt:number;messages:number};
-  type Room={game:OceanFishingGame;clients:Map<WebSocket,Client>;commands:OceanAction[];lastActive:number;playerId:string;rodStroke:number;catchSave:CatchSaveCoordinator;catchEvent?:{eventKey:string;fishId:FishSpeciesId}};
+  type QueuedCommand={client:WebSocket;action:OceanAction};
+  type Room={game:OceanFishingGame;clients:Map<WebSocket,Client>;commands:QueuedCommand[];lastActive:number;playerId:string;rodStroke:number;catchSave:CatchSaveCoordinator;catchEvent?:{eventKey:string;fishId:FishSpeciesId}};
   const rooms=new Map<string,Room>();
   const sessionAttemptLimiter=new RequestRateLimiter();
   const sessionCreationLimiter=new RequestRateLimiter();
@@ -80,6 +88,8 @@ export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eve
   };
   app.use('/api/ocean-sessions',bodyLimit({maxSize:1024}));
   app.post('/api/ocean-sessions',async c=>{
+    const contentType=(c.req.header('content-type')??'').split(';',1)[0]?.trim().toLowerCase();
+    if(contentType!=='application/json')return c.json({error:'unsupported_media_type'},415);
     const source=c.req.header('x-forwarded-for')?.split(',')[0]?.trim()||'unknown';
     const attemptRetryAfter=sessionAttemptLimiter.consume([
       {key:'global',limit:1200,windowMs:sessionCreationWindowMs},
@@ -145,9 +155,9 @@ export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eve
         // One-shot commands are consumed by the fixed simulation tick. This
         // keeps input ordering deterministic and prevents websocket timing
         // from changing the game clock.
-        if(room.commands.length<16)room.commands.push(input);
+        if(room.commands.length<16)room.commands.push({client,action:input});
       });
-      client.on('close',()=>{room.clients.delete(client);room.commands.length=0;room.lastActive=Date.now();broadcast(room);});
+      client.on('close',()=>{room.clients.delete(client);room.commands=removeQueuedCommandsForClient(room.commands,client);room.lastActive=Date.now();broadcast(room);});
     });return true;
   };
   // Fixed 20Hz simulation, hold leases expire even on a lost release packet.
@@ -159,8 +169,9 @@ export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eve
       const catchPersistenceLocked=room.game.state.phase==='caught'&&!canContinueAfterCatchSave(room.catchSave.status);
       if(count(room,'display')&&!catchPersistenceLocked){
         const commands=room.commands.splice(0);
-        for(const command of commands){
-          if(room.game.action(command,now))for(const other of room.clients.values())other.reelUntil=0;
+        for(const queued of commands){
+          if(!room.clients.has(queued.client))continue;
+          if(room.game.action(queued.action,now))for(const other of room.clients.values())other.reelUntil=0;
         }
         const reeling=[...room.clients.values()].some(client=>client.reelUntil>now);
         room.game.step(.05,reeling,now);
