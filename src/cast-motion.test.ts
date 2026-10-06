@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {CastMotionGesture,ReelMotionGesture,castStrengthFromMotion,isCastMotionReleased,isCastMotionStart,isReelMotionStart,isReelMotionStop,reelAngularSignal} from './client/cast-motion.js';
+import {CastMotionGesture,ReelMotionGesture,castStrengthFromMotion,isCastMotionReleased,isCastMotionStart,isReelMotionStart,isReelMotionStop,isScreenReelBlockingMotion,reelAngularSignal} from './client/cast-motion.js';
 
 test("cast power increases with either the phone flick's acceleration or angular speed",()=>{
   assert.ok(castStrengthFromMotion(20,0)>castStrengthFromMotion(12,0));
@@ -64,4 +64,10 @@ test('a brief wrist rotation does not start reeling and both transitions need st
   assert.equal(detector.update(40,600),null);
   assert.equal(detector.update(40,650),null);
   assert.equal(detector.update(40,700),"stop");
+});
+
+test('motion can release its own reel while screen-held reeling stays protected',()=>{
+  assert.equal(isScreenReelBlockingMotion(false, false), false);
+  assert.equal(isScreenReelBlockingMotion(true, false), true);
+  assert.equal(isScreenReelBlockingMotion(true, true), false);
 });
