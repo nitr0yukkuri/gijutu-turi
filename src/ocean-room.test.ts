@@ -24,3 +24,24 @@ test("disconnecting one room client preserves commands queued by the others", ()
   assert.deepEqual(removeQueuedCommandsForClient(commands, phone), [commands[0], commands[2]]);
 });
 
+test("session creation rejects simple cross-origin form content types", async () => {
+  const app = new Hono();
+  const rooms = createOceanRooms(app);
+  try {
+    const response = await app.request("/api/ocean-sessions", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ playerId: "player_abcdefghijkl" }),
+    });
+    assert.equal(response.status, 415);
+    assert.deepEqual(await response.json(), { error: "unsupported_media_type" });
+    const jsonResponse = await app.request("/api/ocean-sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playerId: "player_abcdefghijkl" }),
+    });
+    assert.equal(jsonResponse.status, 201);
+  } finally {
+    rooms.close();
+  }
+});
