@@ -11,7 +11,7 @@ for(const path of ['/','/gofish','/dockerwhale','/docker','/cssfish','/rustfish'
 }
 for(const path of ['/.env','/.git/config','/src/server.ts','/package.json'])assert.equal((await fetch(base+path)).status,404);
 assert.equal((await fetch(base+'/api/sessions',{method:'POST'})).status,404,'legacy session API must not remain public');
-const invalidSession=await fetch(base+'/api/ocean-sessions',{method:'POST'});
+const invalidSession=await fetch(base+'/api/ocean-sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
 assert.equal(invalidSession.status,400,'rooms must be associated with a valid player ID');
 const invalidFishSession=await fetch(base+'/api/ocean-sessions',{
   method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:'player_abcdefghijkl',fishId:'unknown-fish'}),
