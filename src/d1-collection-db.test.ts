@@ -17,10 +17,17 @@ const config: D1CollectionConfig = {
   apiToken: "test-secret",
 };
 
-function createFakeD1() {
+function createFakeD1(options: { seedReferencedLegacyPlaceholder?: boolean } = {}) {
   const species = new Map<string, SpeciesRow>();
   const events = new Set<string>();
   const collections = new Map<string, { catches: number; first: string; last: string }>();
+  const legacyCatchEvents = new Map<string, string>();
+  if (options.seedReferencedLegacyPlaceholder) {
+    species.set("unknown-003", { id: "unknown-003", number: 3, catalog_status: "preview" });
+    species.set("unknown-004", { id: "unknown-004", number: 4, catalog_status: "preview" });
+    collections.set("player_abcdefghijkl:unknown-003", { catches: 2, first: "legacy-first", last: "legacy-last" });
+    legacyCatchEvents.set("legacy-event", "unknown-003");
+  }
   const requests: Array<{ url: string; init: RequestInit; body: { batch?: Statement[]; sql?: string; params?: string[] } }> = [];
 
   const fetcher: typeof fetch = async (input, init = {}) => {
@@ -41,8 +48,22 @@ function createFakeD1() {
         // DDL is idempotent; the fake schema is represented by these maps.
       } else if (sql === "SELECT 1 AS ready") {
         rows = [{ ready: 1 }];
+      } else if (sql.startsWith("UPDATE fish_species")) {
+        const placeholder = [...species.values()].find(row => row.id.startsWith("unknown-") && row.number === Number(params[0]) && row.catalog_status === "preview");
+        const referenced = placeholder && (
+          [...collections.keys()].some(key => key.endsWith(`:${placeholder.id}`))
+          || [...legacyCatchEvents.values()].includes(placeholder.id)
+        );
+        if (placeholder && referenced) {
+          const minimum = Math.min(...[...species.values()].map(row => row.number));
+          placeholder.number = minimum > 0 ? -1 : minimum - 1;
+          changes = 1;
+        }
       } else if (sql.startsWith("DELETE FROM fish_species")) {
-        // The fixture starts without legacy placeholders.
+        for (const [id, row] of species) {
+          const referenced = [...collections.keys()].some(key => key.endsWith(`:${id}`)) || [...legacyCatchEvents.values()].includes(id);
+          if (id.startsWith("unknown-") && row.number === Number(params[0]) && row.catalog_status === "preview" && !referenced) species.delete(id);
+        }
       } else if (sql.startsWith("INSERT INTO fish_species")) {
         const [id, number, name, classification, tagline, description, habitat, rarity, modelKey, catalogStatus] = params;
         species.set(String(id), {
@@ -109,7 +130,7 @@ function createFakeD1() {
     });
   };
 
-  return { fetcher, requests, species, events, collections };
+  return { fetcher, requests, species, events, collections, legacyCatchEvents };
 }
 
 test("D1 seeds the catalog and records each catch event exactly once", async () => {
@@ -156,4 +177,18 @@ test("D1 does not silently fall back when the API rejects its request", async ()
     )),
     { message: "d1_query_failed" },
   );
+});
+
+test("D1 migration preserves collection and event references to numbered legacy placeholders", async () => {
+  const fake = createFakeD1({ seedReferencedLegacyPlaceholder: true });
+  const store = await D1CollectionStore.connect(config, fake.fetcher);
+  try {
+    assert.equal(fake.species.get("css-001")?.number, 3);
+    assert.ok((fake.species.get("unknown-003")?.number ?? 0) < 0);
+    assert.equal(fake.species.has("unknown-004"), false);
+    assert.equal(fake.collections.get("player_abcdefghijkl:unknown-003")?.catches, 2);
+    assert.equal(fake.legacyCatchEvents.get("legacy-event"), "unknown-003");
+  } finally {
+    await store.close();
+  }
 });

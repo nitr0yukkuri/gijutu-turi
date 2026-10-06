@@ -78,7 +78,17 @@ export class PostgresCollectionStore implements CollectionRepository {
     try {
       await client.query("BEGIN");
       for (const entry of FISH_SPECIES) {
-        // Remove only unused legacy placeholders that reserve a real fish's number.
+        // Preserve referenced legacy rows at a private number before promoting
+        // a real fish into the slot, keeping collection/event foreign keys valid.
+        await client.query(`
+          UPDATE fish_species
+          SET number = (SELECT CASE WHEN COALESCE(MIN(number), 0) > 0 THEN -1 ELSE MIN(number) - 1 END FROM fish_species)
+          WHERE id LIKE 'unknown-%'
+            AND number = $1
+            AND catalog_status = 'preview'
+            AND (EXISTS (SELECT 1 FROM player_collections WHERE fish_id = fish_species.id)
+              OR EXISTS (SELECT 1 FROM collection_catch_events WHERE fish_id = fish_species.id))
+        `, [entry.number]);
         await client.query(`
           DELETE FROM fish_species
           WHERE id LIKE 'unknown-%'
