@@ -34,6 +34,7 @@ export class CollectionStore implements CollectionRepository {
     mkdirSync(dirname(filePath), { recursive: true });
     this.db = new DatabaseSync(filePath);
     this.db.exec(`
+      PRAGMA foreign_keys = ON;
       PRAGMA journal_mode = WAL;
       CREATE TABLE IF NOT EXISTS fish_species (
         id TEXT PRIMARY KEY,
@@ -77,6 +78,15 @@ export class CollectionStore implements CollectionRepository {
         model_key=excluded.model_key,
         catalog_status=excluded.catalog_status
     `);
+    const preserveLegacyPlaceholder = this.db.prepare(`
+      UPDATE fish_species
+      SET number = (SELECT CASE WHEN COALESCE(MIN(number), 0) > 0 THEN -1 ELSE MIN(number) - 1 END FROM fish_species)
+      WHERE id LIKE 'unknown-%'
+        AND number = ?
+        AND catalog_status = 'preview'
+        AND (EXISTS (SELECT 1 FROM player_collections WHERE fish_id = fish_species.id)
+          OR EXISTS (SELECT 1 FROM collection_catch_events WHERE fish_id = fish_species.id))
+    `);
     const releaseLegacyPlaceholder = this.db.prepare(`
       DELETE FROM fish_species
       WHERE id LIKE 'unknown-%'
@@ -87,8 +97,9 @@ export class CollectionStore implements CollectionRepository {
     `);
     for (const entry of FISH_SPECIES) {
       // Older databases reserved numbered preview slots as unknown-003, etc.
-      // Release only an unreferenced placeholder before promoting a real species
-      // into that slot; collection history remains untouched.
+      // Keep referenced placeholders at a private negative number so collection
+      // and catch-event foreign keys survive while the real species takes the slot.
+      preserveLegacyPlaceholder.run(entry.number);
       releaseLegacyPlaceholder.run(entry.number);
       insert.run(
         entry.id,

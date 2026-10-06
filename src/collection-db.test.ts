@@ -120,3 +120,64 @@ test("collection store upgrades an unused legacy preview slot for a new species"
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("collection store preserves references to a legacy placeholder when promoting its number", () => {
+  const directory = mkdtempSync(join(tmpdir(), "gijutu-collection-"));
+  const path = join(directory, "collection.sqlite");
+  const legacy = new DatabaseSync(path);
+  legacy.exec(`
+    PRAGMA foreign_keys = ON;
+    CREATE TABLE fish_species (
+      id TEXT PRIMARY KEY,
+      number INTEGER NOT NULL UNIQUE,
+      name TEXT,
+      classification TEXT,
+      tagline TEXT,
+      description TEXT,
+      habitat TEXT,
+      rarity TEXT,
+      model_key TEXT,
+      catalog_status TEXT NOT NULL
+    );
+    CREATE TABLE player_collections (
+      player_id TEXT NOT NULL,
+      fish_id TEXT NOT NULL REFERENCES fish_species(id),
+      catches INTEGER NOT NULL,
+      first_caught_at TEXT NOT NULL,
+      last_caught_at TEXT NOT NULL,
+      PRIMARY KEY (player_id, fish_id)
+    );
+    CREATE TABLE collection_catch_events (
+      event_key TEXT PRIMARY KEY,
+      player_id TEXT NOT NULL,
+      fish_id TEXT NOT NULL REFERENCES fish_species(id),
+      caught_at TEXT NOT NULL
+    );
+    INSERT INTO fish_species (id, number, catalog_status) VALUES ('unknown-003', 3, 'preview');
+    INSERT INTO player_collections VALUES ('player_abcdefghijkl', 'unknown-003', 2, 'first', 'last');
+    INSERT INTO collection_catch_events VALUES ('legacy-event', 'player_abcdefghijkl', 'unknown-003', 'last');
+  `);
+  legacy.close();
+
+  try {
+    const store = new CollectionStore(path);
+    store.close();
+    const migrated = new DatabaseSync(path);
+    try {
+      const placeholder = migrated.prepare("SELECT number FROM fish_species WHERE id = 'unknown-003'").get() as { number: number };
+      const css = migrated.prepare("SELECT number FROM fish_species WHERE id = 'css-001'").get() as { number: number };
+      const collection = migrated.prepare("SELECT fish_id, catches FROM player_collections WHERE player_id = ?").get("player_abcdefghijkl") as { fish_id: string; catches: number };
+      const event = migrated.prepare("SELECT fish_id FROM collection_catch_events WHERE event_key = 'legacy-event'").get() as { fish_id: string };
+      assert.ok(placeholder.number < 0);
+      assert.equal(css.number, 3);
+      assert.equal(collection.fish_id, "unknown-003");
+      assert.equal(collection.catches, 2);
+      assert.equal(event.fish_id, "unknown-003");
+      assert.equal(migrated.prepare("PRAGMA foreign_key_check").all().length, 0);
+    } finally {
+      migrated.close();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

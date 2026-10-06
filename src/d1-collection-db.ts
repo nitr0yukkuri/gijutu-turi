@@ -174,21 +174,31 @@ export class D1CollectionStore implements CollectionRepository {
   }
 
   private async initialize(): Promise<void> {
-    const placeholderNumbers = FISH_SPECIES.map(() => "?").join(", ");
     const statements: D1Statement[] = [
       ...schemaStatements,
-      {
-        sql: `DELETE FROM fish_species
-          WHERE id LIKE 'unknown-%'
-            AND number IN (${placeholderNumbers})
-            AND catalog_status = 'preview'
-            AND NOT EXISTS (SELECT 1 FROM player_collections WHERE fish_id = fish_species.id)
-            AND NOT EXISTS (SELECT 1 FROM collection_catch_events WHERE fish_id = fish_species.id)`,
-        params: normalizeParams(FISH_SPECIES.map(entry => entry.number)),
-      },
-      ...FISH_SPECIES.map(entry => ({
-        sql: upsertSpeciesSql,
-        params: normalizeParams([
+      ...FISH_SPECIES.flatMap(entry => ([
+        {
+          sql: `UPDATE fish_species
+            SET number = (SELECT CASE WHEN COALESCE(MIN(number), 0) > 0 THEN -1 ELSE MIN(number) - 1 END FROM fish_species)
+            WHERE id LIKE 'unknown-%'
+              AND number = ?
+              AND catalog_status = 'preview'
+              AND (EXISTS (SELECT 1 FROM player_collections WHERE fish_id = fish_species.id)
+                OR EXISTS (SELECT 1 FROM collection_catch_events WHERE fish_id = fish_species.id))`,
+          params: normalizeParams([entry.number]),
+        },
+        {
+          sql: `DELETE FROM fish_species
+            WHERE id LIKE 'unknown-%'
+              AND number = ?
+              AND catalog_status = 'preview'
+              AND NOT EXISTS (SELECT 1 FROM player_collections WHERE fish_id = fish_species.id)
+              AND NOT EXISTS (SELECT 1 FROM collection_catch_events WHERE fish_id = fish_species.id)`,
+          params: normalizeParams([entry.number]),
+        },
+        {
+          sql: upsertSpeciesSql,
+          params: normalizeParams([
           entry.id,
           entry.number,
           entry.name,
@@ -199,8 +209,9 @@ export class D1CollectionStore implements CollectionRepository {
           entry.rarity,
           entry.modelKey,
           entry.catalogStatus,
-        ]),
-      })),
+          ]),
+        },
+      ])),
     ];
     await this.execute(statements);
   }
