@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Hono } from "hono";
-import { createOceanRooms, isAllowedWebSocketOrigin, removeQueuedCommandsForClient } from "./ocean-room.js";
+import { canQueueRoomAction, createOceanRooms, isAllowedWebSocketOrigin, removeQueuedCommandsForClient } from "./ocean-room.js";
+
+test("a non-controlling display can reset only a terminal result while a display is connected", () => {
+  assert.equal(canQueueRoomAction({ action: "reset" }, "caught", false, true), true);
+  assert.equal(canQueueRoomAction({ action: "reset" }, "escaped", false, true), true);
+  assert.equal(canQueueRoomAction({ action: "reset" }, "fighting", false, true), false);
+  assert.equal(canQueueRoomAction({ action: "hook" }, "caught", false, true), false);
+  assert.equal(canQueueRoomAction({ action: "reset" }, "caught", false, false), false);
+});
 
 test("WebSocket origins allow same-host, explicitly configured, and deliberate wildcard cases", () => {
   const configured = new Set(["https://game.example"]);
