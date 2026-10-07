@@ -56,14 +56,6 @@ const publicAssets = new Map<string, string[]>([
   ["/ocean-app.js", ["ocean-app.js", "text/javascript"]],
   ["/collection-preview.js", ["src/rendering/collection-preview.ts", "text/javascript"]],
   ["/ocean-scene.js", ["src/rendering/ocean-scene.ts", "text/javascript"]],
-  ["/go-fish.html", ["go-fish.html", "text/html; charset=utf-8"]],
-  ["/go-fish.js", ["src/rendering/go-fish.ts", "text/javascript"]],
-  ["/go-fish-viewer.js", ["src/viewers/go-fish-viewer.ts", "text/javascript"]],
-  ["/go-fish-viewer.css", ["go-fish-viewer.css", "text/css"]],
-  ["/docker-whale.html", ["docker-whale.html", "text/html; charset=utf-8"]],
-  ["/docker-whale.js", ["src/rendering/docker-whale.ts", "text/javascript"]],
-  ["/docker-whale-viewer.js", ["src/viewers/docker-whale-viewer.ts", "text/javascript"]],
-  ["/docker-whale-viewer.css", ["docker-whale-viewer.css", "text/css"]],
   ["/vendor/three.module.js", ["vendor/three.module.js", "text/javascript"]],
   ["/vendor/three.core.js", ["vendor/three.core.js", "text/javascript"]],
   ["/license.txt", ["license.txt", "text/plain; charset=utf-8"]],
@@ -78,7 +70,7 @@ const publicAssets = new Map<string, string[]>([
 ]);
 for(const route of LEGACY_FISH_PATH_ALIASES)publicAssets.set(route,["index.html","text/html; charset=utf-8"]);
 const fishAddons = [
-  "controls/OrbitControls.js", "environments/RoomEnvironment.js",
+  "environments/RoomEnvironment.js",
   "postprocessing/EffectComposer.js", "postprocessing/RenderPass.js",
   "postprocessing/UnrealBloomPass.js", "postprocessing/OutputPass.js",
   "postprocessing/ShaderPass.js", "postprocessing/Pass.js", "postprocessing/MaskPass.js",
@@ -93,8 +85,8 @@ for (const [route, asset] of publicAssets) {
     try {
       const preferred = new Set([
         "/", "/index.html", ...CANONICAL_FISH_ROUTE_PATHS, FISHING_ROUTE_PATHS.docker,
-        ...LEGACY_FISH_PATH_ALIASES, "/ocean.css", "/ocean-app.js", "/go-fish.html",
-        "/docker-whale.html", "/service-worker.js", "/precache-manifest.json", "/manifest.webmanifest", "/favicon.svg",
+        ...LEGACY_FISH_PATH_ALIASES, "/ocean.css", "/ocean-app.js",
+        "/service-worker.js", "/precache-manifest.json", "/manifest.webmanifest", "/favicon.svg",
         "/assets/gijutu-turi-favicon-generated.png", "/assets/gijutu-turi-og.png",
         "/license.txt", "/third-party-notices.txt",
       ]);

@@ -91,8 +91,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(process.cwd(), "index.html"),
-        goFish: resolve(process.cwd(), "go-fish.html"),
-        dockerWhale: resolve(process.cwd(), "docker-whale.html"),
         serviceWorker: resolve(process.cwd(), "src/service-worker.ts"),
       },
       output: {

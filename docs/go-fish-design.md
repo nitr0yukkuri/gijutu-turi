@@ -14,12 +14,12 @@
 | --- | --- | --- |
 | [argonautcode/animal-proc-anim](https://github.com/argonautcode/animal-proc-anim) / [Fish.pde](https://github.com/argonautcode/animal-proc-anim/blob/main/Fish.pde)・[Chain.pde](https://github.com/argonautcode/animal-proc-anim/blob/main/Chain.pde) | 背骨に沿う体幅、体とヒレの位置関係、関節の連動 | 胴体断面のプロファイルと、体・ヒレ・光点に共通する連続変形。2Dチェーンの移植ではなく3D頂点変形として新規実装 |
 | [WebGLSamples/WebGLSamples.github.io](https://github.com/WebGLSamples/WebGLSamples.github.io/tree/master/aquarium) / aquarium.html | 頂点位置に応じた泳ぎの変形、魚の反射・法線表現 | 頭を安定させ、後方ほど強い横振り。材質の反射と発光を分離し、変形に合わせ法線も補正 |
-| [mrdoob/three.js](https://github.com/mrdoob/three.js) / webgl_gpgpu_birds.html | separation/alignment/cohesionと個体ごとの状態 | 複数個体が同じタイミングで揺れないよう位相を分離。ただし今回の7匹表示は造形確認用の分岐演出で、Boidsの実装ではない |
-| [unclemattmakes/polyfish](https://github.com/unclemattmakes/polyfish) README | モデルビューアと生態シミュレーションの分離、頂点泳動 | ゲームの海を変更せず、造形確認用の独立ビューアを用意。モデルはシーンから分離した再利用APIにする |
+| [mrdoob/three.js](https://github.com/mrdoob/three.js) / webgl_gpgpu_birds.html | separation/alignment/cohesionと個体ごとの状態 | 複数個体を表示する場合に泳ぎの位相を分離。Boidsによる群れ制御は実装していない |
+| [unclemattmakes/polyfish](https://github.com/unclemattmakes/polyfish) README | モデルと生態シミュレーションの分離、頂点泳動 | ゲームの海を変更せず、モデルをシーンから分離した再利用APIにする |
 
 ## 使用したライブラリ
 
-Three.js 0.186.0（既存依存、MIT）。インストール済みの配布物からOrbitControls、RoomEnvironment、EffectComposer、RenderPass、UnrealBloomPass、OutputPassとその依存ファイルをvendor/addonsへコピー。
+Three.js 0.186.0（既存依存、MIT）。インストール済みの配布物からRoomEnvironment、EffectComposer、RenderPass、UnrealBloomPass、OutputPassとその依存ファイルをvendor/addonsへコピーし、ゲーム内の魚図鑑プレビューで使用。
 ライセンスは `vendor/THREE-LICENSE.txt` に保持。別のモデル配布サイトの素材は利用していない。
 
 ## 実装
@@ -28,12 +28,10 @@ Three.js 0.186.0（既存依存、MIT）。インストール済みの配布物�
 - 独自の胴体断面メッシュ、8枚のヒレ、両眼、口・鰓、表面に沿う光の経路、4本の尾の光糸。
 - ノードや細部は材質単位にまとめ、1匹12メッシュに抑制。群れは低詳細モデルを使用。
 - ヒレの反射計算は内積の丸め誤差とゼロ長法線を保護。
-- `go-fish.html`: 開発用のモデル確認。回転・拡大・角度切り替え・停止・1→7匹の分岐。
 - `fish-3d.js`: 旧試作の表示も新しいモデルを利用するアダプターへ更新。
 
 ## 境界
 
-最初の海は海のまま。モデル確認ページは海のメニューには追加しない。
-捕獲時に全身と「Go魚」を初めて明確に見せるゲームフローへの接続は別工程。
+最初の海は海のまま。Go魚モデルは釣りシーンと捕獲後の魚図鑑で共用する。
 魚の質量・テンション・捕獲判定やスマホ操作はこの造形変更では変えない。
 参照画像の完全再現やGLBによる手作業モデルと同等の完成度を主張するものではない。

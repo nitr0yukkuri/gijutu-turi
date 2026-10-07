@@ -33,8 +33,8 @@ for(const detail of ['high','low']){
 }
 if(!process.argv.includes('--geometry-only')){
   const base=process.env.OCEAN_URL??'http://127.0.0.1:8787';
-  for(const path of ['/docker-whale.html','/docker-whale.js','/docker-whale-viewer.js','/docker-whale-viewer.css']){
+  for(const path of ['/dockerwhale','/ocean-app.js','/ocean.css']){
     const response=await fetch(base+path);assert.equal(response.status,200,path);assert.ok((await response.text()).length>100);
   }
-  console.log('PASS: Docker whale preview assets served.');
+  console.log('PASS: Dockerクジラのゲーム画面を配信。');
 }
