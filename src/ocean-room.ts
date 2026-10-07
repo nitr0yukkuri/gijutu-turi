@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { bodyLimit } from 'hono/body-limit';
 import { isPlayerId } from './collection-contract.js';
 import { RequestRateLimiter } from './request-rate-limit.js';
-import { OceanFishingGame, type OceanAction } from './ocean-game.js';
+import { OceanFishingGame, type OceanAction, type OceanPhase } from './ocean-game.js';
 import { isFishSpeciesId, randomActiveFishSpeciesId, type FishSpeciesId } from './fish-species.js';
 import { canContinueAfterCatchSave, type OceanMessage } from './ocean-contract.js';
 import { CatchSaveCoordinator } from './catch-save.js';
@@ -54,6 +54,11 @@ export function removeQueuedCommandsForClient<TClient, TAction>(
   client: TClient,
 ): { client: TClient; action: TAction }[] {
   return commands.filter(command => command.client !== client);
+}
+
+export function canQueueRoomAction(action: OceanAction, phase: OceanPhase, canControl: boolean, hasDisplay: boolean): boolean {
+  const resultReset = action.action === 'reset' && (phase === 'caught' || phase === 'escaped');
+  return hasDisplay && (canControl || resultReset);
 }
 
 export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eventKey:string,fishId:FishSpeciesId)=>void|Promise<void>}={}){
@@ -151,7 +156,7 @@ export function createOceanRooms(app:Hono,options:{onCatch?:(playerId:string,eve
           entry.reelUntil=input.held&&room.game.state.phase==='fighting'?now+400:0;
           return;
         }
-        if(!canControl(room,entry)||!count(room,'display'))return;
+        if(!canQueueRoomAction(input,room.game.state.phase,canControl(room,entry),count(room,'display')>0))return;
         // One-shot commands are consumed by the fixed simulation tick. This
         // keeps input ordering deterministic and prevents websocket timing
         // from changing the game clock.
