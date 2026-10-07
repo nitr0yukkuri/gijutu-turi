@@ -30,8 +30,8 @@ for (const detail of ['high', 'low']) {
   fish.dispose();fish.dispose();assert.equal(fish.group.children.length,0);
 }
 const base=process.env.OCEAN_URL??'http://127.0.0.1:8787';
-for(const path of ['/go-fish.html','/go-fish.js','/go-fish-viewer.js','/go-fish-viewer.css','/vendor/addons/controls/OrbitControls.js','/vendor/addons/postprocessing/EffectComposer.js','/vendor/addons/postprocessing/UnrealBloomPass.js','/vendor/addons/postprocessing/OutputPass.js']){
+for(const path of ['/gofish','/ocean-app.js','/ocean.css','/vendor/addons/postprocessing/EffectComposer.js','/vendor/addons/postprocessing/UnrealBloomPass.js','/vendor/addons/postprocessing/OutputPass.js']){
   const response=await fetch(base+path);assert.equal(response.status,200,path);
   assert.ok((await response.text()).length>100);
 }
-console.log('PASS: viewer assets served locally. Browser visual verification is separate.');
+console.log('PASS: Go魚のゲーム画面と図鑑用アセットを配信。');

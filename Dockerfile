@@ -25,9 +25,6 @@ COPY --from=build /app/assets ./assets
 COPY --from=build /app/vendor ./vendor
 COPY --from=build /app/src ./src
 COPY --from=build /app/manifest.webmanifest ./manifest.webmanifest
-COPY --from=build /app/go-fish-viewer.css ./go-fish-viewer.css
-COPY --from=build /app/docker-whale-viewer.css ./docker-whale-viewer.css
-
 EXPOSE 8080
 
 CMD ["node", "dist/index.js"]
