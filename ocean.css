@@ -124,18 +124,8 @@ body:has(#collection-dialog[open]) #sea #escape-ui {
 .distance-meter-reading strong{font-size:21px;font-weight:600}
 .distance-meter-reading small{color:#c2d4d8;font-size:11px;font-weight:500}
 .phone-distance{margin:0 0 10px}
-.fight-meters{display:flex;align-items:center;gap:12px;width:100%;margin:17px 0 12px}
-.fight-meters .fight-distance-meter{position:static;right:auto;bottom:auto;left:auto;z-index:auto;flex:0 0 auto;align-items:center;transform:none;padding:5px 8px}
-.fight-distance-meter .distance-meter-label{font-size:8px}
-.fight-distance-meter .distance-meter-reading strong{font-size:20px}
-.fight-meters .tension-track{flex:1;min-width:0;margin:0}
-.distance-meter[data-caught="true"],.phone-distance[data-caught="true"]{animation:distance-catch-response .32s cubic-bezier(.2,.8,.25,1) both}
-@keyframes distance-catch-response{0%{scale:.92;opacity:.7}62%{scale:1.055;border-color:#d8eef080}100%{scale:1;opacity:1}}
-@keyframes phone-distance-catch-out{to{opacity:0;scale:.98}}
 @media(max-width:600px){.distance-meter{right:22px;bottom:max(82px,calc(env(safe-area-inset-bottom) + 72px));font-size:14px}}
-#phone-tension[data-caught="true"]{margin:0 0 14px}
-#phone-tension[data-caught="true"] .phone-distance{animation:distance-catch-response .32s cubic-bezier(.2,.8,.25,1) both,phone-distance-catch-out .18s 1s forwards}
-@media(prefers-reduced-motion:reduce){.distance-meter[data-caught="true"],.phone-distance[data-caught="true"]{animation:none!important}}
+@media(max-width:560px){.fight-ui .tension-track{width:calc(100% - 92px)}}
 
 .fight-button-icon{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
 
