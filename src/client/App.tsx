@@ -136,8 +136,8 @@ function CollectionSilhouette({ silhouetteKey, label }: { silhouetteKey: FishSil
   );
 }
 
-function DistanceReadout({ id, className, label, value, caught, hidden = false, phase }: { id: string; className: string; label: string; value: string; caught: boolean; hidden?: boolean; phase?: string }) {
-  return <output id={id} className={className} data-caught={String(caught)} data-phase={phase} hidden={hidden} aria-label={`${label} ${value}メートル`}>
+function DistanceReadout({ id, className, label, value, phase }: { id: string; className: string; label: string; value: string; phase?: string }) {
+  return <output id={id} className={className} data-phase={phase} aria-label={`${label} ${value}メートル`}>
     <span className="distance-meter-label">{label}</span>
     <span className="distance-meter-reading"><strong>{value}</strong><small>m</small></span>
   </output>;
@@ -492,7 +492,6 @@ export function App() {
   const hudState = ["casting", "waiting", "biting", "fighting"].includes(state.phase) ? presentationState : state;
   const distancePhase = ["casting", "waiting", "biting", "fighting", "caught"].includes(state.phase) ? state.phase : hudState.phase;
   const distanceReadout = distanceReadoutFor(distancePhase, state.phase === "caught" ? 0 : hudState.distance);
-  const distanceVisible = distanceReadout.visible || ["casting", "waiting", "biting", "fighting", "caught"].includes(state.phase);
   const tension = Math.round((state.phase === "caught" ? state.tension : hudState.tension || 0) * 100);
   const tensionColor = tension > 80 ? "#ef9c80" : tension < 12 ? "#a9bfcb" : "#a6e4e7";
   const k8sLunge = k8sLungeForSnapshot(hudState, 0);
@@ -552,14 +551,11 @@ export function App() {
           </div>
         </header>
         <div className={`cast-feedback${feedback.faded ? " is-faded" : ""}`} aria-live="polite" aria-atomic="true"><span id="cast-status">{feedback.text}</span><small id="cast-detail">{feedback.detail}</small></div>
-        {!fighting && !biting && <DistanceReadout id="distance-meter" className="distance-meter" hidden={!distanceVisible} label={distanceReadout.label} value={distanceReadout.value} caught={distanceReadout.caught} phase={distancePhase} />}
+        {distanceReadout.visible && <DistanceReadout id="distance-meter" className="distance-meter" label={distanceReadout.label} value={distanceReadout.value} phase={distancePhase} />}
         <div id="cast-reticle" aria-hidden="true" style={reticle ? { left: reticle.x, top: reticle.y } : undefined} />
         <section id="fight-ui" className="fight-ui" hidden={!fighting && !biting} aria-label="魚との駆け引き" data-tension={tension} data-mode={hudState.mode}>
           {hookFeedback && <p className="hook-critical-status" role="status">ナイスフッキング！</p>}
-          {(fighting || biting) && <div className="fight-meters">
-            <DistanceReadout id="distance-meter" className="distance-meter fight-distance-meter" label={distanceReadout.label} value={distanceReadout.value} caught={distanceReadout.caught} phase={distancePhase} />
-            <div className="tension-track" role="meter" aria-label="糸の張り" aria-valuemin={0} aria-valuemax={100} aria-valuenow={tension} aria-valuetext={`${tension}%`} data-k8s-mode={state.fishId === "k8s-001" && fighting ? hudState.mode : "rest"} data-k8s-lunge={k8sLunge > .01} style={tensionTrackStyle}><span id="tension-fill" style={{ width: `${tension}%` }} /><b className="tension-impact" aria-hidden="true" /><i /></div>
-          </div>}
+          {(fighting || biting) && <div className="tension-track" role="meter" aria-label="糸の張り" aria-valuemin={0} aria-valuemax={100} aria-valuenow={tension} aria-valuetext={`${tension}%`} data-k8s-mode={state.fishId === "k8s-001" && fighting ? hudState.mode : "rest"} data-k8s-lunge={k8sLunge > .01} style={tensionTrackStyle}><span id="tension-fill" style={{ width: `${tension}%` }} /><b className="tension-impact" aria-hidden="true" /><i /></div>}
           <button id="fight-button" className={`fight-button${reelHeld ? " is-held" : ""}${biting ? " is-hook" : ""}${biting && state.criticalWindow ? " is-critical-window" : ""}`} aria-label={biting ? state.criticalWindow ? "今が狙いどき。合わせる" : "合わせる。ウキが沈んだら押す" : reelHeld ? "巻いています。離して止める" : "巻く。押して巻く"} disabled={!online || renderFailed} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>
             <span className="fight-button-label">{fightButtonLabel}</span><small className="fight-button-help">{fightButtonHint}</small>
           </button>
@@ -590,10 +586,10 @@ export function App() {
         <a className="phone-brand" href="./">技術釣り</a><div id="phone-connection" className="phone-connection" data-connected={String(online && displayConnected)} aria-live="polite"><i aria-hidden="true" /><span>{!online ? "海に接続しています…" : displayConnected ? "PC画面と接続済み" : "PC画面を待っています"}</span></div>
         <div className="phone-instruction"><p id="phone-kicker">スマホ操作</p><h1 id="phone-title">{phoneTitles[state.phase]}</h1><p id="phone-hint">{phoneHint}</p>{hookFeedback && <p className="hook-critical-status" role="status">ナイスフッキング！</p>}</div>
         <div key={rodStrokeRevision} className={`rod-symbol${fighting ? " is-fighting" : ""}${state.fishId === "k8s-001" && fighting ? " is-k8s-fighting" : ""}${k8sLunge > .01 ? " is-k8s-lunge" : ""}`} style={k8sRodStyle} aria-hidden="true"><svg viewBox="0 0 160 230"><path d="M48 220 93 32 Q101 14 113 18" /><path className="rod-thread" d="M113 18q22 112-12 164" /><circle cx="101" cy="185" r="4" /><path d="m85 51 15 4m-19 11 16 4m-30 53 16 4" /></svg></div>
-        <div id="phone-tension" className="phone-tension" data-caught={String(state.phase === "caught")} hidden={!fighting && state.phase !== "caught"}>
-          <DistanceReadout id="phone-distance" className="phone-distance" label={distanceReadout.label} value={distanceReadout.value} caught={distanceReadout.caught} phase={distancePhase} />
-          {fighting && <div className="tension-track" role="meter" aria-label="糸の張り" aria-valuemin={0} aria-valuemax={100} aria-valuetext={`${tension}%`} aria-valuenow={tension} data-k8s-mode={state.fishId === "k8s-001" ? hudState.mode : "rest"} data-k8s-lunge={k8sLunge > .01} style={tensionTrackStyle}><span id="phone-tension-fill" style={{ width: `${tension}%` }} /><b className="tension-impact" aria-hidden="true" /><i /></div>}
-        </div>
+        {fighting && <div id="phone-tension" className="phone-tension">
+          <DistanceReadout id="phone-distance" className="phone-distance" label={distanceReadout.label} value={distanceReadout.value} phase={distancePhase} />
+          <div className="tension-track" role="meter" aria-label="糸の張り" aria-valuemin={0} aria-valuemax={100} aria-valuetext={`${tension}%`} aria-valuenow={tension} data-k8s-mode={state.fishId === "k8s-001" ? hudState.mode : "rest"} data-k8s-lunge={k8sLunge > .01} style={tensionTrackStyle}><span id="phone-tension-fill" style={{ width: `${tension}%` }} /><b className="tension-impact" aria-hidden="true" /><i /></div>
+        </div>}
         <button id="sensor-button" className="primary-button" onClick={() => void toggleSensor()}>{sensorButtonLabel}</button>
         {fighting ? <><PhoneReelControl active={reelHeld} disabled={!online || !displayConnected} onStart={startReel} onStop={stopReel} /><button type="button" className="phone-rod-pump" disabled={!online || !displayConnected} onClick={performRodStroke}><span>竿を引く</span><small>手前に引いて、元の位置へ戻す</small></button></> : state.phase === "caught" && catchSaveStatus === "failed" ? <button id="phone-catch-retry" className="phone-cast" disabled={!online} onClick={retryCatchSave}>図鑑への保存を再試行</button> : <button id="phone-cast" className={`phone-cast${reelHeld ? " is-held" : ""}${biting && state.criticalWindow ? " is-critical-window" : ""}`} disabled={!online || !displayConnected || ["casting", "retrieving"].includes(state.phase) || state.phase === "caught" && !canContinueAfterCatchSave(catchSaveStatus)} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>{biting && state.criticalWindow ? "今、合わせる！" : state.phase === "caught" && catchSaveStatus === "pending" ? "図鑑に記録中…" : phoneCastLabel}</button>}
         <p id="sensor-status" className="sensor-status" role="status">{sensorStatus}</p>
