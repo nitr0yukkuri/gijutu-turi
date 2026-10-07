@@ -310,6 +310,30 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     handleTangent.subVectors(handleEnd,handlePoint).normalize();mesh.position.lerpVectors(handlePoint,handleEnd,.5);
     mesh.quaternion.setFromUnitVectors(rodAxisY,handleTangent);mesh.scale.set(1,handlePoint.distanceTo(handleEnd)/restLength,1);
   };
+  const rodObjects:THREE.Object3D[]=[],rodRenderOrders=new Map<THREE.Object3D,number>(),rodDepthTests=new Map<THREE.Material,boolean>();
+  rodAssembly.traverse(object=>{
+    if(object===rodAssembly)return;
+    rodObjects.push(object);rodRenderOrders.set(object,object.renderOrder);
+    const materials=Array.isArray(object.material)?object.material:object.material?[object.material]:[];
+    for(const objectMaterial of materials)rodDepthTests.set(objectMaterial,objectMaterial.depthTest);
+  });
+  const leaderRenderOrders=[thread.renderOrder,wetThread.renderOrder];
+  const leaderDepthTests=[thread.material.depthTest,wetThread.material.depthTest];
+  const setFightTackleForeground=(enabled:boolean)=>{
+    if(fightTackleForeground===enabled)return;
+    fightTackleForeground=enabled;
+    // The fight camera follows the fish. Keep the first-person rod and leader
+    // in front of the fish geometry so they remain readable at close range.
+    for(const object of rodObjects){
+      object.renderOrder=enabled?8:rodRenderOrders.get(object)!;
+      const materials=Array.isArray(object.material)?object.material:object.material?[object.material]:[];
+      for(const objectMaterial of materials)objectMaterial.depthTest=enabled?false:rodDepthTests.get(objectMaterial)!;
+    }
+    for(const [index,line] of [thread,wetThread].entries()){
+      line.renderOrder=enabled?9:leaderRenderOrders[index];
+      line.material.depthTest=enabled?false:leaderDepthTests[index];
+    }
+  };
   const dropletGeo=new THREE.BufferGeometry();const drops=new Float32Array(36*3);dropletGeo.setAttribute('position',new THREE.BufferAttribute(drops,3));
   const spray=new THREE.Points(dropletGeo,new THREE.PointsMaterial({color:0xd9efed,size:.045,transparent:true,opacity:.85,depthWrite:false}));spray.visible=false;spray.frustumCulled=false;scene.add(spray);
   const dropSpeeds=Array.from({length:36},(_,i)=>{const a=i*2.399;return new THREE.Vector3(Math.cos(a)*(.5+(i%5)*.16),.75+(i%7)*.21,Math.sin(a)*(.5+(i%5)*.16));});
@@ -417,7 +441,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const start=new THREE.Vector3(.85,1.8,4.8),target=new THREE.Vector3(0,0,-21),rodButt=new THREE.Vector3(),rodTip=new THREE.Vector3(),sprayOrigin=new THREE.Vector3();
   let state={phase:'idle',castAt:0,strength:.65,aim:0,revision:0};
   const tackleStore=new TackleStateStore();
-  let time=0,lastFrame=0,lastRenderedFrame=0,overlayOpen=false,landedRevision=-1,splashAt=-100,rodStrokeAt=-100,sprayPower=1,rippleIndex=0,charge=0,chargeAim=0,lastWake=0,lastStroke=0,reelPhase=0;
+  let time=0,lastFrame=0,lastRenderedFrame=0,overlayOpen=false,fightTackleForeground=false,landedRevision=-1,splashAt=-100,rodStrokeAt=-100,sprayPower=1,rippleIndex=0,charge=0,chargeAim=0,lastWake=0,lastStroke=0,reelPhase=0;
   let serverOffset=0,cameraProgress=0,frame,catchOrigin=null,displayedWave=null,displayedGlow=.65,displayedSwim=null,displayedLoad=0,displayedRodLoad=0,displayedFishVisibility=0,escapeStartVisibility=0,hookImpactAt=-100;
   let dockerRodSurgeAt=-100,wasDockerSurging=false,displayedDockerSurgeLoad=0;
   const cameraLookTarget=new THREE.Vector3(0,-3.8,-35);
@@ -611,6 +635,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if(state.phase==='fighting'&&visibleFish)target.set(visibleFish.position.x,0,visibleFish.position.z);
     const castAge=(Date.now()+serverOffset-state.castAt)/1000;
     const showLiveTackle=!overlayOpen;
+    setFightTackleForeground(state.phase==='fighting');
     bobber.visible=showLiveTackle&&active&&tackle.phase!=='fighting';thread.visible=showLiveTackle&&active;wetThread.visible=false;rodAssembly.visible=showLiveTackle&&(active||charge>0);rod.visible=rodAssembly.visible;
     bobber.scale.setScalar(state.phase==='biting'?.6:1);
     tip.material.emissive.setHex(state.criticalWindow?0x8fe8d7:0x000000);
