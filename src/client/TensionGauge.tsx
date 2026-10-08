@@ -26,9 +26,6 @@ export function TensionGauge({ value, lunge = 0, warning = false }: TensionGauge
         <path className="tension-gauge-fill" d={ARC} pathLength={100} strokeDasharray={`${tension} 100`} opacity={tension > 0 ? 1 : 0} />
         <path className="tension-gauge-impact" d={ARC} pathLength={100} strokeDasharray={`${impact} 100`} strokeDashoffset={-tension} opacity={impact > .01 ? 1 : 0} />
         <path className="tension-gauge-mark" d="m139 47 8-6" />
-        <text className="tension-gauge-label" x="88" y="57">糸の張り</text>
-        {level !== "slack" && <text className="tension-gauge-status" x="88" y="78">{status}</text>}
-        {level !== "slack" && <text className="tension-gauge-hint" x="88" y="99">{hint}</text>}
       </svg>
     </div>
   );

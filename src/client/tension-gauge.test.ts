@@ -6,16 +6,13 @@ import { TensionGauge } from "./TensionGauge.js";
 
 const render = (value: number, lunge = 0, warning = false) => renderToStaticMarkup(createElement(TensionGauge, { value, lunge, warning }));
 
-test("slack risk uses a visual effect while its meaning remains available to assistive technology", () => {
+test("the gauge uses visual cues only while exposing its meaning to assistive technology", () => {
   for (const [value, level, label] of [[0, "slack", "針外れ注意"], [5, "slack", "針外れ注意"], [6, "slack", "ゆるみ注意"], [11, "slack", "ゆるみ注意"], [12, "steady", "安定"], [65, "steady", "安定"], [66, "high", "張りが強い"], [80, "high", "張りが強い"], [81, "danger", "切れそう"], [100, "danger", "切れそう"]] as const) {
     const html = render(value);
     assert.ok(html.includes(`data-level="${level}"`));
     assert.ok(html.includes(`aria-valuenow="${value}"`));
     assert.ok(html.includes(`aria-valuetext="${value}%、${label}`));
-    if (level === "slack") {
-      assert.doesNotMatch(html, /<text class="tension-gauge-status"/);
-      assert.doesNotMatch(html, /<text class="tension-gauge-hint"/);
-    }
+    assert.doesNotMatch(html, /<text\b/);
   }
   assert.match(render(95), /切れそう。巻くのを止める/);
   assert.match(render(0), /data-critical-slack="true"/);
