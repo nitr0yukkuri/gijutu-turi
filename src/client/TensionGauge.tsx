@@ -18,7 +18,7 @@ export function TensionGauge({ value, lunge = 0, warning = false }: TensionGauge
     <div className="tension-gauge" role="meter" aria-label="糸の張り"
       aria-valuemin={0} aria-valuemax={100} aria-valuenow={tension}
       aria-valuetext={`${tension}%、${status}${hint ? `。${hint}` : ""}`}
-      data-level={level} data-warning={warning} data-lunge={impact > .01}>
+      data-level={level} data-critical-slack={level === "slack" && tension < 6} data-warning={warning} data-lunge={impact > .01}>
       <svg viewBox="0 0 176 104" aria-hidden="true" focusable="false">
         <path className="tension-gauge-track" d={ARC} pathLength={100} />
         <path className="tension-gauge-slack-limit" d={ARC} pathLength={100} strokeDasharray="6 100" />
@@ -27,8 +27,8 @@ export function TensionGauge({ value, lunge = 0, warning = false }: TensionGauge
         <path className="tension-gauge-impact" d={ARC} pathLength={100} strokeDasharray={`${impact} 100`} strokeDashoffset={-tension} opacity={impact > .01 ? 1 : 0} />
         <path className="tension-gauge-mark" d="m139 47 8-6" />
         <text className="tension-gauge-label" x="88" y="57">糸の張り</text>
-        <text className="tension-gauge-status" x="88" y="78">{status}</text>
-        <text className="tension-gauge-hint" x="88" y="99">{hint}</text>
+        {level !== "slack" && <text className="tension-gauge-status" x="88" y="78">{status}</text>}
+        {level !== "slack" && <text className="tension-gauge-hint" x="88" y="99">{hint}</text>}
       </svg>
     </div>
   );
