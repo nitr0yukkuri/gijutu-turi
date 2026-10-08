@@ -286,9 +286,10 @@ export class FishingAudioController {
       this.playNoise(now, .082, 560, .027, 310, .004);
       this.playTone(now, 205, 148, .11, .013, "sine", .006);
     } else if (event === "hook-critical") {
-      // A short, soft line-pluck marks a well-timed hook without stacking a loud splash.
-      this.playTone(now, 520, 390, .12, .016, "triangle", .004);
-      this.playNoise(now, .055, 1180, .009, 720, .003);
+      // A crisp double pluck gives the critical timing a distinct, still-soft confirmation.
+      this.playTone(now, 620, 430, .105, .022, "triangle", .003);
+      this.playTone(now + .026, 880, 650, .105, .013, "sine", .004);
+      this.playNoise(now, .05, 1320, .012, 760, .002);
     } else if (event === "hook-set") {
       // A restrained lower pluck distinguishes a normal hook from the brighter critical cue.
       this.playTone(now, 278, 205, .13, .011, "sine", .006);
