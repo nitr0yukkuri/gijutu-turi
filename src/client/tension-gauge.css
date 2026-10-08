@@ -6,12 +6,13 @@
   pointer-events: none;
   filter: drop-shadow(0 2px 5px #092a36a6);
 }
-.tension-gauge[data-level=slack] { --tension-color: #b7ccd6; }
+.tension-gauge[data-level=slack] { --tension-color: #f1bf70; animation: tension-slack 1.2s ease-in-out infinite; }
 .tension-gauge[data-level=high] { --tension-color: #f1cd92; }
 .tension-gauge[data-level=danger] { --tension-color: #ffab97; }
 .tension-gauge svg { display: block; width: 100%; height: auto; overflow: visible; }
 .tension-gauge path { fill: none; stroke-width: 4; stroke-linecap: round; }
 .tension-gauge-track { stroke: #d9edf033; }
+.tension-gauge-slack-limit { stroke: #f1bf7077; }
 .tension-gauge-limit { stroke: #f3a18a66; }
 .tension-gauge-fill { stroke: currentColor; transition: stroke-dasharray .08s linear, stroke .2s; }
 .tension-gauge-impact { stroke: #ffdca5; transition: stroke-dasharray .08s linear, stroke-dashoffset .08s linear, opacity .08s linear; }
@@ -27,6 +28,7 @@
 .phone-tension .phone-distance { margin: 0; }
 .phone-tension .tension-gauge { width: 140px; margin: 0; }
 @keyframes tension-danger { 50% { filter: drop-shadow(0 0 7px #ff9b8280); } }
+@keyframes tension-slack { 50% { filter: drop-shadow(0 0 4px #ffc96a66); } }
 @media (prefers-reduced-motion: reduce) {
   .tension-gauge { animation: none!important; }
   .tension-gauge-fill, .tension-gauge-impact { transition: none; }
