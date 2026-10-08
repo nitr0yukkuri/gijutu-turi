@@ -18,6 +18,8 @@ type MeshWithPositions = {
     type?: string;
     transparent?: boolean;
     depthWrite?: boolean;
+    uniforms?: Record<string, { value: unknown }>;
+    fragmentShader?: string;
     color?: { getHex?: () => number };
     userData?: Record<string, unknown>;
     onBeforeCompile?: (shader: { uniforms: Record<string, { value: unknown }>; vertexShader: string; fragmentShader: string }) => void;
@@ -250,6 +252,8 @@ test('simplifying Rust fins does not change the Go fish fin material', () => {
     assert.ok(dorsal);
     assert.equal(dorsal.material.type, 'ShaderMaterial');
     assert.equal(dorsal.material.transparent, true);
+    assert.equal(dorsal.material.uniforms?.uFightCombat?.value, 0);
+    assert.match(dorsal.material.fragmentShader ?? '', /alpha=mix\(alpha,1\.0,uFightCombat\)/);
   } finally {
     model.dispose();
   }

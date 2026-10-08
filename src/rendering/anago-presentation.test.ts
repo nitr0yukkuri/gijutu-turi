@@ -91,7 +91,8 @@ test('anago fin fragments define and share the authoritative swim clock in both 
         const fragment = fin.material.fragmentShader;
         assert.match(fragment, /uniform float uSwimTime;/);
         assert.match(fragment, /uniform float uSwimFrequency;/);
-        assert.match(fragment, /float swimPhase\(\)\s*{\s*return uSwimTime \* uSwimFrequency;\s*}/, 'a vertex-only helper cannot be called by the fin fragment');
+        assert.match(fragment, /float swimPhase\s*\(\)\s*{\s*return\s+uSwimTime\s*\*\s*uSwimFrequency;\s*}/, 'a vertex-only helper cannot be called by the fin fragment');
+        assert.equal((fragment.match(/float swimPhase\s*\(/g) ?? []).length, 1, 'the fin fragment must define its swim clock exactly once');
         assert.ok(fragment.indexOf('float swimPhase()') < fragment.indexOf('void main()'));
       }
       for (const bodyPhase of [1.25, 4.5]) {

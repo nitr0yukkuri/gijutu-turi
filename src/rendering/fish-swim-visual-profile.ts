@@ -26,8 +26,8 @@ export const STANDARD_FISH_SWIM_VISUAL_PROFILE: FishSwimVisualProfile = {
 export const K8S_LEVIATHAN_SWIM_VISUAL_PROFILE: FishSwimVisualProfile = {
   flexStartX: -.42,
   flexLength: 1.8,
-  bendGain: .62,
-  turnGain: .45,
+  bendGain: .46,
+  turnGain: .32,
   finPhaseLag: .55,
   finFlutterGain: .055,
 };
