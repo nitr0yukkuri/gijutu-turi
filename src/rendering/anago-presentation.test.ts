@@ -80,3 +80,30 @@ test('JS anago glows gold only on the server-synchronized high-effort fight beat
     model.dispose();
   }
 });
+
+test('anago fin fragments define and share the authoritative swim clock in both habitats', () => {
+  for (const detail of ['low', 'high']) for (const submerged of [false, true]) {
+    const model = createGoFish({ detail, visualProfile: 'eel', ...(submerged ? { waterUniforms: { uWaterBackdrop: { value: null } } } : {}) });
+    try {
+      const fins = model.fins as unknown as Array<{ material: { fragmentShader: string; uniforms: Record<string, { value: number }> } }>;
+      assert.ok(fins.length > 0);
+      for (const fin of fins) {
+        const fragment = fin.material.fragmentShader;
+        assert.match(fragment, /uniform float uSwimTime;/);
+        assert.match(fragment, /uniform float uSwimFrequency;/);
+        assert.match(fragment, /float swimPhase\(\)\s*{\s*return uSwimTime \* uSwimFrequency;\s*}/, 'a vertex-only helper cannot be called by the fin fragment');
+        assert.ok(fragment.indexOf('float swimPhase()') < fragment.indexOf('void main()'));
+      }
+      for (const bodyPhase of [1.25, 4.5]) {
+        const motion = { bodyPhase, bodyFrequency: .9, effort: .9 };
+        model.update(100, motion);
+        for (const fin of fins) {
+          const uniforms = fin.material.uniforms;
+          assert.ok(Math.abs(uniforms.uSwimTime!.value * uniforms.uSwimFrequency!.value - bodyPhase) < 1e-10, 'fin glow follows the supplied body wave, not an independent clock');
+        }
+      }
+    } finally {
+      model.dispose();
+    }
+  }
+});

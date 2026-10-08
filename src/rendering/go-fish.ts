@@ -423,7 +423,7 @@ function finMaterial(uniforms, rays, cssStyle = false, clusterStyle = false, rus
         gl_Position=projectionMatrix*mv;
       }`,
     fragmentShader: `
-      uniform float uGlow; uniform float uRays; uniform float uImmersion;${cssStyle ? ' uniform vec3 uStyleShade; uniform vec3 uStyleAccent; uniform vec3 uStyleEmission; uniform float uStyleGlow; uniform float uStylePattern;' : ''}${eelStyle ? ' uniform float uEffort;' : ''} varying vec2 vUv; varying vec3 vNormal; varying vec3 vView;
+      uniform float uGlow; uniform float uRays; uniform float uImmersion;${cssStyle ? ' uniform vec3 uStyleShade; uniform vec3 uStyleAccent; uniform vec3 uStyleEmission; uniform float uStyleGlow; uniform float uStylePattern;' : ''}${eelStyle ? ' uniform float uEffort; uniform float uSwimTime; uniform float uSwimFrequency; float swimPhase() { return uSwimTime * uSwimFrequency; }' : ''} varying vec2 vUv; varying vec3 vNormal; varying vec3 vView;
       void main() {
         float fold=sin(vUv.x*uRays*6.283 + sin(vUv.y*4.0)*.5);
         float rays=pow(max(0.0,fold),22.0);
