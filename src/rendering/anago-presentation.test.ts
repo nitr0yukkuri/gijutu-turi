@@ -95,7 +95,8 @@ test('anago fin fragments define and share the authoritative swim clock in both 
         assert.ok(fragment.indexOf('float swimPhase()') < fragment.indexOf('void main()'));
       }
       for (const bodyPhase of [1.25, 4.5]) {
-        model.update(100, { bodyPhase, bodyFrequency: .9, effort: .9 });
+        const motion = { bodyPhase, bodyFrequency: .9, effort: .9 };
+        model.update(100, motion);
         for (const fin of fins) {
           const uniforms = fin.material.uniforms;
           assert.ok(Math.abs(uniforms.uSwimTime!.value * uniforms.uSwimFrequency!.value - bodyPhase) < 1e-10, 'fin glow follows the supplied body wave, not an independent clock');
