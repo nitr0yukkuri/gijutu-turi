@@ -19,10 +19,6 @@
 .tension-gauge-fill { stroke: currentColor; transition: stroke-dasharray .08s linear, stroke .2s; }
 .tension-gauge-impact { stroke: #ffdca5; transition: stroke-dasharray .08s linear, stroke-dashoffset .08s linear, opacity .08s linear; }
 .tension-gauge .tension-gauge-mark { stroke: #f4c3b6b3; stroke-width: 1; }
-.tension-gauge text { fill: currentColor; text-anchor: middle; font-family: system-ui, sans-serif; }
-.tension-gauge .tension-gauge-label { fill: #d3e3e5; font-size: 10px; letter-spacing: .1em; }
-.tension-gauge-status { font-size: 15px; font-weight: 500; }
-.tension-gauge-hint { font-size: 10px; }
 .tension-gauge[data-level=danger] { animation: tension-danger .8s ease-in-out infinite; }
 .tension-gauge[data-warning=true] .tension-gauge-track { stroke: #d5e8e878; }
 .tension-gauge[data-lunge=true] { filter: drop-shadow(0 0 5px #f4b88a99); }
