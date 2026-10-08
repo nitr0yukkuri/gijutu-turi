@@ -1,6 +1,6 @@
 import type {FishMotionSnapshot} from '../fish.js';
 
-const clamp=(value:number)=>Math.max(0,Math.min(1,value));
+const clamp=(value:number)=>Number.isFinite(value)?Math.max(0,Math.min(1,value)):0;
 
 export function lineSagForLoad(load:number) {
   const slack=1-clamp(load);

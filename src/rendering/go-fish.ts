@@ -846,7 +846,7 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
       uniforms.uSwimPower.value=clamp(power,0,1);
       uniforms.uTurn.value=clamp(turn,-1,1);
       uniforms.uEffort.value=clamp(effort,0,1);
-      uniforms.uTetherLoad.value=waterUniforms?clamp(tetherLoad,0,1):0;
+      uniforms.uTetherLoad.value=waterUniforms&&Number.isFinite(tetherLoad)?clamp(tetherLoad,0,1):0;
       uniforms.uImmersion.value=waterUniforms?clamp(-group.position.y/.6,0,1):0;
       if(habitatUniforms)habitatUniforms.uFishVisibility.value=clamp(visibility,0,1);
       uniforms.uSwimWavelength.value=waterUniforms&&Number.isFinite(bodyWavelength)?TAU/clamp(bodyWavelength,.5,1.5):6.6;
