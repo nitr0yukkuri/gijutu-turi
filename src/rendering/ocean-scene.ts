@@ -19,7 +19,8 @@ import { schoolCatchFormationScale } from './school-catch.js';
 import { fishBodyWaveOffsetAt, K8S_LEVIATHAN_SWIM_VISUAL_PROFILE } from './fish-swim-visual-profile.js';
 import { K8S_ECHO_COUNT, k8sFightPresentation, k8sLungeForSnapshot } from './k8s-fight-presentation.js';
 import { K8S_SURFACE_BODY_PROBES, k8sSurfaceWakeStrength, updateK8sSurfaceExposure } from './k8s-surface-motion.js';
-import { interpolateOceanPresentationState, OceanPresentationTimeline } from '../ocean-presentation-timeline.js';
+import { OceanPresentationTimeline } from '../ocean-presentation-timeline.js';
+import { copyFishMotion as copyFish, interpolateFishPresentationState } from './fish-presentation-state.js';
 import type { FishSurfaceImpactCue } from '../fish-surface-impact.js';
 
 // Keep the escape result on screen while the camera returns to the normal view.
@@ -456,23 +457,6 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const fightNoseQuaternion=new THREE.Quaternion(),fightRollQuaternion=new THREE.Quaternion();
   const catchFinalPosition=new THREE.Vector3(),catchStartPosition=new THREE.Vector3();
   const catchFinalQuaternion=new THREE.Quaternion(),catchYawAxis=new THREE.Vector3(0,1,0),catchYawQuaternion=new THREE.Quaternion();
-  const copyFish=(fish,tension=fish?.tension??0)=>fish?{
-    position:{...fish.position},velocity:{...fish.velocity},heading:{...fish.heading},speed:fish.speed,gait:fish.gait,
-    bodyWave:{...fish.bodyWave},swim:fish.swim?{...fish.swim,velocity:{...fish.swim.velocity}}:null,tension
-  }:null;
-  const lerpValue=(a,b,t)=>a+(b-a)*t;
-  const lerpAngle=(a,b,t)=>{
-    const delta=Math.atan2(Math.sin(b-a),Math.cos(b-a));
-    return a+delta*t;
-  };
-  const interpolateFish=(a,b,t)=>a&&b?{
-    position:{x:lerpValue(a.position.x,b.position.x,t),y:lerpValue(a.position.y,b.position.y,t),z:lerpValue(a.position.z,b.position.z,t)},
-    velocity:{x:lerpValue(a.velocity.x,b.velocity.x,t),y:lerpValue(a.velocity.y,b.velocity.y,t),z:lerpValue(a.velocity.z,b.velocity.z,t)},
-    heading:{x:lerpValue(a.heading.x,b.heading.x,t),y:lerpValue(a.heading.y,b.heading.y,t),z:lerpValue(a.heading.z,b.heading.z,t)},
-    speed:lerpValue(a.speed,b.speed,t),gait:t<.5?a.gait:b.gait,tension:lerpValue(a.tension,b.tension,t),
-    bodyWave:{phase:lerpAngle(a.bodyWave.phase,b.bodyWave.phase,t),amplitude:lerpValue(a.bodyWave.amplitude,b.bodyWave.amplitude,t),frequency:lerpValue(a.bodyWave.frequency,b.bodyWave.frequency,t),wavelength:lerpValue(a.bodyWave.wavelength,b.bodyWave.wavelength,t)},
-    swim:a.swim&&b.swim?{effort:lerpValue(a.swim.effort,b.swim.effort,t),turn:lerpValue(a.swim.turn,b.swim.turn,t),velocity:{x:lerpValue(a.swim.velocity.x,b.swim.velocity.x,t),y:lerpValue(a.swim.velocity.y,b.swim.velocity.y,t),z:lerpValue(a.swim.velocity.z,b.swim.velocity.z,t)}}:(a.swim||b.swim)
-  }:copyFish(a||b);
   const waveHeight=(x,z,t)=>waterHeightAt(x,z,t,ripples);
   const lineSurfaceHeight=(x,z)=>waveHeight(x,z,time);
   const fishWorldPosition=(fish,result=new THREE.Vector3())=>result.set(fish.position.x,fish.position.y,fish.position.z);
@@ -489,10 +473,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const renderSnapshot=()=>{
     // The HUD reads this same timeline, so distance and tension cannot lead
     // the interpolated fish pose by a network snapshot.
-    return presentationTimeline.sampleWith((first,second,amount)=>({
-      ...interpolateOceanPresentationState(first,second,amount),
-      fish:interpolateFish(first.fish,second.fish,amount),
-    }));
+    return presentationTimeline.sampleWith(interpolateFishPresentationState);
   };
   const addRipple=(x,z,power=1)=>{ripples[rippleIndex++%6].set(x,z,time,power);};
   const launchSplash=(x,z,power=1)=>{
@@ -663,7 +644,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       bobber.position.y=waveHeight(bobber.position.x,bobber.position.z,time)+retrieveProgress*1.8;
       if(Math.floor(p*20)%4===0 && time-ripples[(rippleIndex+5)%6].z>.15)addRipple(bobber.position.x,bobber.position.z,.25);
     }
-    const cues=fishFightCues(visibleFish,tackle.phase==='fighting'?(visibleFish?.tension??tackle.tension):0);
+    const cues=fishFightCues(visibleFish,tackle.phase==='fighting'?(renderedSnapshot?.tension??tackle.tension):0);
     const {strain,stroke}=cues;
     // Keep game tension immediate; only the rod's rendered flex eases toward it.
     const retrieveLoad=retrievePresentation?.rodLoad??0;

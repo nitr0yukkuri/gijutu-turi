@@ -333,6 +333,26 @@ test('tether bracing applies only to the hooked ocean model, never the catalog',
   }
 });
 
+test('invalid tether loads never reach fish shaders or accumulate in whale cargo transforms',()=>{
+  for(const visualProfile of ['ocean','css','rust','eel','cluster']){
+    const model=createGoFish({visualProfile,waterUniforms:{uWaterBackdrop:{value:null}}});
+    const shader={uniforms:{...THREE.ShaderLib.physical.uniforms},vertexShader:THREE.ShaderLib.physical.vertexShader,fragmentShader:THREE.ShaderLib.physical.fragmentShader};
+    model.body.material.onBeforeCompile(shader);
+    for(const tetherLoad of [NaN,Infinity,-Infinity,.7]){
+      model.update(0,{tetherLoad});
+      assert.equal(shader.uniforms.uTetherLoad.value,Number.isFinite(tetherLoad)?tetherLoad:0,visualProfile);
+    }
+    model.dispose();
+  }
+  const whale=createDockerWhale();
+  for(const tetherLoad of [NaN,Infinity,-Infinity,.7]){
+    for(let frame=0;frame<10;frame++)whale.update(frame/60,{tetherLoad});
+    whale.group.updateMatrixWorld(true);
+    assert.ok(whale.cargoMount.matrixWorld.elements.every(Number.isFinite),'cargo remains visible after invalid and valid loads');
+  }
+  whale.dispose();
+});
+
 test('underwater leader accepts Three line shaders with valid preprocessor boundaries',()=>{
   const material=new THREE.LineBasicMaterial(),source=THREE.ShaderLib.basic;
   applyFishWater(material,{},'line');

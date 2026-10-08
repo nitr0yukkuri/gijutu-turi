@@ -357,7 +357,7 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
       uniforms.uPower.value=clamp(power,0,1);uniforms.uGlow.value=clamp(glow,0,3);
       if(habitatUniforms)habitatUniforms.uFishVisibility.value=clamp(visibility,0,1);
       const dt=Number.isFinite(styleDelta)?clamp(styleDelta,0,.1):1/60;
-      const load=clamp(tetherLoad??0,0,1),heavyTurn=clamp(turn,-1,1);
+      const load=Number.isFinite(tetherLoad)?clamp(tetherLoad,0,1):0,heavyTurn=clamp(turn,-1,1);
       if(cargoMoment&&!cargoMomentActive)cargoPulse=1;
       cargoMomentActive=!!cargoMoment;
       cargoPulse*=Math.exp(-dt*3.8);
