@@ -51,7 +51,7 @@ export class OceanFishingGame {
   private escapeDirection:Vec3={x:0,y:-.22,z:-1};
   constructor(
     private readonly random:()=>number=Math.random,
-    private readonly startingFishId:FishSpeciesId=DEFAULT_FISH_SPECIES_ID,
+    startingFishId:FishSpeciesId=DEFAULT_FISH_SPECIES_ID,
     private readonly fishSelectionMode:FishSelectionMode='rotate',
   ){
     this.state=fresh(this.locomotion.snapshot(),startingFishId);

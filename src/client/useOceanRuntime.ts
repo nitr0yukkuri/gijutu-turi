@@ -9,8 +9,10 @@ import { fetchCollection, type CollectionLoadResult } from "./collection-respons
 import { LatestRequestGuard } from "./latest-request.js";
 import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH } from "../cast-distance.js";
 import { OCEAN_RENDER_DELAY_MS } from "../ocean-timing.js";
-import { interpolateOceanPresentationState, OceanPresentationTimeline } from "../ocean-presentation-timeline.js";
+import { OceanPresentationTimeline } from "../ocean-presentation-timeline.js";
 import { FISH_SPECIES, type FishSpeciesId } from "../fish-species.js";
+import { isFirstCatch } from "./catch-discovery.js";
+import { FISH_ESCAPE_HINTS } from "./escape-hints.js";
 import type { CatchSaveStatus, Collection, CollectionEntry, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
 
 const configuredBackendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim().replace(/\/+$/, "");
@@ -34,13 +36,6 @@ class OceanRoomRateLimitError extends Error {
 }
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
-
-const failureHints: Record<string, [string, string]> = {
-  missed: ["合わせが、少し遅かった。", "ウキが沈んだら、Spaceかボタンで合わせよう。"],
-  line: ["糸が、切れた。", "赤くなる前に巻く手を止めよう。"],
-  slack: ["針が外れた。", "糸がたるみすぎないよう、ときどき巻こう。"],
-  distance: ["沖へ、逃げられた。", "魚が落ち着く間に、少しずつ巻こう。"],
-};
 
 const fallbackCatalog: CollectionEntry[] = FISH_SPECIES.map(species => ({
   ...species,
@@ -352,7 +347,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
         showFeedback(""); vibrate([90, 90, 180]);
       }
       if (next.phase === "escaped") {
-        const [title, hint] = failureHints[next.reason] ?? ["沖へ、逃げられた。", "魚が落ち着く間に、少しずつ巻こう。"];
+        const [title, hint] = FISH_ESCAPE_HINTS[next.reason] ?? ["魚が逃げました。", "糸の張りを見ながら巻き、強く引かれたらいったん緩めてください。"];
         showFeedback(title, hint); vibrate([160, 80, 60]);
       }
     }
@@ -366,7 +361,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
         const loaded = result.value;
         const caughtEntry = loaded.entries.find(entry => entry.id === next.fishId);
         const currentCatches = caughtEntry?.catches ?? previousCatches;
-        const firstCatch = caughtEntry?.catches === 1;
+        const firstCatch = isFirstCatch(previousCatches, currentCatches);
         setNewEncounter(firstCatch);
         showToast(firstCatch ? "新しい魚が図鑑に登録されました。" : "魚を釣り上げました。");
       });
