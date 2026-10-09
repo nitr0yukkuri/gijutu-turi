@@ -34,8 +34,6 @@
 .tech-tree-progress-track { display: flex; gap: 4px; margin-top: 9px; }
 .tech-tree-progress-track i { flex: 1; height: 2px; background: #a9ccd426; }
 .tech-tree-progress-track i.is-discovered { background: #9cd3c6; }
-.tech-tree-preview-toggle { min-height: 30px; padding: 4px 8px; border: 1px solid #a5c5cd40; border-radius: 3px; background: transparent; color: #a8c2cb; font-family: inherit; font-size: 10px; line-height: 1.5; cursor: pointer; }
-.tech-tree-preview-toggle[aria-pressed="true"] { color: #c7e3dc; background: #add8cd0a; }
 .tech-tree-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; align-items: start; gap: 24px; }
 
 .tech-tree-map { position: relative; isolation: isolate; min-width: 0; height: 456px; overflow: hidden; border: 1px solid var(--atlas-line); border-radius: 4px; background-color: #0d2631; background-image: radial-gradient(#b4d6da1b .7px, transparent .7px); background-size: 24px 24px; }
@@ -86,7 +84,6 @@
 .tech-tree-inspector-topline i { width: 5px; height: 5px; border: 1px solid #93acb6; border-radius: 50%; }
 .tech-tree-inspector-topline .is-unlocked { color: #b4d8cd; }
 .tech-tree-inspector-topline .is-unlocked i { background: #a9d5c7; border-color: #a9d5c7; }
-.tech-tree-inspector-topline .is-preview i { border-radius: 0; transform: rotate(45deg); }
 .tech-tree-specimen { position: relative; display: grid; place-items: center; height: 146px; margin: 2px -14px 4px; background: radial-gradient(ellipse, #50828c1f, transparent 68%); }
 .tech-tree-specimen #collection-model { width: 100%; height: 100%; min-height: 0; }
 .tech-tree-specimen #collection-model canvas { width: 100%; height: 100%; }
@@ -104,6 +101,81 @@
 .tech-tree-legend-caught { width: 5px; height: 5px; border-radius: 50%; background: #9dd8cb; }
 .tech-tree-legend-link { width: 20px; border-top: 1px dashed #b1cbd0; }
 .tech-tree-empty { padding: 30px; border: 1px solid var(--atlas-line); color: #abc5cc; text-align: center; }
+
+.complete-showcase { position: fixed; z-index: 30; inset: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: clamp(20px, 3.6vw, 48px); background: radial-gradient(ellipse at 52% 0%, #225366 0%, #0d2938 48%, #071b27 100%); color: #e9f3f1; }
+.complete-showcase-shell { width: min(100%, 1080px); margin: 0 auto; }
+.complete-showcase-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 20px 32px; padding-bottom: 22px; border-bottom: 1px solid #c0d9df24; }
+.complete-showcase-copy { min-width: 0; }
+.complete-showcase-eyebrow { margin: 0 0 8px; color: #b7d5d4; font: 10px ui-monospace, Consolas, monospace; letter-spacing: .14em; }
+.complete-showcase-copy h1 { margin: 0; color: #f0f6f4; font-size: clamp(28px, 4vw, 42px); font-weight: 400; letter-spacing: .06em; line-height: 1.35; }
+.complete-showcase-copy > p:last-child { max-width: 680px; margin: 10px 0 0; color: #b9cdd2; font-size: 13px; line-height: 1.8; }
+.complete-showcase-progress { display: grid; gap: 4px; min-width: 112px; padding: 12px 16px; border: 1px solid #b4d8d135; border-radius: 4px; background: #c0e5df0a; }
+.complete-showcase-progress span { color: #a9c5cc; font-size: 10px; letter-spacing: .08em; }
+.complete-showcase-progress strong { color: #dff1e9; font: 400 27px/1.2 ui-monospace, Consolas, monospace; }
+.complete-showcase-progress small { color: #a8c1c8; font-size: 13px; }
+.complete-showcase-tabs { display: flex; gap: 6px; margin-top: 22px; padding: 4px; width: fit-content; border: 1px solid #b4d8d135; border-radius: 4px; background: #06192355; }
+.complete-showcase-tabs button { min-height: 40px; padding: 8px 18px; border: 1px solid transparent; border-radius: 3px; background: transparent; color: #a9c5cc; font-size: 12px; letter-spacing: .04em; }
+.complete-showcase-tabs button[aria-pressed="true"] { border-color: #bde4dc66; background: #bde4dc18; color: #eaf6f1; }
+.complete-fish-book { padding-top: 22px; }
+.complete-fish-book-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.complete-fish-book-heading h2 { margin: 0; color: #eaf4f1; font-size: 23px; font-weight: 400; letter-spacing: .05em; }
+.complete-fish-book-heading p { margin: 5px 0 0; color: #a9c2c9; font-size: 12px; line-height: 1.7; }
+.complete-fish-book-count { color: #a9c5cc; font-size: 11px; white-space: nowrap; }
+.complete-fish-book-count strong { margin-left: 6px; color: #dff1e9; font: 500 14px ui-monospace, Consolas, monospace; }
+.complete-fish-picker { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.complete-fish-card { position: relative; display: grid; grid-template-columns: 38px 1fr; grid-template-rows: auto auto auto; align-items: center; column-gap: 8px; min-width: 0; min-height: 92px; padding: 11px 10px; border: 1px solid #b4d8d128; border-radius: 4px; background: #06192366; color: #dce9e7; text-align: left; transition: border-color .18s, background .18s, transform .18s; }
+.complete-fish-card:hover { transform: translateY(-2px); border-color: #bde4dc75; background: #bde4dc10; }
+.complete-fish-card.is-selected, .complete-fish-card[aria-pressed="true"] { border-color: #bde4dc99; background: #bde4dc17; box-shadow: inset 0 0 0 1px #bde4dc24; }
+.complete-fish-card-icon { grid-column: 1; grid-row: 1 / 4; display: grid; place-items: center; width: 38px; height: 38px; }
+.complete-fish-card-icon svg { display: block; width: 36px; height: 28px; overflow: visible; }
+.complete-fish-card-number { color: #8eaeb7; font: 10px ui-monospace, Consolas, monospace; }
+.complete-fish-card strong { overflow: hidden; color: #e5f0ed; font-size: 12px; font-weight: 500; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.complete-fish-card-status { color: #a9d8c8; font-size: 9px; letter-spacing: .03em; }
+.complete-fish-detail { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(260px, .85fr); align-items: center; gap: clamp(20px, 4vw, 48px); min-height: 330px; margin-top: 16px; padding: clamp(16px, 3vw, 28px); border: 1px solid #b4d8d128; border-radius: 4px; background: linear-gradient(120deg, #a8d9db0b, #06192345); }
+.complete-fish-visual { position: relative; min-width: 0; min-height: 270px; overflow: hidden; border-radius: 3px; background: radial-gradient(ellipse at 50% 40%, #4082926e 0%, #1e536666 38%, #0b2c3d99 100%); }
+.complete-fish-visual::after { position: absolute; right: 8%; bottom: 21%; left: 8%; height: 1px; background: linear-gradient(90deg, transparent, #c6e5e54d, transparent); content: ""; pointer-events: none; }
+.complete-fish-copy { min-width: 0; }
+.complete-fish-eyebrow { margin: 0 0 9px; color: #9ec2c7; font: 10px ui-monospace, Consolas, monospace; letter-spacing: .12em; }
+.complete-fish-copy h3 { margin: 0; color: #eff7f4; font-size: clamp(25px, 3vw, 34px); font-weight: 400; line-height: 1.3; }
+.complete-fish-classification { margin: 8px 0 0; color: #9fd5cb; font-size: 11px; }
+.complete-fish-tagline { margin: 16px 0 0; color: #d3e6e2; font-size: 14px; line-height: 1.7; }
+.complete-fish-description { margin: 10px 0 0; color: #b7cbd0; font-size: 12px; line-height: 1.9; }
+.complete-fish-habitat { display: flex; gap: 12px; margin: 16px 0 0; padding-top: 12px; border-top: 1px solid #c0d9df24; color: #bed2d5; font-size: 11px; line-height: 1.7; }
+.complete-fish-habitat span { flex: none; color: #8eafb8; }
+.complete-fish-record-note { margin: 18px 0 0; padding: 10px 12px; border-left: 2px solid #9ecdbb; background: #bde4dc0b; color: #9fb9be; font-size: 10px; line-height: 1.7; }
+.complete-showcase .tech-tree { padding-top: 24px; }
+.complete-showcase-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: 18px; border-top: 1px solid #c0d9df24; color: #8fabb4; font-size: 10px; line-height: 1.6; }
+.complete-showcase-footer a { display: inline-flex; align-items: center; min-height: 44px; color: #d7e9e6; font-size: 12px; letter-spacing: .06em; }
+.complete-showcase-footer a:hover { color: #fff; }
+
+@media (max-width: 760px) {
+  .complete-showcase { padding: max(18px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  .complete-showcase-header { grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; padding-bottom: 15px; }
+  .complete-showcase-copy { grid-column: 1 / -1; }
+  .complete-showcase-copy > p:last-child { font-size: 12px; }
+  .complete-showcase-progress { grid-column: 2; grid-row: 2; min-width: 86px; padding: 8px 10px; }
+  .complete-showcase-progress strong { font-size: 23px; }
+  .complete-showcase-tabs { margin-top: 16px; }
+  .complete-showcase-tabs button { min-height: 38px; padding-inline: 14px; font-size: 11px; }
+  .complete-fish-book { padding-top: 17px; }
+  .complete-fish-book-heading { align-items: start; }
+  .complete-fish-book-heading h2 { font-size: 20px; }
+  .complete-fish-book-heading p { max-width: 36ch; font-size: 11px; }
+  .complete-fish-book-count { padding-top: 4px; font-size: 10px; }
+  .complete-fish-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .complete-fish-card { min-height: 76px; padding: 8px; }
+  .complete-fish-card-icon { width: 32px; height: 32px; }
+  .complete-fish-card-icon svg { width: 31px; height: 24px; }
+  .complete-fish-card strong { font-size: 11px; }
+  .complete-fish-detail { grid-template-columns: minmax(0, 1fr); gap: 14px; min-height: 0; margin-top: 12px; padding: 12px; }
+  .complete-fish-visual { min-height: clamp(190px, 32dvh, 260px); }
+  .complete-fish-copy { padding: 0 4px 4px; }
+  .complete-fish-tagline { margin-top: 11px; font-size: 13px; }
+  .complete-fish-description { font-size: 11px; }
+  .complete-fish-record-note { margin-top: 13px; }
+  .complete-showcase .tech-tree { padding-top: 17px; }
+  .complete-showcase-footer { align-items: flex-start; flex-direction: column; gap: 2px; }
+}
 
 @media (min-width: 761px) and (max-width: 1000px) {
   .tech-tree-layout { grid-template-columns: minmax(0, 1fr) 250px; gap: 18px; }
@@ -134,7 +206,6 @@
   .tech-tree-progress > div:first-child { flex-direction: column; align-items: flex-start; gap: 3px; }
   .tech-tree-progress strong { font-size: 24px; }
   .tech-tree-progress span { font-size: 10px; }
-  .tech-tree-preview-toggle { max-width: 96px; font-size: 9px; }
   .tech-tree-layout { display: block; }
   .tech-tree-map { height: auto; padding: 18px 16px 12px; }
   .tech-tree-root { position: relative; top: auto; left: auto; transform: none; margin: 0 0 21px 10px; }

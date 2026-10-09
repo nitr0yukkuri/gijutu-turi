@@ -9,7 +9,8 @@
     { "source": "/cssfish/", "destination": "/cssfish", "permanent": true },
     { "source": "/rustfish/", "destination": "/rustfish", "permanent": true },
     { "source": "/jseel/", "destination": "/jseel", "permanent": true },
-    { "source": "/k8sfish/", "destination": "/k8sfish", "permanent": true }
+    { "source": "/k8sfish/", "destination": "/k8sfish", "permanent": true },
+    { "source": "/complete/", "destination": "/complete", "permanent": true }
   ],
   "rewrites": [
     { "source": "/gofish", "destination": "/index.html" },
@@ -19,6 +20,7 @@
     { "source": "/rustfish", "destination": "/index.html" },
     { "source": "/jseel", "destination": "/index.html" },
     { "source": "/k8sfish", "destination": "/index.html" },
+    { "source": "/complete", "destination": "/index.html" },
     { "source": "/fish=go", "destination": "/index.html" },
     { "source": "/fish=docker", "destination": "/index.html" },
     { "source": "/fish=css", "destination": "/index.html" },
