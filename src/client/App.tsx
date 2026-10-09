@@ -30,7 +30,7 @@ const phoneTitles: Record<OceanPhase, ReactNode> = {
 
 const phoneHints: Record<OceanPhase, string> = {
   idle: "スマホを振って投げます。強く振るほど遠くへ飛びます。", casting: "そのままお待ちください。", waiting: "ウキが沈んだら、画面をタップするかスマホを小さく引きます。",
-  retrieving: "ルアーを回収しています。", biting: "画面のボタンを押すか、スマホを小さく引きます。", fighting: "魚が落ち着いたら回して巻く。走ったら止めて待つ。手前に引いて戻すと竿を引けます。",
+  retrieving: "ルアーを回収しています。", biting: "画面のボタンを押すか、スマホを小さく引きます。", fighting: "糸の張りを見ながら巻き、強く引かれたらいったん緩めます。動きが弱まったら巻いて距離を詰めます。手前に引いて戻すと竿を引けます。",
   caught: "釣り上げた魚を図鑑に記録しました。", escaped: "もう一度投げてください。",
 };
 
@@ -472,9 +472,9 @@ export function App() {
     : state.phase === "caught"
       ? caughtEntry?.tagline ?? phoneHints.caught
       : fighting
-        ? "回して巻く。手前に引いて戻すと竿を引けます。糸が張るほど振動が速くなり、魚の強い引きも手に伝わります。"
+        ? "糸の張りを見ながら巻き、強く引かれたらいったん緩めます。動きが弱まったら巻いて距離を詰めます。スマホを手前に引いて戻すと竿を引けます。"
         : biting && state.criticalWindow
-          ? "今が狙いどき。画面をタップするか、小さく引いて合わせます。"
+          ? "今合わせられます。画面をタップするか、スマホを小さく引いてください。"
           : phoneHints[state.phase];
   const catchAgainLabel = !online
     ? "再接続中…"
@@ -482,7 +482,7 @@ export function App() {
       ? "図鑑に記録中…"
       : catchSaveStatus === "failed"
         ? "記録後にもう一度投げられます"
-        : "もう一度、海へ";
+        : "もう一度投げる";
   const hudState = ["casting", "waiting", "biting", "fighting"].includes(state.phase) ? presentationState : state;
   const distancePhase = ["casting", "waiting", "biting", "fighting", "caught"].includes(state.phase) ? state.phase : hudState.phase;
   const distanceReadout = distanceReadoutFor(distancePhase, state.phase === "caught" ? 0 : hudState.distance);
@@ -568,7 +568,7 @@ export function App() {
           </div>
           <button className="shore-link" onClick={() => openDialog(collectionDialogRef)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v15M3 4c4-1 7 0 9 2 2-2 5-3 9-2v14c-4-1-7 0-9 2-2-2-5-3-9-2Z" /></svg> 図鑑</button>
         </footer>
-        <p id="render-notice" className="render-notice" role="status" hidden={!renderFailed}>海の描画を開始できませんでした。WebGLが使えるブラウザで開き直してください。</p>
+        <p id="render-notice" className="render-notice" role="status" hidden={!renderFailed}>3D表示を開始できませんでした。WebGLに対応したブラウザで開き直してください。</p>
       </main>
       <section id="phone" className="phone" hidden={!isPhone} aria-label="釣り竿コントローラー" data-fight={String(fighting || biting)}>
         <a className="phone-brand" href="./">技術釣り</a><div id="phone-connection" className="phone-connection" data-connected={String(online && displayConnected)} aria-live="polite"><i aria-hidden="true" /><span>{!online ? "海に接続しています…" : displayConnected ? "PC画面と接続済み" : "PC画面を待っています"}</span></div>
