@@ -160,7 +160,7 @@ test('ocean optics cover every anatomical material but do not alter catalog mate
   submerged.dispose();catalog.dispose();
 });
 
-test('hooked Go fish uses solid body optics instead of the faint approach shadow',()=>{
+test('hooked Go fish keeps its silhouette while retaining submerged water optics',()=>{
   const model=createGoFish({waterUniforms:{uWaterBackdrop:{value:null},uTime:{value:0}}});
   model.update(0,{visibility:.32,combat:true});
   assert.equal(model.body.material.transparent,false,'the hooked body is not an alpha-transparent mesh');
@@ -171,8 +171,12 @@ test('hooked Go fish uses solid body optics instead of the faint approach shadow
   assert.equal(shader.uniforms.uGoCombat.value,1,'Go body receives the readable fight pigment');
   assert.equal(shader.uniforms.uFightCombat.value,1,'Go fins receive the fight silhouette override');
   assert.match(shader.fragmentShader,/mix\(vec3\(\.24,\.43,\.49\), vec3\(\.055,\.18,\.25\), dorsal\)/,'fight body keeps a distinct pale belly and darker back');
-  assert.match(shader.fragmentShader,/if\(uFishCombat>\.5&&uWaterPart<3\.5\)return fishColor;/,'fight anatomy bypasses reflected-water blending');
-  assert.match(shader.fragmentShader,/underwater=mix\(underwater,fishColor,combatAnatomy\+combatDetail\)/);
+  assert.match(shader.fragmentShader,/float combatPigmentBlend=uFishCombat\*\(uWaterPart<2\.5\?\.38:uWaterPart<3\.5\?\.24:0\.0\)/,
+    'the fight uses a bounded pigment blend for readability');
+  assert.match(shader.fragmentShader,/underwater=mix\(underwater,fishColor,combatPigmentBlend\)/,
+    'reflected water and depth tint still cover the hooked fish');
+  assert.doesNotMatch(shader.fragmentShader,/if\(uFishCombat>\.5&&uWaterPart<3\.5\)return fishColor;/,
+    'combat anatomy does not bypass the water compositor');
   model.update(1,{visibility:.32,combat:false});
   assert.equal(model.waterUniforms.uFishCombat.value,0,'approach shadows keep their original reveal treatment');
   model.dispose();

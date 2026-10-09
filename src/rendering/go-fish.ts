@@ -447,9 +447,9 @@ function finMaterial(uniforms, rays, cssStyle = false, clusterStyle = false, rus
           float alpha=clamp(${cssStyle ? '.34' : clusterStyle ? '.56+rays*.12+edge*.18+fresnel*.04' : rustStyle ? '.57' : eelStyle ? '.20' : '.19'}+${cssStyle ? 'rays*.20*mix(.82,1.0,uStylePattern)+edge*.24+fresnel*.06+cssBubbles*.03' : clusterStyle ? '0.0' : rustStyle ? 'rays*.08+edge*.25+fresnel*.05' : eelStyle ? 'rays*.10+edge*.20+fresnel*.05' : 'rays*.30+edge*.30+fresnel*.10'},0.0,${clusterStyle ? '.92' : rustStyle ? '.94' : eelStyle ? '.68' : '.88'});
         alpha=mix(alpha,${clusterStyle ? '.68+.16*(1.0-vUv.y)+rays*.05' : rustStyle ? '.76+.12*(1.0-vUv.y)+rays*.025' : eelStyle ? '.42+.14*(1.0-vUv.y)+rays*.04' : '.48+.18*(1.0-vUv.y)+rays*.08'},uImmersion);
         alpha*=smoothstep(0.0,.035,vUv.x)*(1.0-smoothstep(.97,1.0,vUv.x));
-        // Keep the approach fins translucent, but make them fully opaque once
-        // the fish is hooked, for every live species.
-        alpha=mix(alpha,1.0,uFightCombat);
+        // Strengthen the hooked silhouette while retaining slight translucency
+        // so the underwater color and surface texture still show through.
+        alpha=mix(alpha,max(alpha,.82),uFightCombat);
         gl_FragColor=vec4(color,alpha);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>

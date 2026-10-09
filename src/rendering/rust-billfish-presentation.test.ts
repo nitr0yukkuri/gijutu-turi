@@ -245,7 +245,7 @@ test('Rust avoids the scratch-like gill tube and keeps mouth/keel lines subdued'
   }
 });
 
-test('simplifying Rust fins does not change the Go fish fin material', () => {
+test('hooked Go fish fins stay readable without becoming fully opaque', () => {
   const model = createGoFish({ detail: 'low', visualProfile: 'ocean' });
   try {
     const dorsal = model.group.children.find(child => child.name === 'dorsal-sail') as MeshWithPositions | undefined;
@@ -253,7 +253,8 @@ test('simplifying Rust fins does not change the Go fish fin material', () => {
     assert.equal(dorsal.material.type, 'ShaderMaterial');
     assert.equal(dorsal.material.transparent, true);
     assert.equal(dorsal.material.uniforms?.uFightCombat?.value, 0);
-    assert.match(dorsal.material.fragmentShader ?? '', /alpha=mix\(alpha,1\.0,uFightCombat\)/);
+    assert.match(dorsal.material.fragmentShader ?? '', /alpha=mix\(alpha,max\(alpha,\.82\),uFightCombat\)/,
+      'combat keeps the fin silhouette legible without making it fully opaque');
   } finally {
     model.dispose();
   }
