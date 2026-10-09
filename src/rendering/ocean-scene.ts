@@ -1181,7 +1181,9 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       lastK8sWakeSampleAt=time;
     }else if(state.fishId!=='k8s-001'||state.phase!=='fighting')resetK8sWakeHistory();
     wakes.forEach((wake,index)=>{
-      const model=index?fishModelStore.schoolFish[index-1]:activeFightFish,position=model.group.position;
+      const model=index?fishModelStore.schoolFish[index-1]:activeFightFish;
+      if(!model){wake.visible=false;return;}
+      const position=model.group.position;
       if(state.fishId==='k8s-001'&&index===0){
         const positions=wake.geometry.attributes.position.array;
         let points=0;
