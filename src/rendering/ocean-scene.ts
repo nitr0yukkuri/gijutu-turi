@@ -976,8 +976,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         const approaching=state.phase==='waiting'||state.phase==='biting';
         const biteReveal=THREE.MathUtils.clamp(((state.approach||0)-WAIT_APPROACH_FRACTION)/(1-WAIT_APPROACH_FRACTION),0,1);
         displayedWave={...fish.bodyWave};displayedGlow=approaching?THREE.MathUtils.lerp(.04,.65,state.phase==='waiting'?0:biteReveal):escapePresentation?.8:urgent?.8:.65;displayedSwim=fish.swim?{...fish.swim}:null;displayedLoad=cues.load;
-        // Use the approach/escape water treatment in fights too; the combat
-        // override bypasses water blending and makes submerged anatomy opaque.
+        // Keep the hooked fish fully visible while its material still receives
+        // the same depth tint and reflected-water treatment as the approach.
         activeFightFish.update(time,{power:THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1),glow:state.fishId==='whale-001'||state.fishId==='rust-001'?displayedGlow*.76:state.fishId==='js-001'?displayedGlow*.78:displayedGlow,bodyPhase:fish.bodyWave.phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,amplitude:fish.bodyWave.amplitude,turn:fish.swim?.turn||0,effort:escapePresentation?1:fish.swim?.effort||.2,tetherLoad:cues.load,surge:state.fishId==='rust-001'&&state.phase==='fighting'&&visualMode==='surge'?1:0,cargoMoment:state.fishId==='whale-001'&&state.phase==='fighting'&&state.mode==='surge',visibility:renderedFishVisibility,combat:state.phase==='fighting',styleDelta:dt});
         if(cssFishTrailActive)rememberCssFishPose(now,fish);
       }

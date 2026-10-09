@@ -249,10 +249,6 @@ uniform float uFishCombat;
 uniform float uWaterFinSide;
 ${profile.redStateRetention === undefined ? '' : 'uniform float uCssRedState;'}
 vec3 throughWater(vec3 fishColor) {
-  // Combat anatomy is already close enough to read. Do not run its pixels
-  // through the reflected-water blend: that can make the opaque body look
-  // like a translucent shadow, especially over bright/rippled water.
-  if(uFishCombat>.5&&uWaterPart<3.5)return fishColor;
   vec2 screenUv=gl_FragCoord.xy/uWaterSize;
   vec3 background=texture2D(uWaterBackdrop,screenUv).rgb;
   float presentationVisibility=mix(uFishVisibility,1.0,uFishCombat);
@@ -302,12 +298,11 @@ vec3 throughWater(vec3 fishColor) {
   float farFinBlend=step(.5,abs(uWaterFinSide))*(1.0-smoothstep(${FIN_VIEW_BLEND_START},${FIN_VIEW_BLEND_END},vWaterFinFacing));
   float finCoverage=coverage*(1.0-${FAR_FIN_COVERAGE_REDUCTION}*farFinBlend);
   float finLightScale=lightScale*(1.0-${FAR_FIN_LIGHT_REDUCTION}*farFinBlend);
-  // Keep the fight silhouette and anatomy fully opaque. Tiny facial/detail
-  // meshes use the same combat override so they cannot disappear at the surface.
-  float combatAnatomy=uFishCombat*(1.0-step(2.5,uWaterPart));
-  float combatDetail=uFishCombat*step(2.5,uWaterPart)*(1.0-step(3.5,uWaterPart));
   vec3 underwater=background*(1.0-finCoverage)+transmission*extinction*(1.0-haze*.97)*vignette*fishColor*finLightScale;
-  underwater=mix(underwater,fishColor,combatAnatomy+combatDetail);
+  // Preserve some direct color for a readable hooked-fish silhouette while
+  // keeping reflected waves, depth tint, and scattering visible over it.
+  float combatPigmentBlend=uFishCombat*(uWaterPart<2.5?.38:uWaterPart<3.5?.24:0.0);
+  underwater=mix(underwater,fishColor,combatPigmentBlend);
   float fightSubmerged=mix(submerged,1.0,uFishCombat);
   // Approach visibility is an underwater reveal effect. Once hooked, keep
   // every anatomical part fully present so it cannot fade back into the sea.
@@ -319,7 +314,7 @@ vec3 throughWater(vec3 fishColor) {
 export function applyFishWater(material, waterUniforms, part='detail', profile=DEFAULT_FISH_WATER_PROFILE, finSide=0) {
   const compile=material.onBeforeCompile;
   const cacheKey=material.customProgramCacheKey();
-  const underwaterVersion=profile===DOCKER_WHALE_WATER_PROFILE?'underwater-docker-normal-v1':'underwater-v7';
+  const underwaterVersion=profile===DOCKER_WHALE_WATER_PROFILE?'underwater-docker-fight-water-v2':'underwater-fight-water-v8';
   const originallyToneMapped=material.toneMapped;
   material.onBeforeCompile=shader=>{
     compile.call(material,shader);
