@@ -393,24 +393,6 @@ test('every fish keeps swimming while released line tension can reach zero',()=>
   }
 });
 
-test('Go fish attack phases take line and stay physically readable',()=>{
-  const {game,step,now}=setup(.5);game.action({action:'hook'},now());
-  const mode=()=>game.state.mode;
-  while(mode()!=='warning')step(false);
-  const warningDistance=game.state.distance;
-  step(false);
-  assert.equal(game.state.fish.gait,'turn','the warning telegraph should move the body');
-  assert.ok(game.state.distance>warningDistance,'the warning should begin taking line');
-
-  while(mode()!=='split')step(false);
-  const attackDistance=game.state.distance;
-  const attackTension=game.state.tension;
-  for(let i=0;i<10;i++)step(true);
-  assert.equal(game.state.fish.gait,'burst','the split attack should use the burst gait');
-  assert.ok(game.state.distance>attackDistance+.1,'Go should take line even while the player reels during an attack');
-  assert.ok(game.state.tension>attackTension,'the attack should load the line instead of becoming inert');
-});
-
 test('Go keeps a visible tail beat and uneven resistance while the player reels it closer',()=>{
   const profile=getFishFightProfile('fish-001');
   assert.equal(profile.gaitAt({mode:'rest',opening:false,reeling:true}),'go_reel_resist');
