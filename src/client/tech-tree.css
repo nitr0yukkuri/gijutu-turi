@@ -90,7 +90,6 @@
 .tech-tree-specimen { position: relative; display: grid; place-items: center; height: 146px; margin: 2px -14px 4px; background: radial-gradient(ellipse, #50828c1f, transparent 68%); }
 .tech-tree-specimen #collection-model { width: 100%; height: 100%; min-height: 0; }
 .tech-tree-specimen #collection-model canvas { width: 100%; height: 100%; }
-.tech-tree-specimen .collection-silhouette-caption { display: none; }
 .tech-tree-inspector-heading h4 { margin: 0; color: #eff6f1; font-size: 24px; font-weight: 400; line-height: 1.4; overflow-wrap: anywhere; }
 .tech-tree-node-data { margin-top: 18px; }
 .tech-tree-node-data h5 { margin: 0 0 6px; color: #e0ebe7; font-size: 13px; font-weight: 500; line-height: 1.6; }
