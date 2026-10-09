@@ -37,6 +37,9 @@ jobs:
       - name: 本番ビルド
         run: npm run build
 
+      - name: ブラウザー検査用のChromiumを準備
+        run: npx playwright install --with-deps chromium
+
       - name: 海釣り用サーバーを起動
         shell: bash
         run: |
@@ -59,6 +62,9 @@ jobs:
 
       - name: クジラモデル検証
         run: npm run test:whale
+
+      - name: ブラウザー表示・画面幅回帰
+        run: npm run test:browser
 
       - name: Dockerイメージをビルド
         run: docker build --tag gijutu-turi:ci .
