@@ -4,6 +4,8 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM"],
     "allowJs": true,
@@ -15,5 +17,5 @@
     "noImplicitOverride": true,
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts", "vite.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts", "browser-tests/**/*.ts", "playwright.config.ts", "vite.config.ts"]
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { toDataURL } from "qrcode";
 import { getFishSpecies, isFishSpeciesId, type FishSilhouetteKey } from "../fish-species.js";
+import { FISH_ESCAPE_HINTS } from "./escape-hints.js";
 import { canContinueAfterCatchSave } from "../ocean-contract.js";
 import { k8sLungeForSnapshot } from "../rendering/k8s-fight-presentation.js";
 import { distanceReadoutFor } from "./distance-readout.js";
@@ -25,13 +26,6 @@ const phoneTitles: Record<OceanPhase, ReactNode> = {
   idle: <>投げる</>, casting: <>投げています</>, waiting: <>アタリを<br />待っています</>,
   retrieving: <>ルアーを<br />回収しています</>, biting: <>合わせる</>, fighting: <>魚とファイト中</>,
   caught: <>釣れました</>, escaped: <>逃げられました</>,
-};
-
-const failureHints: Record<string, [string, string]> = {
-  missed: ["合わせるタイミングが遅れました。", "ウキが沈んだら、ボタンを押してください。"],
-  line: ["糸が切れました。", "糸の張りが赤くなる前に、巻くのを止めてください。"],
-  slack: ["針が外れました。", "魚が掛かったら、糸を緩めすぎないでください。"],
-  distance: ["魚が逃げました。", "魚が落ち着いている間に、少しずつ巻いてください。"],
 };
 
 const phoneHints: Record<OceanPhase, string> = {
@@ -461,7 +455,7 @@ export function App() {
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
   const runtime = useOceanRuntime({ isPhone, controllerId, initialFishId: fishingRoute.initialFishId, routePath: fishingRoute.path, oceanMountRef, collectionOpen });
-  const { state, presentationState, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle, soundEnabled, collection, selectedCollectionId, controllerUrl, controllerHost, controllerUrlError, sensorStatus, sensorButtonLabel, sensorsOn } = runtime;
+  const { state, presentationState, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle, soundEnabled, collection, selectedCollectionId, controllerUrl, controllerHost, controllerUrlError, sensorStatus, sensorButtonLabel } = runtime;
   const { activate, retryCatchSave, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, startReel, stopReel, performRodStroke, toggleSensor, toggleSound, showToast } = runtime.actions;
   const fighting = state.phase === "fighting";
   const biting = state.phase === "biting";
@@ -565,7 +559,7 @@ export function App() {
           <button id="catch-again" className="primary-button" disabled={!online || !canContinueAfterCatchSave(catchSaveStatus)} onClick={() => activate()}>{catchAgainLabel}</button>
           {!online && <p className="result-connection" role="status">{resultConnectionHint}</p>}
         </section>
-        <section id="escape-ui" className="escape-ui" hidden={state.phase !== "escaped"} aria-live="polite"><h2>{runtime.state.reason ? (failureHints[runtime.state.reason]?.[0] ?? "逃げられた。") : "逃げられた。"}</h2><p>{runtime.state.reason ? (failureHints[runtime.state.reason]?.[1] ?? "") : ""}</p><button id="escape-again" className="primary-button" disabled={!online} onClick={() => activate()}>{resultActionLabel}</button>{!online && <p className="result-connection" role="status">{resultConnectionHint}</p>}</section>
+        <section id="escape-ui" className="escape-ui" hidden={state.phase !== "escaped"} aria-live="polite"><h2>{runtime.state.reason ? (FISH_ESCAPE_HINTS[runtime.state.reason]?.[0] ?? "逃げられた。") : "逃げられた。"}</h2><p>{runtime.state.reason ? (FISH_ESCAPE_HINTS[runtime.state.reason]?.[1] ?? "") : ""}</p><button id="escape-again" className="primary-button" disabled={!online} onClick={() => activate()}>{resultActionLabel}</button>{!online && <p className="result-connection" role="status">{resultConnectionHint}</p>}</section>
         <div className="bottom-shade" aria-hidden="true" />
         <footer className="shore-controls">
           <button className="shore-link" onClick={() => openDialog(helpDialogRef)}><span className="help-mark">?</span> 操作方法</button>
