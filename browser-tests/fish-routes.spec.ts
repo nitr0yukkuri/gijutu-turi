@@ -96,3 +96,49 @@ test("the fishing scene stays within common desktop and phone viewports", async 
     expect(dimensions.canvas).toBeGreaterThan(0);
   }
 });
+
+test("/complete shows every fish as a read-only showcase without opening game APIs", async ({ page }) => {
+  // This route mounts each high-detail fish preview in turn; software WebGL
+  // needs more than the default timeout to compile all six species shaders.
+  test.setTimeout(90_000);
+  const apiRequests: string[] = [];
+  const sockets: string[] = [];
+  page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/")) apiRequests.push(`${request.method()} ${url.pathname}`);
+  });
+  page.on("websocket", socket => sockets.push(socket.url()));
+
+  await page.goto("/complete");
+  await expect(page.getByRole("heading", { name: "魚図鑑コンプリート" })).toBeVisible();
+  await expect(page.getByText(/展示用サンプル/)).toBeVisible();
+  await expect(page.getByLabel(/発見済み 6 \/ 6 種/)).toBeVisible();
+
+  const fishCards = page.locator(".complete-fish-card");
+  await expect(page.getByRole("heading", { name: "魚図鑑", exact: true })).toBeVisible();
+  await expect(fishCards).toHaveCount(6);
+  await expect(page.locator(".complete-fish-card-status")).toHaveText(["✓ 発見済み", "✓ 発見済み", "✓ 発見済み", "✓ 発見済み", "✓ 発見済み", "✓ 発見済み"]);
+  for (let index = 0; index < 6; index += 1) {
+    const card = fishCards.nth(index);
+    await card.click();
+    const selectedFishName = await card.locator("strong").innerText();
+    await expect(page.getByRole("heading", { name: selectedFishName, exact: true })).toBeVisible();
+    await expect(page.locator("#collection-model canvas")).toBeVisible();
+    await expect(page.locator(".complete-fish-record-note")).toContainText("展示用");
+  }
+
+  await page.getByRole("navigation", { name: "展示内容" }).getByRole("button", { name: "技術ツリー" }).click();
+  await expect(page.getByRole("heading", { name: "技術ツリー" })).toBeVisible();
+  await expect(page.locator(".tech-tree-node.is-unlocked")).toHaveCount(6);
+  await expect(page.locator(".tech-tree-node-mark")).toHaveText(["✓", "✓", "✓", "✓", "✓", "✓"]);
+
+  await page.getByRole("navigation", { name: "展示内容" }).getByRole("button", { name: "魚図鑑" }).click();
+  const desktopWidth = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth }));
+  expect(desktopWidth.document).toBeLessThanOrEqual(desktopWidth.viewport);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("heading", { name: "魚図鑑コンプリート" })).toBeVisible();
+  const width = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth }));
+  expect(width.document).toBeLessThanOrEqual(width.viewport);
+  expect(apiRequests).toEqual([]);
+  expect(sockets).toEqual([]);
+});
