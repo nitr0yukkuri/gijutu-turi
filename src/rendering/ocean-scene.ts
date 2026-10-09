@@ -1,7 +1,6 @@
 // @ts-nocheck -- the renderer is an imperative WebGL boundary around the vendored Three.js runtime.
 import * as THREE from '../../vendor/three.module.js';
-import { createGoFish } from './go-fish.js';
-import { createDockerWhale,setDockerWhaleMouthAnchor } from './docker-whale.js';
+import { setDockerWhaleMouthAnchor } from './docker-whale-profile.js';
 import { fishApparentPoint,waterHeightAt,waterHeightGLSL } from './fish-water.js';
 import { fishFightCues,lineSagForLoad } from './fish-fight-cues.js';
 import { updateFishingLineBuffers } from './fishing-line.js';
@@ -18,10 +17,11 @@ import { fishScaleForResponsiveCamera } from './fish-camera-scale.js';
 import { catchFraming } from './catch-framing.js';
 import { schoolCatchFormationScale } from './school-catch.js';
 import { fishBodyWaveOffsetAt, K8S_LEVIATHAN_SWIM_VISUAL_PROFILE } from './fish-swim-visual-profile.js';
-import { K8S_ECHO_COUNT, k8sFightPresentation, k8sLungeForSnapshot } from './k8s-fight-presentation.js';
+import { k8sFightPresentation, k8sLungeForSnapshot } from './k8s-fight-presentation.js';
 import { K8S_SURFACE_BODY_PROBES, k8sSurfaceWakeStrength, updateK8sSurfaceExposure } from './k8s-surface-motion.js';
 import { OceanPresentationTimeline } from '../ocean-presentation-timeline.js';
 import { copyFishMotion as copyFish, interpolateFishPresentationState } from './fish-presentation-state.js';
+import { createOceanFishModels } from './ocean-fish-models.js';
 import type { FishSurfaceImpactCue } from '../fish-surface-impact.js';
 
 // Keep the escape result on screen while the camera returns to the normal view.
@@ -191,6 +191,7 @@ export type OceanSceneOptions = {
 };
 
 export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurfaceImpact=()=>{}, presentationTimeline:sharedTimeline }: OceanSceneOptions = {}) {
+  let sceneDisposed=false;
   const presentationTimeline=sharedTimeline??new OceanPresentationTimeline(OCEAN_RENDER_DELAY_MS);
   const ownsPresentationTimeline=!sharedTimeline;
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -393,64 +394,14 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const dropletGeo=new THREE.BufferGeometry();const drops=new Float32Array(36*3);dropletGeo.setAttribute('position',new THREE.BufferAttribute(drops,3));
   const spray=new THREE.Points(dropletGeo,new THREE.PointsMaterial({color:0xd9efed,size:.045,transparent:true,opacity:.85,depthWrite:false}));spray.visible=false;spray.frustumCulled=false;scene.add(spray);
   const dropSpeeds=Array.from({length:36},(_,i)=>{const a=i*2.399;return new THREE.Vector3(Math.cos(a)*(.5+(i%5)*.16),.75+(i%7)*.21,Math.sin(a)*(.5+(i%5)*.16));});
-  // A submerged animal, not a luminous overlay on top of the sea.
-  const fightFish=createGoFish({detail:'high',phase:.7,waterUniforms});
-  fightFish.group.visible=false;fightFish.group.renderOrder=4;
-  fightFish.group.traverse(object=>{object.renderOrder=4;});
-  scene.add(fightFish.group);
-  const dockerWhale=createDockerWhale({detail:'high',phase:.7,waterUniforms});
-  dockerWhale.group.visible=false;dockerWhale.group.renderOrder=4;dockerWhale.group.scale.setScalar(.42);
-  dockerWhale.group.traverse(object=>{object.renderOrder=4;});
-  scene.add(dockerWhale.group);
-  const cssFish=createGoFish({detail:'high',phase:.7,waterUniforms,visualProfile:'css'});
-  cssFish.group.visible=false;cssFish.group.renderOrder=4;
-  cssFish.group.traverse(object=>{object.renderOrder=4;});
-  scene.add(cssFish.group);
-  // Short, underwater copies make the CSS fish's server-driven dart read as a
-  // quick turn. They reuse the live pose history rather than inventing motion.
-  let cssFishAfterimages=[];
-  const ensureCssFishAfterimages=()=>{
-    if(cssFishAfterimages.length)return;
-    cssFishAfterimages=Array.from({length:2},(_,index)=>{
-      const model=createGoFish({detail:'high',phase:.7+index*.11,waterUniforms,visualProfile:'css'});
-      model.group.visible=false;model.group.renderOrder=3;
-      model.group.traverse(object=>{
-        object.renderOrder=3;
-        for(const material of Array.isArray(object.material)?object.material:object.material?[object.material]:[]){
-          material.depthWrite=false;
-        }
-      });
-      scene.add(model.group);
-      return model;
-    });
-  };
+  const fishModelStore=createOceanFishModels(scene,waterUniforms,createFishOrientationScratch);
+  const {fightFish,dockerWhale,cssFish,rustFish,jsEel,fightModelFor,requestFightModel}=fishModelStore;
+  const ensureSchoolFish=fishModelStore.ensureSchoolFish;
   const cssFishProfile=getFishFightProfile('css-001');
-  const rustFish=createGoFish({detail:'high',phase:.7,waterUniforms,visualProfile:'rust'});
-  rustFish.group.visible=false;rustFish.group.renderOrder=4;
-  rustFish.group.traverse(object=>{object.renderOrder=4;});
-  scene.add(rustFish.group);
-  const jsEel=createGoFish({detail:'high',phase:.7,waterUniforms,visualProfile:'eel'});
-  jsEel.group.visible=false;jsEel.group.renderOrder=4;
-  jsEel.group.traverse(object=>{object.renderOrder=4;});
-  scene.add(jsEel.group);
-  let clusterFish=null;
-  const ensureClusterFish=()=>{
-    if(clusterFish)return clusterFish;
-    clusterFish=createGoFish({detail:'high',phase:.7,waterUniforms,visualProfile:'cluster'});
-    clusterFish.group.visible=false;clusterFish.group.renderOrder=4;
-    clusterFish.group.traverse(object=>{object.renderOrder=4;});
-    scene.add(clusterFish.group);
-    return clusterFish;
-  };
-  const fightModelFor=(fishId)=>{if(fishId==='css-001')ensureCssFishAfterimages();return fishId==='whale-001'?dockerWhale:fishId==='css-001'?cssFish:fishId==='rust-001'?rustFish:fishId==='js-001'?jsEel:fishId==='k8s-001'?ensureClusterFish():fightFish;};
   const liveFishScale=(fishId,phase)=>fishScaleForResponsiveCamera(fishId==='whale-001'?.42:fishId==='k8s-001'?(phase==='fighting'?1.02:.76):fishId==='css-001'?(phase==='fighting'?.74:.55):fishId==='rust-001'?(phase==='fighting'?.80:.63):fishId==='js-001'?(phase==='fighting'?.78:.61):(phase==='fighting'?.84:.66),camera.fov,portraitBlend);
   const catchFishScale=(fishId)=>fishScaleForResponsiveCamera(catchFraming(fishId,camera.aspect,camera.fov).baseScale,camera.fov,portraitBlend);
   // The submerged line ends at the same undeformed nose anchor as the model.
   const mouth=new THREE.Vector3(),lineEntry=new THREE.Vector3(),curvePoint=new THREE.Vector3();
-  const schoolFish=Array.from({length:6},(_,index)=>{
-    const model=createGoFish({detail:'low',phase:index*.87,waterUniforms});
-    model.group.visible=false;model.group.renderOrder=3;scene.add(model.group);return model;
-  });
   const schoolMotion=Array.from({length:6},()=>({
     position:new THREE.Vector3(),velocity:new THREE.Vector3(),heading:new THREE.Vector3(),
     followerHeading:new THREE.Vector3(),orientation:new THREE.Quaternion(),
@@ -467,21 +418,9 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const schoolCatchRotationDelta=new THREE.Quaternion(),schoolCatchOriginInverse=new THREE.Quaternion();
   // Visual-only replicas follow the authoritative fish snapshot. They never
   // receive a line, hook, or independent game state.
-  let clusterEchoes=[],clusterEchoMotion=[];
   const clusterEchoCenter=new THREE.Vector3(),clusterEchoHeading=new THREE.Vector3();
   const clusterEchoSide=new THREE.Vector3(),clusterEchoDesired=new THREE.Vector3();
   const clusterEchoPrevious=new THREE.Vector3(),clusterEchoPropulsionHeading=new THREE.Vector3();
-  const ensureClusterEchoes=()=>{
-    if(clusterEchoes.length)return;
-    clusterEchoes=Array.from({length:K8S_ECHO_COUNT},(_,index)=>{
-      const model=createGoFish({detail:'low',phase:1.7+index,waterUniforms,visualProfile:'cluster'});
-      model.group.visible=false;model.group.renderOrder=3;scene.add(model.group);return model;
-    });
-    clusterEchoMotion=Array.from({length:K8S_ECHO_COUNT},()=>({
-      position:new THREE.Vector3(),velocity:new THREE.Vector3(),orientation:new THREE.Quaternion(),
-      orientationScratch:createFishOrientationScratch(),initialized:false,
-    }));
-  };
   const clusterEchoOffsets=[new THREE.Vector3(-.92,.06,-1.24),new THREE.Vector3(.92,-.08,-1.36)];
   let clusterEchoAmount=0;
   let previousK8sSurfaceGap=null,lastK8sBreachAt=-100,k8sSurfaceExposed=false,k8sSurfaceContactGap=-Infinity,k8sFirstBreachPlayed=false;
@@ -547,12 +486,14 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const resetCssFishAfterimages=()=>{
     cssFishPoseHistoryHead=0;cssFishPoseHistoryCount=0;
     for(const sample of cssFishPoseHistory)sample.at=-Infinity;
-    for(const model of cssFishAfterimages)model.group.visible=false;
+    for(const model of fishModelStore.cssFishAfterimages)model.group.visible=false;
   };
   const rememberCssFishPose=(now,fish)=>{
+    const model=cssFish();
+    if(!model)return;
     const sample=cssFishPoseHistory[cssFishPoseHistoryHead];
-    sample.at=now;sample.position.copy(cssFish.group.position);sample.quaternion.copy(cssFish.group.quaternion);
-    sample.scale=cssFish.group.scale.x;sample.power=THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1);
+    sample.at=now;sample.position.copy(model.group.position);sample.quaternion.copy(model.group.quaternion);
+    sample.scale=model.group.scale.x;sample.power=THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1);
     sample.bodyPhase=fish.bodyWave.phase;sample.bodyFrequency=fish.bodyWave.frequency;
     sample.bodyWavelength=fish.bodyWave.wavelength;sample.turn=fish.swim?.turn||0;
     sample.effort=fish.swim?.effort||.2;sample.glow=displayedGlow;sample.load=displayedLoad;
@@ -591,11 +532,16 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     sprayOrigin.set(x,waveHeight(x,z,time),z);splashAt=time;sprayPower=power;addRipple(x,z,power);
   };
   const setState=(next,serverNow)=>{
-    // Resolve lazy species models on the network/state path, not on the first
-    // animation frame that tries to show the fish.
-    fightModelFor(next.fishId);
-    if(next.fishId==='k8s-001')ensureClusterEchoes();
-    scheduleFishShaderWarmup(next.fishId);
+    // Start the selected species chunk as soon as its server snapshot arrives.
+    // Model creation remains off the animation loop and preserves the quiet
+    // approach window for shader warmup.
+    void requestFightModel(next.fishId).then(()=>{
+      if(!sceneDisposed&&state.fishId===next.fishId)scheduleFishShaderWarmup(next.fishId);
+    }).catch(error=>{
+      if(sceneDisposed)return;
+      console.error('Fish model unavailable',error);
+      onRenderError();
+    });
     if(Number.isFinite(serverNow)) serverOffset=serverNow-Date.now();
     if(ownsPresentationTimeline)presentationTimeline.push(next,Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset);
     tackleStore.update(next,Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset);
@@ -608,7 +554,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         ? displayedFishVisibility
         : fishVisibilityTarget('biting',1,next.fishId);
     }
-    if(changed){schoolAmount=0;schoolWasVisible=false;schoolCatchOrigins=null;clusterEchoAmount=0;previousK8sSurfaceGap=null;lastK8sBreachAt=-100;k8sSurfaceExposed=false;marlinSurfaceExposed=false;resetK8sWakeHistory();for(const motion of schoolMotion)motion.initialized=false;for(const motion of clusterEchoMotion)motion.initialized=false;}
+    if(changed){schoolAmount=0;schoolWasVisible=false;schoolCatchOrigins=null;clusterEchoAmount=0;previousK8sSurfaceGap=null;lastK8sBreachAt=-100;k8sSurfaceExposed=false;marlinSurfaceExposed=false;resetK8sWakeHistory();for(const motion of schoolMotion)motion.initialized=false;for(const motion of fishModelStore.clusterEchoMotion)motion.initialized=false;}
     state={...next};
     target.set(next.aim*7,0,-castDistanceForStrength(next.strength));
     if(['fighting','caught'].includes(next.phase)&&next.fish)target.set(next.fish.position.x,0,next.fish.position.z);
@@ -622,13 +568,13 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       if(heading.lengthSq()<.0001)heading.set(-1,0,0);else heading.normalize();
       const displayedModel=fightModelFor(next.fishId);
       catchOrigin={
-        position:displayedModel.group.visible?displayedModel.group.position.clone():fishWorldPosition(fish),
-        quaternion:displayedModel.group.visible?displayedModel.group.quaternion.clone():fishOrientation(heading),
-        scale:displayedModel.group.visible?displayedModel.group.scale.x:liveFishScale(next.fishId,next.phase),
+        position:displayedModel?.group.visible?displayedModel.group.position.clone():fishWorldPosition(fish),
+        quaternion:displayedModel?.group.visible?displayedModel.group.quaternion.clone():fishOrientation(heading),
+        scale:displayedModel?.group.visible?displayedModel.group.scale.x:liveFishScale(next.fishId,next.phase),
         wave:{...(displayedWave||fish.bodyWave)},swim:displayedSwim,glow:displayedGlow,load:displayedLoad,at:performance.now(),
       };
       schoolCatchOrigins=next.fishId==='fish-001'
-        ? schoolFish.map(model=>model.group.visible?{
+        ? fishModelStore.schoolFish.map(model=>model.group.visible?{
           position:model.group.position.clone(),
           quaternion:model.group.quaternion.clone(),
           scale:model.group.scale.x,
@@ -689,8 +635,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       try{
         const fishModel=fightModelFor(warmupFishId);
         compileHiddenGroup(fishModel.group);
-        if(warmupFishId==='fish-001')compileHiddenGroup(schoolFish[0]?.group);
-        if(warmupFishId==='k8s-001')compileHiddenGroup(clusterEchoes[0]?.group);
+        if(warmupFishId==='fish-001')compileHiddenGroup(fishModelStore.schoolFish[0]?.group);
+        if(warmupFishId==='k8s-001')compileHiddenGroup(fishModelStore.clusterEchoes[0]?.group);
         if(!waterShaderWarmupAttempted){
           waterShaderWarmupAttempted=true;
           renderer.setRenderTarget(waterBackdrop);
@@ -973,21 +919,22 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       ? escapeFishVisibility(escapeStartVisibility,escapeFade)
       : displayedFishVisibility;
     const activeFightFish=fightModelFor(state.fishId);
-    fightFish.group.visible=activeFightFish===fightFish&&fishShowing&&Boolean(visibleFish);
-    dockerWhale.group.visible=activeFightFish===dockerWhale&&fishShowing&&Boolean(visibleFish);
-    cssFish.group.visible=activeFightFish===cssFish&&fishShowing&&Boolean(visibleFish);
-    rustFish.group.visible=activeFightFish===rustFish&&fishShowing&&Boolean(visibleFish);
-    jsEel.group.visible=activeFightFish===jsEel&&fishShowing&&Boolean(visibleFish);
-    if(clusterFish)clusterFish.group.visible=activeFightFish===clusterFish&&fishShowing&&Boolean(visibleFish);
+    const currentFightFish=fightFish(),currentDockerWhale=dockerWhale(),currentCssFish=cssFish(),currentRustFish=rustFish(),currentJsEel=jsEel();
+    if(currentFightFish)currentFightFish.group.visible=activeFightFish===currentFightFish&&fishShowing&&Boolean(visibleFish);
+    if(currentDockerWhale)currentDockerWhale.group.visible=activeFightFish===currentDockerWhale&&fishShowing&&Boolean(visibleFish);
+    if(currentCssFish)currentCssFish.group.visible=activeFightFish===currentCssFish&&fishShowing&&Boolean(visibleFish);
+    if(currentRustFish)currentRustFish.group.visible=activeFightFish===currentRustFish&&fishShowing&&Boolean(visibleFish);
+    if(currentJsEel)currentJsEel.group.visible=activeFightFish===currentJsEel&&fishShowing&&Boolean(visibleFish);
+    if(fishModelStore.clusterFish)fishModelStore.clusterFish.group.visible=activeFightFish===fishModelStore.clusterFish&&fishShowing&&Boolean(visibleFish);
     let cssFishVisualState='normal';
-    if (state.fishId === 'css-001') {
+    if (state.fishId === 'css-001'&&currentCssFish) {
       cssFishVisualState=resolveCssFishVisualState({phase:tackle.phase,mode:tackle.mode,tension:tackle.tension,fish:visibleFish});
-      cssFish.setVisualState(cssFishVisualState);
+      currentCssFish.setVisualState(cssFishVisualState);
     }
-    const cssFishTrailActive=state.fishId==='css-001'&&state.phase==='fighting'&&cssFish.group.visible;
+    const cssFishTrailActive=state.fishId==='css-001'&&state.phase==='fighting'&&Boolean(currentCssFish?.group.visible);
     if(!cssFishTrailActive)resetCssFishAfterimages();
     let caughtEase=0;
-    if(activeFightFish.group.visible){
+    if(activeFightFish?.group.visible){
       const fish=visibleFish;
       const heading=state.phase==='fighting'
         ? fightViewHeading(fish,state.fishId,camera.position,fightFishHeading,fightViewDirection,fightViewSide,surfaceLunge)
@@ -1039,8 +986,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       ? cssFishProfile.maneuverAt?.(renderedFightTime,renderedMode,-1)
       : null;
     const cssFishDartStrength=cssFishDart?.kind==='dart'?Math.sin(Math.PI*cssFishDart.progress):0;
-    for(let index=0;index<cssFishAfterimages.length;index++){
-      const model=cssFishAfterimages[index];
+    for(let index=0;index<fishModelStore.cssFishAfterimages.length;index++){
+      const model=fishModelStore.cssFishAfterimages[index];
       const pose=cssFishDartStrength>.015
         ? cssFishPoseAt(now-cssFishAfterimageDelays[index])
         : null;
@@ -1058,7 +1005,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       });
     }
     k8sSurfaceContactGap=-Infinity;
-    if(state.fishId==='rust-001'&&state.phase==='fighting'&&activeFightFish.group.visible&&visibleFish){
+    if(state.fishId==='rust-001'&&state.phase==='fighting'&&activeFightFish?.group.visible&&visibleFish){
       // A hooked marlin's surface leap is server-owned. Let the rendered wave
       // crossings produce the same splash and expanding ripple as the K8s breach.
       const marlinGap=visibleFish.position.y-waveHeight(visibleFish.position.x,visibleFish.position.z,time);
@@ -1068,7 +1015,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         marlinSurfaceExposed=false;launchSplash(visibleFish.position.x,visibleFish.position.z,1.95);
       }
     }else marlinSurfaceExposed=false;
-    if(state.fishId==='k8s-001'&&state.phase==='fighting'&&activeFightFish.group.visible&&visibleFish){
+    if(state.fishId==='k8s-001'&&state.phase==='fighting'&&activeFightFish?.group.visible&&visibleFish){
       activeFightFish.group.updateMatrixWorld(true);
       for(const probe of k8sContactProbes){
         deformK8sBodyProbe(probe,visibleFish,k8sContactProbeWorld).applyMatrix4(activeFightFish.group.matrixWorld);
@@ -1097,7 +1044,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       previousK8sSurfaceGap=null;k8sSurfaceExposed=false;k8sSurfaceContactGap=-Infinity;
       resetK8sWakeHistory();
     }
-    if(state.phase==='fighting'&&activeFightFish.group.visible){
+    if(state.phase==='fighting'&&activeFightFish?.group.visible){
       activeFightFish.group.updateMatrixWorld(true);
       if(state.fishId==='whale-001'){
         mouthSideRotation.copy(activeFightFish.group.quaternion).invert();
@@ -1127,9 +1074,10 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     }else if(state.phase==='fighting'){
       thread.visible=false;wetThread.visible=false;
     }
-    lastStroke=state.phase==='fighting'&&activeFightFish.group.visible?stroke:0;
+    lastStroke=state.phase==='fighting'&&Boolean(activeFightFish?.group.visible)?stroke:0;
     const schoolRequested=showLiveTackle&&state.phase==='fighting'&&state.fishId==='fish-001'&&state.school===7&&Boolean(visibleFish);
-    const schoolCatchActive=showLiveTackle&&state.phase==='caught'&&state.fishId==='fish-001'&&Boolean(visibleFish)&&Boolean(schoolCatchOrigins?.some(Boolean));
+    const schoolCatchActive=showLiveTackle&&state.phase==='caught'&&state.fishId==='fish-001'&&Boolean(visibleFish)&&Boolean(activeFightFish)&&Boolean(schoolCatchOrigins?.some(Boolean));
+    if(schoolRequested||schoolCatchActive)ensureSchoolFish();
     const schoolPresentationActive=schoolRequested||schoolCatchActive;
     schoolAmount=THREE.MathUtils.damp(schoolAmount,schoolPresentationActive?1:0,schoolPresentationActive?4:6,dt);
     const schoolVisible=(schoolPresentationActive||schoolAmount>.02)&&(fishInWater||schoolCatchActive)&&Boolean(visibleFish);
@@ -1141,11 +1089,11 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         if(schoolNeighborValid[index])schoolNeighborPositions[index].copy(schoolMotion[index].position);
       }
     }
-    const schoolCatchRotation=schoolCatchActive
+    const schoolCatchRotation=schoolCatchActive&&activeFightFish
       ? schoolCatchRotationDelta.copy(activeFightFish.group.quaternion).multiply(schoolCatchOriginInverse.copy(catchOrigin.quaternion).invert())
       : null;
-    for(let index=0;index<schoolFish.length;index++){
-      const model=schoolFish[index],motion=schoolMotion[index];model.group.visible=schoolVisible;if(!schoolVisible)continue;
+    for(let index=0;index<fishModelStore.schoolFish.length;index++){
+      const model=fishModelStore.schoolFish[index],motion=schoolMotion[index];model.group.visible=schoolVisible;if(!schoolVisible)continue;
       if(schoolCatchActive){
         const origin=schoolCatchOrigins[index];
         model.group.visible=Boolean(origin);
@@ -1189,11 +1137,10 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     }
     const clusterEchoRequested=showLiveTackle&&state.phase==='fighting'&&state.fishId==='k8s-001'&&Boolean(visibleFish);
     const clusterEchoTarget=clusterEchoRequested?k8sPresentation.echoVisibility:0;
-    if(clusterEchoRequested)ensureClusterEchoes();
     clusterEchoAmount=THREE.MathUtils.damp(clusterEchoAmount,clusterEchoTarget,clusterEchoTarget>clusterEchoAmount?1.8:state.phase==='caught'?12:4.5,dt);
     const clusterEchoVisible=clusterEchoAmount>.015&&fishInWater&&Boolean(visibleFish);
-    for(let index=0;index<clusterEchoes.length;index++){
-      const model=clusterEchoes[index],motion=clusterEchoMotion[index];
+    for(let index=0;index<fishModelStore.clusterEchoes.length;index++){
+      const model=fishModelStore.clusterEchoes[index],motion=fishModelStore.clusterEchoMotion[index];
       model.group.visible=clusterEchoVisible;
       if(!clusterEchoVisible){if(clusterEchoAmount<=.02)motion.initialized=false;continue;}
       const fish=visibleFish;
@@ -1218,10 +1165,10 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       if(clusterEchoPropulsionHeading.lengthSq()<.0001)clusterEchoPropulsionHeading.copy(clusterEchoHeading);else clusterEchoPropulsionHeading.normalize();
       model.group.position.copy(motion.position);
       model.group.quaternion.slerp(fishOrientation(clusterEchoPropulsionHeading,motion.orientation,motion.orientationScratch),1-Math.exp(-dt*7));
-      model.group.scale.setScalar(Math.max(.2,clusterFish.group.scale.x*.36));
+      model.group.scale.setScalar(Math.max(.2,fishModelStore.clusterFish.group.scale.x*.36));
       model.update(time,{power:THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1),glow:.24,bodyPhase:fish.bodyWave.phase+index*1.18,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,turn:(fish.swim?.turn||0)*.7,effort:fish.swim?.effort||.2,visibility:.72*clusterEchoAmount});
     }
-    const k8sWakeSampling=state.fishId==='k8s-001'&&state.phase==='fighting'&&visibleFish&&activeFightFish.group.visible
+    const k8sWakeSampling=state.fishId==='k8s-001'&&state.phase==='fighting'&&visibleFish&&Boolean(activeFightFish?.group.visible)
       &&(k8sSurfaceContactGap>-.72||k8sSurfaceExposed);
     if(k8sWakeSampling&&time-lastK8sWakeSampleAt>=.045){
       for(let index=k8sWakeHistory.length-1;index>0;index--){
@@ -1234,7 +1181,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       lastK8sWakeSampleAt=time;
     }else if(state.fishId!=='k8s-001'||state.phase!=='fighting')resetK8sWakeHistory();
     wakes.forEach((wake,index)=>{
-      const model=index?schoolFish[index-1]:activeFightFish,position=model.group.position;
+      const model=index?fishModelStore.schoolFish[index-1]:activeFightFish,position=model.group.position;
       if(state.fishId==='k8s-001'&&index===0){
         const positions=wake.geometry.attributes.position.array;
         let points=0;
@@ -1271,9 +1218,10 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       const wakeOpacity=.12;
       wake.material.opacity=shallow*wakeOpacity*(state.phase==='escaped'?escapeFade:1);
     });
-    const heavyWakeVisible=state.fishId==='whale-001'&&fishInWater&&dockerWhale.group.visible&&Boolean(visibleFish)&&state.phase!=='caught';
-    if(heavyWakeVisible){
-      const whaleHeading=whaleWakeHeading.set(-1,0,0).applyQuaternion(dockerWhale.group.quaternion).normalize();
+    const currentWhale=dockerWhale();
+    const heavyWakeVisible=state.fishId==='whale-001'&&fishInWater&&Boolean(currentWhale?.group.visible)&&Boolean(visibleFish)&&state.phase!=='caught';
+    if(heavyWakeVisible&&currentWhale){
+      const whaleHeading=whaleWakeHeading.set(-1,0,0).applyQuaternion(currentWhale.group.quaternion).normalize();
       whaleHeading.y=0;if(whaleHeading.lengthSq()<.0001)whaleHeading.set(0,0,-1);else whaleHeading.normalize();
       const whaleSide=whaleWakeSide.set(-whaleHeading.z,0,whaleHeading.x).normalize();
       const effort=THREE.MathUtils.clamp(visibleFish.swim?.effort??.4,0,1);
@@ -1284,7 +1232,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         const branch=index===0?0:index===1?-1:1,wake=whaleWakes[index],positions=wake.geometry.attributes.position.array;
         for(let i=0;i<27;i++){
           const p=i/26;
-          const point=whaleWakePoint.copy(dockerWhale.group.position).addScaledVector(whaleHeading,-.62-trailLength*p);
+          const point=whaleWakePoint.copy(currentWhale.group.position).addScaledVector(whaleHeading,-.62-trailLength*p);
           point.addScaledVector(whaleSide,branch*(.08+spread*p));
           point.y+=.08+Math.sin((visibleFish.bodyWave?.phase??time)-p*3.6)*.028-p*.025;
           positions[i*3]=point.x;positions[i*3+1]=point.y;positions[i*3+2]=point.z;
@@ -1314,5 +1262,5 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if(!mount.dataset.ready)mount.dataset.ready='true';
   };
   frame=requestAnimationFrame(render);
-    return {setState,setCharge,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fightFish.dispose();dockerWhale.dispose();cssFish.dispose();for(const model of cssFishAfterimages)model.dispose();clusterFish?.dispose();for(const model of clusterEchoes)model.dispose();for(const model of schoolFish)model.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
+    return {setState,setCharge,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){sceneDisposed=true;cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fishModelStore.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
 }
