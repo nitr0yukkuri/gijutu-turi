@@ -9,7 +9,7 @@ import { resolveFishingRoute } from "./fishing-route.js";
 import { TECH_TREE_BRANCHES, TECH_TREE_FISH_LINKS, TECH_TREE_NODE_DETAILS } from "./tech-tree.js";
 import { isCompletePreviewPath, techTreeReveal } from "./tech-tree-preview.js";
 import { useOceanRuntime } from "./useOceanRuntime.js";
-import { PhoneReelControl } from "./PhoneReelControl.js";
+import { ReelControl } from "./ReelControl.js";
 import { TensionGauge } from "./TensionGauge.js";
 import type { Collection, CollectionEntry, OceanPhase } from "./types.js";
 import "./tech-tree.css";
@@ -29,8 +29,8 @@ const phoneTitles: Record<OceanPhase, ReactNode> = {
 };
 
 const phoneHints: Record<OceanPhase, string> = {
-  idle: "スマホを振って投げます。強く振るほど遠くへ飛びます。", casting: "そのままお待ちください。", waiting: "ウキが沈んだら、画面をタップするかスマホを小さく引きます。",
-  retrieving: "ルアーを回収しています。", biting: "画面のボタンを押すか、スマホを小さく引きます。", fighting: "糸の張りを見ながら巻き、強く引かれたらいったん緩めます。動きが弱まったら巻いて距離を詰めます。手前に引いて戻すと竿を引けます。",
+  idle: "スマホを振って投げます。強く振るほど遠くへ飛びます。", casting: "そのままお待ちください。", waiting: "ウキが沈んだら、画面をタップするかスマホを下から上へ振ります。",
+  retrieving: "ルアーを回収しています。", biting: "画面のボタンを押すか、スマホを下から上へ振ります。", fighting: "糸の張りを見ながら巻き、強く引かれたらいったん緩めます。動きが弱まったら巻いて距離を詰めます。画面を自分に向け、遠くから手前へ一度引くと短く巻き取れます。",
   caught: "釣り上げた魚を図鑑に記録しました。", escaped: "もう一度投げてください。",
 };
 
@@ -454,7 +454,7 @@ export function App() {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const runtime = useOceanRuntime({ isPhone, controllerId, initialFishId: fishingRoute.initialFishId, routePath: fishingRoute.path, oceanMountRef, collectionOpen });
   const { state, presentationState, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle, soundEnabled, collection, selectedCollectionId, controllerUrl, controllerHost, controllerUrlError, sensorStatus, sensorButtonLabel } = runtime;
-  const { activate, retryCatchSave, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, startReel, stopReel, performRodStroke, toggleSensor, toggleSound, showToast } = runtime.actions;
+  const { activate, retryCatchSave, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, startReel, stopReel, performPhonePull, toggleSensor, toggleSound, showToast } = runtime.actions;
   const fighting = state.phase === "fighting";
   const biting = state.phase === "biting";
   const caughtEntry = collection.entries.find(entry => entry.id === state.fishId);
@@ -472,9 +472,9 @@ export function App() {
     : state.phase === "caught"
       ? caughtEntry?.tagline ?? phoneHints.caught
       : fighting
-        ? "糸の張りを見ながら巻き、強く引かれたらいったん緩めます。動きが弱まったら巻いて距離を詰めます。スマホを手前に引いて戻すと竿を引けます。"
+        ? "糸の張りを見ながら巻き、強く引かれたらいったん緩めます。動きが弱まったら巻いて距離を詰めます。スマホの画面を自分に向け、遠くから手前へ一度引くと短く巻き取れます。"
         : biting && state.criticalWindow
-          ? "今合わせられます。画面をタップするか、スマホを小さく引いてください。"
+          ? "今合わせられます。画面をタップするか、スマホを下から上へ振ってください。"
           : phoneHints[state.phase];
   const catchAgainLabel = !online
     ? "再接続中…"
@@ -544,9 +544,11 @@ export function App() {
         <section id="fight-ui" className="fight-ui" hidden={!fighting && !biting} aria-label="魚との駆け引き" data-tension={tension} data-mode={hudState.mode}>
           {hookFeedback && <p className="hook-critical-status" role="status">ナイスフッキング！</p>}
           {fighting && <TensionGauge value={tension} lunge={k8sLunge} warning={state.fishId === "k8s-001" && hudState.mode === "warning"} />}
-          <button id="fight-button" className={`fight-button${reelHeld ? " is-held" : ""}${biting ? " is-hook" : ""}${biting && state.criticalWindow ? " is-critical-window" : ""}`} aria-label={biting ? state.criticalWindow ? "今が狙いどき。合わせる" : "合わせる。ウキが沈んだら押す" : reelHeld ? "巻いています。離して止める" : "巻く。押して巻く"} disabled={!online || renderFailed} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>
+          {biting ? <button id="fight-button" className={`fight-button is-hook${state.criticalWindow ? " is-critical-window" : ""}`} aria-label={state.criticalWindow ? "今が狙いどき。合わせる" : "合わせる。ウキが沈んだら押す"} disabled={!online || renderFailed} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>
             <span className="fight-button-label">{fightButtonLabel}</span><small className="fight-button-help">{fightButtonHint}</small>
-          </button>
+          </button> : <button id="fight-button" className={`fight-button${reelHeld || state.reeling ? " is-held" : ""}`} aria-label={reelHeld || state.reeling ? "巻いています。離すと止まる" : "巻く。押し続けて巻く"} disabled={!online || renderFailed} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>
+            <span className="fight-button-label">{fightButtonLabel}</span><small className="fight-button-help">{fightButtonHint}</small>
+          </button>}
         </section>
         <section id="catch-ui" className="catch-ui" hidden={state.phase !== "caught"} aria-live="polite">
           <p>{newEncounter ? "NEW ENCOUNTER" : "FISH CAUGHT"}</p>
@@ -579,7 +581,7 @@ export function App() {
           {fighting && <TensionGauge value={tension} lunge={k8sLunge} warning={state.fishId === "k8s-001" && hudState.mode === "warning"} />}
         </div>}
         <button id="sensor-button" className="primary-button" onClick={() => void toggleSensor()}>{sensorButtonLabel}</button>
-        {fighting ? <><PhoneReelControl active={reelHeld} disabled={!online || !displayConnected} onStart={startReel} onStop={stopReel} /><button type="button" className="phone-rod-pump" disabled={!online || !displayConnected} onClick={performRodStroke}><span>竿を引く</span><small>手前に引いて、元の位置へ戻す</small></button></> : state.phase === "caught" && catchSaveStatus === "failed" ? <button id="phone-catch-retry" className="phone-cast" disabled={!online} onClick={retryCatchSave}>図鑑への保存を再試行</button> : <button id="phone-cast" className={`phone-cast${reelHeld ? " is-held" : ""}${biting && state.criticalWindow ? " is-critical-window" : ""}`} disabled={!online || !displayConnected || ["casting", "retrieving"].includes(state.phase) || state.phase === "caught" && !canContinueAfterCatchSave(catchSaveStatus)} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>{biting && state.criticalWindow ? "今、合わせる！" : state.phase === "caught" && catchSaveStatus === "pending" ? "図鑑に記録中…" : phoneCastLabel}</button>}
+        {fighting ? <><ReelControl placement="phone" active={reelHeld || state.reeling} disabled={!online || !displayConnected} onStart={startReel} onStop={stopReel} /><button type="button" className="phone-rod-pump" disabled={!online || !displayConnected} onClick={performPhonePull}><span>竿を引く</span><small>押すか、画面を自分に向けて手前へ一度引く</small></button></> : state.phase === "caught" && catchSaveStatus === "failed" ? <button id="phone-catch-retry" className="phone-cast" disabled={!online} onClick={retryCatchSave}>図鑑への保存を再試行</button> : <button id="phone-cast" className={`phone-cast${reelHeld ? " is-held" : ""}${biting && state.criticalWindow ? " is-critical-window" : ""}`} disabled={!online || !displayConnected || ["casting", "retrieving"].includes(state.phase) || state.phase === "caught" && !canContinueAfterCatchSave(catchSaveStatus)} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={stopReel} onClick={event => { if (event.detail === 0) activate(); }}>{biting && state.criticalWindow ? "今、合わせる！" : state.phase === "caught" && catchSaveStatus === "pending" ? "図鑑に記録中…" : phoneCastLabel}</button>}
         <p id="sensor-status" className="sensor-status" role="status">{sensorStatus}</p>
       </section>
       <dialog ref={helpDialogRef} id="help-dialog" aria-labelledby="help-title" onClick={event => dialogClick(event.currentTarget, event)}>
@@ -589,7 +591,7 @@ export function App() {
           <ol className="instructions">
             <li><span>1</span><div><div className="instruction-heading"><strong>投げる</strong></div><p>「投げる」を長押しし、好きなタイミングで離します。長く押すほど遠くへ飛びます。スペースキーでも操作できます。</p></div></li>
             <li><span>2</span><div><div className="instruction-heading"><strong>合わせる</strong></div><p>ウキが沈み、ボタンが「合わせる」に変わったら押します。</p></div></li>
-            <li><span>3</span><div><div className="instruction-heading"><strong>巻く・竿を引く</strong></div><p>魚が走っている間は巻かずに待ちます。落ち着いたら「巻く」を押し、糸の張りが赤くなったらいったん離します。スマホでは、手前に引いて元の位置へ戻すと竿を引けます。これはリールを巻く操作とは別です。</p></div></li>
+            <li><span>3</span><div><div className="instruction-heading"><strong>巻く・竿を引く</strong></div><p>魚が走っている間は巻かずに待ちます。落ち着いたら「巻く」を押し、糸の張りが赤くなったらいったん離します。スマホの画面を自分に向け、遠くから手前へ一度引くと短く巻き取れます。連続して巻くときはリールを押すか回します。</p></div></li>
           </ol>
           <p className="fine-print">スマホを使う場合は「スマホを接続」からQRコードを読み取り、スマホ画面の指示に従ってください。</p>
         </div>

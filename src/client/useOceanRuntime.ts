@@ -4,7 +4,8 @@ import { FishingAudioController } from "../audio/fishing-audio.js";
 import type { FishSurfaceImpactCue } from "../fish-surface-impact.js";
 import { CastMotionGesture, ReelMotionGesture, castStrengthFromMotion, isScreenReelBlockingMotion, reelAngularSignal } from "./cast-motion.js";
 import { createControllerLink, isLoopbackHost } from "./controller-url.js";
-import { RodStrokeMotion } from "./rod-stroke-motion.js";
+import { PhonePullMotion } from "./phone-pull-motion.js";
+import { UpwardHookMotion } from "./upward-hook-motion.js";
 import { fetchCollection, type CollectionLoadResult } from "./collection-response.js";
 import { LatestRequestGuard } from "./latest-request.js";
 import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH } from "../cast-distance.js";
@@ -118,7 +119,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const [controllerUrl, setControllerUrl] = useState("");
   const [controllerHost, setControllerHost] = useState("");
   const [controllerUrlError, setControllerUrlError] = useState("");
-  const [sensorStatus, setSensorStatus] = useState("投げるときは狙って一度振り、魚が掛かったらスマホを回します。");
+  const [sensorStatus, setSensorStatus] = useState("アタリでは下から上へ振って合わせます。戦闘中は画面を自分に向け、遠くから手前へ引くと短く巻きます。");
   const [sensorButtonLabel, setSensorButtonLabel] = useState("モーション操作を有効にする");
   const [sensorsOn, setSensorsOn] = useState(false);
 
@@ -147,7 +148,8 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const warmupRef = useRef(0);
   const motionReelRef = useRef(false);
   const motionListenerRef = useRef<((event: DeviceMotionEvent) => void) | null>(null);
-  const rodStrokeMotionRef = useRef(new RodStrokeMotion());
+  const phonePullMotionRef = useRef(new PhonePullMotion());
+  const upwardHookMotionRef = useRef(new UpwardHookMotion());
   const castGestureRef = useRef(new CastMotionGesture());
   const reelMotionGestureRef = useRef(new ReelMotionGesture());
   const receivedRodStrokeRef = useRef<number | null>(null);
@@ -280,9 +282,11 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     }, 120);
   }, [getFishingAudio, isPhone, send, stopReel]);
 
-  const performRodStroke = useCallback(() => {
+  const performPhonePull = useCallback(() => {
     if (stateRef.current.phase !== "fighting" || !onlineRef.current || (isPhone && !displayConnectedRef.current)) return;
-    if (send({ action: "rod-pump" }) && isPhone) vibrate(18);
+    if (!send({ action: "reel", held: true })) return;
+    send({ action: "rod-pump" });
+    if (isPhone) vibrate(18);
   }, [isPhone, send, vibrate]);
 
   const activate = useCallback(() => {
@@ -663,14 +667,16 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       warmupRef.current = 0;
       gravitySampleAtRef.current = 0;
       castGestureRef.current.reset();
+      upwardHookMotionRef.current.reset();
       reelMotionGestureRef.current.reset();
-      rodStrokeMotionRef.current.reset();
+      phonePullMotionRef.current.reset();
       if (sensorTimerRef.current !== null) window.clearTimeout(sensorTimerRef.current);
       const motion = (event: DeviceMotionEvent) => {
         if (document.hidden) {
           castGestureRef.current.reset();
+          upwardHookMotionRef.current.reset();
           reelMotionGestureRef.current.reset();
-          rodStrokeMotionRef.current.reset();
+          phonePullMotionRef.current.reset();
           if (motionReelRef.current) stopReel();
           return;
         }
@@ -679,7 +685,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
         const raw = hasLinear ? linear : event.accelerationIncludingGravity;
         if (!raw || typeof raw.x !== "number" || typeof raw.y !== "number" || typeof raw.z !== "number" || ![raw.x, raw.y, raw.z].every(Number.isFinite)) return;
         sensorSamplesRef.current += 1;
-        if (sensorSamplesRef.current === 1) { setSensorStatus("投げるときは狙って一度振り、魚が掛かったらスマホを回します。"); setSensorButtonLabel("モーション操作は有効です"); }
+        if (sensorSamplesRef.current === 1) { setSensorStatus("アタリでは下から上へ振って合わせます。戦闘中は画面を自分に向け、遠くから手前へ引くと短く巻きます。"); setSensorButtonLabel("モーション操作は有効です"); }
         let { x, y, z } = raw;
         const now = performance.now();
         if (!hasLinear) {
@@ -699,27 +705,30 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
         const phase = stateRef.current.phase;
         if (!(phase === "idle" || phase === "biting" || phase === "fighting") || !onlineRef.current || now - lastGestureRef.current < 700 && phase !== "fighting") {
           castGestureRef.current.reset();
+          upwardHookMotionRef.current.reset();
           reelMotionGestureRef.current.reset();
-          rodStrokeMotionRef.current.reset();
+          phonePullMotionRef.current.reset();
           if (motionReelRef.current) stopReel();
           return;
         }
         if (phase === "fighting") {
           castGestureRef.current.reset();
+          upwardHookMotionRef.current.reset();
           const rotation = reelAngularSignal(rate?.alpha ?? null, rate?.beta ?? null, rate?.gamma ?? null);
-          const canRecognizeRodStroke = !reelHeldRef.current && angularSpeed < 150;
-          const rodStroke = canRecognizeRodStroke && rodStrokeMotionRef.current.update({ x, y, z }, now);
-          if (rodStroke) {
-            performRodStroke();
-            lastGestureRef.current = now;
-            reelMotionGestureRef.current.reset();
-            return;
+          const canRecognizePhonePull = !reelHeldRef.current;
+          if (!canRecognizePhonePull) phonePullMotionRef.current.reset();
+          else {
+            if (phonePullMotionRef.current.update({ x, y, z }, now)) {
+              performPhonePull();
+              lastGestureRef.current = now;
+              reelMotionGestureRef.current.reset();
+              return;
+            }
+            if (phonePullMotionRef.current.isPending(now)) {
+              reelMotionGestureRef.current.reset();
+              return;
+            }
           }
-          if (rodStrokeMotionRef.current.isPending()) {
-            reelMotionGestureRef.current.reset();
-            return;
-          }
-          if (!canRecognizeRodStroke) rodStrokeMotionRef.current.reset();
           if (isScreenReelBlockingMotion(reelHeldRef.current, motionReelRef.current)) {
             reelMotionGestureRef.current.reset();
             return;
@@ -735,12 +744,21 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
           }
           return;
         }
-        rodStrokeMotionRef.current.reset();
+        if (phase === "biting") {
+          castGestureRef.current.reset();
+          phonePullMotionRef.current.reset();
+          reelMotionGestureRef.current.reset();
+          if (upwardHookMotionRef.current.update({ x, y, z }, now)) {
+            if (send({ action: "hook" })) lastGestureRef.current = now;
+          }
+          return;
+        }
+        upwardHookMotionRef.current.reset();
+        phonePullMotionRef.current.reset();
         reelMotionGestureRef.current.reset();
         const gesture = castGestureRef.current.update(acceleration, angularSpeed, now);
         if (gesture) {
-          if (stateRef.current.phase === "biting") send({ action: "hook" });
-          else cast(castStrengthFromMotion(gesture.acceleration, gesture.angularSpeed), 0);
+          cast(castStrengthFromMotion(gesture.acceleration, gesture.angularSpeed), 0);
           lastGestureRef.current = now;
         }
       };
@@ -759,7 +777,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
         else setSensorButtonLabel("モーション操作は有効です");
       }, 2500);
     } catch { setSensorStatus("センサーを開始できません。タッチで投げられます。"); }
-  }, [cast, isPhone, performRodStroke, send, sensorsOn, showToast, startReel, stopReel]);
+  }, [cast, isPhone, performPhonePull, send, sensorsOn, showToast, startReel, stopReel]);
 
   useEffect(() => () => {
     if (motionListenerRef.current) window.removeEventListener("devicemotion", motionListenerRef.current);
@@ -777,7 +795,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     sensorStatus, sensorButtonLabel, sensorsOn,
     actions: {
       activate, retryCatchSave, cast, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, releaseCharge,
-      startCharge, startReel, stopReel, performRodStroke, toggleSensor, toggleSound, showToast, showFeedback,
+      startCharge, startReel, stopReel, performPhonePull, toggleSensor, toggleSound, showToast, showFeedback,
     },
   };
 }
