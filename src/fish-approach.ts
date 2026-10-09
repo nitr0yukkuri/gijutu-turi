@@ -11,6 +11,10 @@ type FishVisibilityProfile = {
 
 const DEFAULT_VISIBILITY: FishVisibilityProfile = { waitingMax: .32, bitingMax: .85 };
 const VISIBILITY_BY_SPECIES: Partial<Record<FishSpeciesId, FishVisibilityProfile>> = {
+  // Go's blue body has less contrast against the reflective sea than the
+  // other species. Raise the fully approached silhouette while preserving
+  // the gradual reveal from zero; timing, movement, and school formation stay unchanged.
+  'fish-001': { waitingMax: .94, bitingMax: 1 },
   // The whale needs a little more silhouette budget at distance. The water
   // profile still controls its final underwater contrast.
   'whale-001': { waitingMax: .42, bitingMax: .95 },

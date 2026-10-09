@@ -126,13 +126,13 @@ function animate(material,uniforms,mode='plain') {
     shader.vertexShader=shader.vertexShader.replace('#include <beginnormal_vertex>','#include <beginnormal_vertex>\nobjectNormal=swimNormal(position,objectNormal);');
     shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvWhale=position;transformed=swim(position);');
     shader.fragmentShader='uniform float uWhalePhase; uniform float uGlow; varying vec3 vWhale;\n'+shader.fragmentShader;
-    if(mode==='skin')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`
+    if(mode==='skin'||mode==='pectoral-skin')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`
       #include <color_fragment>
       float belly=1.0-smoothstep(-1.65,-.42,vWhale.y);
       float grain=fract(sin(dot(floor(vWhale*120.),vec3(17.13,63.77,41.19)))*43758.5453);
       float mottling=sin(vWhale.x*3.2+sin(vWhale.z*4.1))*sin(vWhale.y*7.3+vWhale.x*.6);
       vec3 ink=mix(vec3(.009,.065,.135),vec3(.055,.23,.31),smoothstep(-.2,1.8,vWhale.y));
-      diffuseColor.rgb=mix(ink,vec3(.20,.43,.47),belly*.75);
+      diffuseColor.rgb=mix(ink,vec3(.20,.43,.47),belly*${mode==='pectoral-skin'?'.34':'.75'});
       diffuseColor.rgb*=.91+grain*.07+mottling*.055;
     `);
     if(mode==='glow')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb*=uGlow*(.87+.13*sin(vWhale.x*1.7-uWhalePhase));');
@@ -181,7 +181,7 @@ function cargoPulseMaterial(material,mode,uniforms) {
 
 export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   const low=detail==='low',group=new THREE.Group();group.name='Dockerクジラ';
-  const habitatUniforms=waterUniforms?{...waterUniforms,uFishCenter:{value:group.position},uFishVisibility:{value:1}}:null;
+  const habitatUniforms=waterUniforms?{...waterUniforms,uFishCenter:{value:group.position},uFishVisibility:{value:1},uFishCombat:{value:0}}:null;
   const uniforms={
     uWhalePhase:{value:phase},uWhaleFrequency:{value:.78},uWhaleWavelength:{value:.94},
     uWhaleAmplitude:{value:.1},uWhaleEffort:{value:.38},uWhaleTurn:{value:0},
@@ -227,7 +227,10 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   const body=add(makeBody(low),skin,'sculpted-whale-body');
   const flippers=[],flukes=[];
   for(const sign of [-1,1]){
-    const pectoralSkin=skin.clone();pectoralSkin.name='pectoral-skin-'+sign;finWaterSides.set(pectoralSkin,sign);
+    const pectoralSkin=animate(skin.clone(),uniforms,'pectoral-skin');
+    pectoralSkin.name='pectoral-skin-'+sign;
+    pectoralSkin.roughness=.84;pectoralSkin.clearcoat=.025;pectoralSkin.clearcoatRoughness=.78;pectoralSkin.envMapIntensity=.12;
+    finWaterSides.set(pectoralSkin,sign);
     const pectoralGlow=glow.clone();pectoralGlow.name='pectoral-rim-'+sign;finWaterSides.set(pectoralGlow,sign);
     flippers.push(add(makeFin([[-2.5,-.6,1.4,.6,.23],[-1.8,-.9,2.1,.79,.19],[-.85,-1.34,3.05,.65,.12],[.1,-1.48,4.05,.33,.055],[.6,-1.38,4.55,.008,.008]],sign,low),pectoralSkin,'pectoral-'+sign));
     flukes.push(add(makeFin([[4.55,.6,0,.5,.19],[5.0,.65,.55,.8,.2],[5.45,.69,1.4,.86,.16],[5.95,.82,2.25,.56,.09],[6.4,1.0,2.8,.008,.008]],sign,low),skin,'horizontal-fluke-'+sign));
@@ -346,7 +349,7 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   let disposed=false,cargoYaw=0,cargoRoll=0,cargoSide=0,cargoLift=.12,cargoLag=0,cargoPulse=0,cargoGlowOn=0,cargoMomentActive=false;
   return {
     group,body,flippers,flukes,cargoMount,containerCount:containers.length,waterUniforms:habitatUniforms,
-    update(time,{power=.45,glow=1,visibility=1,bodyPhase,bodyFrequency,bodyWavelength,effort=.38,turn=0,amplitude,tetherLoad=0,cargoMoment=false,styleDelta=1/60}={}){
+    update(time,{power=.45,glow=1,visibility=1,combat=false,bodyPhase,bodyFrequency,bodyWavelength,effort=.38,turn=0,amplitude,tetherLoad=0,cargoMoment=false,styleDelta=1/60}={}){
       const synced=Number.isFinite(bodyPhase)&&Number.isFinite(bodyFrequency)&&bodyFrequency>0;
       uniforms.uWhalePhase.value=synced?bodyPhase:time+phase;
       uniforms.uWhaleFrequency.value=synced?bodyFrequency:.78;
@@ -356,6 +359,7 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
       uniforms.uWhaleTurn.value=clamp(turn,-1,1);
       uniforms.uPower.value=clamp(power,0,1);uniforms.uGlow.value=clamp(glow,0,3);
       if(habitatUniforms)habitatUniforms.uFishVisibility.value=clamp(visibility,0,1);
+      if(habitatUniforms)habitatUniforms.uFishCombat.value=combat?1:0;
       const dt=Number.isFinite(styleDelta)?clamp(styleDelta,0,.1):1/60;
       const load=Number.isFinite(tetherLoad)?clamp(tetherLoad,0,1):0,heavyTurn=clamp(turn,-1,1);
       if(cargoMoment&&!cargoMomentActive)cargoPulse=1;

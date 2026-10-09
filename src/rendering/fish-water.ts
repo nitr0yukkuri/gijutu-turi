@@ -63,6 +63,34 @@ varying float vWaterFinFacing;
 ${waterHeightGLSL}
 `;
 
+const dockerWhaleNormalDifference = `
+// Keep the existing centered-difference normal, but evaluate its seven
+// sinusoidal wave octaves from the equivalent trigonometric identity. Ripple
+// differences remain on the original height function for the same appearance.
+void waterWaveDifference(vec2 p,float eps,out float hx,out float hz){
+  float freq=${OCEAN_WAVE_FREQUENCY},amp=${OCEAN_WAVE_AMPLITUDE},angle=.3;
+  hx=0.0;hz=0.0;
+  for(int i=0;i<${OCEAN_WAVE_OCTAVES};i++){
+    vec2 direction=vec2(cos(angle),sin(angle));
+    float phase=dot(p,direction)*freq+uTime*(${OCEAN_WAVE_TIME_BASE}+float(i)*${OCEAN_WAVE_TIME_STEP});
+    hx-=2.0*amp*cos(phase)*sin(freq*eps*direction.x);
+    hz-=2.0*amp*cos(phase)*sin(freq*eps*direction.y);
+    freq*=${OCEAN_WAVE_FREQUENCY_MULTIPLIER};amp*=${OCEAN_WAVE_AMPLITUDE_DECAY};angle+=${OCEAN_WAVE_ANGLE_STEP};
+  }
+}
+float rippleOnlyHeight(vec2 p){
+  float h=0.0;
+  for(int i=0;i<6;i++){
+    float age=uTime-uRipples[i].z;
+    if(age>0.0&&age<${RIPPLE_LIFETIME}.0){
+      float d=length(p-uRipples[i].xy),r=d-age*${RIPPLE_EXPANSION_SPEED};
+      h+=sin(r*${glslFloat(RIPPLE_FREQUENCY)})*exp(-r*r*${glslFloat(RIPPLE_WIDTH)})*exp(-age*${glslFloat(RIPPLE_DECAY)})*${glslFloat(RIPPLE_HEIGHT)}*uRipples[i].w;
+    }
+  }
+  return h;
+}
+`;
+
 // Art-directed coherent refraction, not a full refracted-ray renderer. The
 // grazing-angle floor deliberately preserves Go's body/tail silhouette. Wave
 // facets mask the radiance below; they must never deform the animal like cloth.
@@ -201,20 +229,40 @@ export function fishWaterCoverage(depth,distance,transmission,part='body',profil
     *(1-d*d*(3-2*d)*profile.rangeLoss)*({body:1,fin:profile.fin,light:profile.light,detail:profile.detail,line:0,cargo:profile.cargo}[part]??1);
 }
 
-const opticsFor = (profile: FishWaterProfile) => `
+const opticsFor = (profile: FishWaterProfile) => {
+const normal = profile === DOCKER_WHALE_WATER_PROFILE
+  ? `float hx,hz;
+  waterWaveDifference(p.xz,eps,hx,hz);
+  hx+=rippleOnlyHeight(p.xz-vec2(eps,0.0))-rippleOnlyHeight(p.xz+vec2(eps,0.0));
+  hz+=rippleOnlyHeight(p.xz-vec2(0.0,eps))-rippleOnlyHeight(p.xz+vec2(0.0,eps));
+  vec3 n=normalize(vec3(hx,2.0*eps,hz));`
+  : `vec3 n=normalize(vec3(heightAt(p.xz-vec2(eps,0.0))-heightAt(p.xz+vec2(eps,0.0)),2.0*eps,
+                        heightAt(p.xz-vec2(0.0,eps))-heightAt(p.xz+vec2(0.0,eps))));`;
+return `
 uniform sampler2D uWaterBackdrop;
 uniform vec2 uWaterSize;
 uniform mat4 uCamera;
 uniform mat4 uProjectionInverse;
 uniform float uWaterPart;
 uniform float uFishVisibility;
+uniform float uFishCombat;
 uniform float uWaterFinSide;
 ${profile.redStateRetention === undefined ? '' : 'uniform float uCssRedState;'}
 vec3 throughWater(vec3 fishColor) {
+  // Combat anatomy is already close enough to read. Do not run its pixels
+  // through the reflected-water blend: that can make the opaque body look
+  // like a translucent shadow, especially over bright/rippled water.
+  if(uFishCombat>.5&&uWaterPart<3.5)return fishColor;
+  vec2 screenUv=gl_FragCoord.xy/uWaterSize;
+  vec3 background=texture2D(uWaterBackdrop,screenUv).rgb;
+  float presentationVisibility=mix(uFishVisibility,1.0,uFishCombat);
+  // A hidden approach fish still reaches this shader so its first visible frame
+  // can start smoothly. Return the exact background before ray marching while
+  // the fish has no coverage; the full optical path cannot change that pixel.
+  if(presentationVisibility<=0.0)return background;
   float depth=max(0.0,heightAt(vFishWorld.xz)-vFishWorld.y);
   float submerged=smoothstep(0.0,.12,depth);
   if(submerged<=0.0)return fishColor;
-  vec2 screenUv=gl_FragCoord.xy/uWaterSize;
   vec4 local=uProjectionInverse*vec4(screenUv*2.0-1.0,1.0,1.0);
   vec3 rd=normalize((uCamera*vec4(normalize(local.xyz/local.w),0.0)).xyz);
   vec3 ro=uCamera[3].xyz;
@@ -222,8 +270,7 @@ vec3 throughWater(vec3 fishColor) {
   for(int i=0;i<4;i++)t=(heightAt((ro+rd*t).xz)-ro.y)/min(rd.y,-.0004);
   vec3 p=ro+rd*t;
   float eps=.035+min(t,180.0)*.001;
-  vec3 n=normalize(vec3(heightAt(p.xz-vec2(eps,0.0))-heightAt(p.xz+vec2(eps,0.0)),2.0*eps,
-                        heightAt(p.xz-vec2(0.0,eps))-heightAt(p.xz+vec2(0.0,eps))));
+  ${normal}
   float cosAir=clamp(dot(-rd,n),0.0,1.0);
   float cosWater=sqrt(1.0-(1.0-cosAir*cosAir)/(1.333*1.333));
   // Fresnel reflectance (unpolarized), not a fixed opacity on the whole fish.
@@ -239,7 +286,6 @@ vec3 throughWater(vec3 fishColor) {
   vec3 extinction=exp(-vec3(redExtinction,.22,.17)*path);`}
   float haze=1.0-exp(-max(t,0.0)*.006);
   float vignette=1.0-smoothstep(.3,.95,length((screenUv-.5)*vec2(.75,1.0)))*.18;
-  vec3 background=texture2D(uWaterBackdrop,screenUv).rgb;
   // Preserve a readable, anatomical mass, not just its emissive dots. Previously
   // subtracting only a dim ambient-water term left almost the entire reflected
   // background untouched and the fish vanished. Keep some wave texture over
@@ -256,14 +302,24 @@ vec3 throughWater(vec3 fishColor) {
   float farFinBlend=step(.5,abs(uWaterFinSide))*(1.0-smoothstep(${FIN_VIEW_BLEND_START},${FIN_VIEW_BLEND_END},vWaterFinFacing));
   float finCoverage=coverage*(1.0-${FAR_FIN_COVERAGE_REDUCTION}*farFinBlend);
   float finLightScale=lightScale*(1.0-${FAR_FIN_LIGHT_REDUCTION}*farFinBlend);
+  // Keep the fight silhouette and anatomy fully opaque. Tiny facial/detail
+  // meshes use the same combat override so they cannot disappear at the surface.
+  float combatAnatomy=uFishCombat*(1.0-step(2.5,uWaterPart));
+  float combatDetail=uFishCombat*step(2.5,uWaterPart)*(1.0-step(3.5,uWaterPart));
   vec3 underwater=background*(1.0-finCoverage)+transmission*extinction*(1.0-haze*.97)*vignette*fishColor*finLightScale;
-  return mix(background,mix(fishColor,underwater,submerged),uFishVisibility);
+  underwater=mix(underwater,fishColor,combatAnatomy+combatDetail);
+  float fightSubmerged=mix(submerged,1.0,uFishCombat);
+  // Approach visibility is an underwater reveal effect. Once hooked, keep
+  // every anatomical part fully present so it cannot fade back into the sea.
+  return mix(background,mix(fishColor,underwater,fightSubmerged),presentationVisibility);
 }`;
+};
 
 // Opt-in: catalog/viewer materials and the sky/sea palette are untouched.
 export function applyFishWater(material, waterUniforms, part='detail', profile=DEFAULT_FISH_WATER_PROFILE, finSide=0) {
   const compile=material.onBeforeCompile;
   const cacheKey=material.customProgramCacheKey();
+  const underwaterVersion=profile===DOCKER_WHALE_WATER_PROFILE?'underwater-docker-normal-v1':'underwater-v7';
   const originallyToneMapped=material.toneMapped;
   material.onBeforeCompile=shader=>{
     compile.call(material,shader);
@@ -276,13 +332,13 @@ export function applyFishWater(material, waterUniforms, part='detail', profile=D
     // Fins have a custom shader; other parts use Three's project chunk.
     shader.vertexShader=shader.vertexShader.replace('gl_Position=projectionMatrix*mv;',
       'gl_Position=fishWaterProjection(p);');
-     shader.fragmentShader=surface+opticsFor(profile)+'\n'+shader.fragmentShader;
+     shader.fragmentShader=surface+(profile===DOCKER_WHALE_WATER_PROFILE?dockerWhaleNormalDifference:'')+opticsFor(profile)+'\n'+shader.fragmentShader;
     shader.fragmentShader=shader.fragmentShader.replace('#include <tonemapping_fragment>',
       `gl_FragColor.rgb=throughWater(gl_FragColor.rgb);
       ${originallyToneMapped?'':'vec3 fishBeforeTone=gl_FragColor.rgb;'}
       #include <tonemapping_fragment>
       ${originallyToneMapped?'':'gl_FragColor.rgb=mix(fishBeforeTone,gl_FragColor.rgb,smoothstep(0.0,.12,heightAt(vFishWorld.xz)-vFishWorld.y));'}`);
   };
-  material.customProgramCacheKey=()=>cacheKey+'-underwater-v4-'+part+(finSide===0?'':`-fin-side-${finSide}`)+(profile.redStateRetention===undefined?'':`-red-${profile.redStateRetention}`);
+  material.customProgramCacheKey=()=>cacheKey+'-'+underwaterVersion+'-'+part+(finSide===0?'':`-fin-side-${finSide}`)+(profile.redStateRetention===undefined?'':`-red-${profile.redStateRetention}`);
   material.toneMapped=true;
 }

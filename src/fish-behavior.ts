@@ -2,6 +2,14 @@ import type { FishSpeciesId } from "./fish-species.js";
 import type { FishGait } from "./fish-contract.js";
 
 export type FishFightMode = "rest" | "surge" | "warning" | "split";
+export type FishAttackManeuver = "cut" | "headshake" | "dart" | "leap" | "coil";
+export type FishAttackManeuverState = Readonly<{
+  kind: FishAttackManeuver;
+  /** Normalized time through this maneuver. */
+  progress: number;
+  /** Deterministic preferred side, so all displays reproduce the same move. */
+  side: -1 | 1;
+}>;
 
 export type FishFightProfile = {
   initialTension: number;
@@ -53,7 +61,19 @@ export type FishFightProfile = {
   openingEffort: number;
   gaitAt: (context: { mode: FishFightMode; opening: boolean; reeling: boolean }) => FishGait;
   modeAt: (fightTime: number, finale: number) => { mode: FishFightMode; school: number };
+  /** Server-clocked attack shape layered over the existing fight phase. */
+  maneuverAt?: (fightTime: number, mode: FishFightMode, finale: number) => FishAttackManeuverState | null;
 };
+
+const maneuverWindow = (
+  fightTime: number,
+  start: number,
+  duration: number,
+  kind: FishAttackManeuver,
+  side: -1 | 1,
+): FishAttackManeuverState | null => fightTime >= start && fightTime < start + duration
+  ? { kind, progress: (fightTime - start) / duration, side }
+  : null;
 
 const standardFightGait = ({ mode, opening, reeling }: { mode: FishFightMode; opening: boolean; reeling: boolean }): FishGait => {
   if (opening) return "burst";
@@ -99,6 +119,15 @@ const goModeAt = (fightTime: number, finale: number): { mode: FishFightMode; sch
   return { mode, school: mode === "split" ? 7 : 1 };
 };
 
+const goManeuverAt = (fightTime: number, mode: FishFightMode, finale: number): FishAttackManeuverState | null => {
+  if (mode !== "split") return null;
+  if (finale >= .8 && finale < 2.6) {
+    // The near-catch version is a short head shake aimed at unloading the line.
+    return { kind: "headshake", progress: (finale - .8) / 1.8, side: 1 };
+  }
+  return maneuverWindow(fightTime, 5.9, 2.7, "cut", -1);
+};
+
 const dockerWhaleModeAt = (fightTime: number, finale: number): { mode: FishFightMode; school: number } => {
   // Docker gets one readable heavy burst after its opening glide. It remains
   // one animal: no Go-like school split, but the body, line pressure, and rod
@@ -108,6 +137,11 @@ const dockerWhaleModeAt = (fightTime: number, finale: number): { mode: FishFight
   if (finale >= 0 && finale < .8) return { mode: "warning", school: 1 };
   return { mode, school: 1 };
 };
+
+const dockerWhaleManeuverAt = (fightTime: number, mode: FishFightMode): FishAttackManeuverState | null =>
+  mode === "surge" && fightTime >= 3.2
+    ? maneuverWindow(fightTime, 3.2, 1.2, "headshake", 1)
+    : null;
 
 const cssFishModeAt = (fightTime: number, finale: number): { mode: FishFightMode; school: number } => {
   // CSS changes appearance in response to the same state transitions, but its
@@ -125,6 +159,13 @@ const cssFishModeAt = (fightTime: number, finale: number): { mode: FishFightMode
   return { mode, school: 1 };
 };
 
+const cssFishManeuverAt = (fightTime: number, mode: FishFightMode): FishAttackManeuverState | null => {
+  if (mode !== "surge" || fightTime < 2.8) return null;
+  const pulse = (fightTime - 2.8) % 5.8;
+  const pulseNumber = Math.floor((fightTime - 2.8) / 5.8);
+  return maneuverWindow(pulse, 0, 1.15, "dart", pulseNumber % 2 === 0 ? -1 : 1);
+};
+
 const rustMarlinModeAt = (fightTime: number, finale: number): { mode: FishFightMode; school: number } => {
   // The opening is followed by a real recovery window before the marlin
   // commits to another full-speed run. Later attacks remain server-clocked.
@@ -135,12 +176,27 @@ const rustMarlinModeAt = (fightTime: number, finale: number): { mode: FishFightM
   return { mode: pulse ? "surge" : "rest", school: 1 };
 };
 
+const rustMarlinManeuverAt = (fightTime: number, mode: FishFightMode): FishAttackManeuverState | null => {
+  if (mode !== "surge" || fightTime < RUST_BILLFISH_REPEAT_SURGE_START) return null;
+  const pulse = (fightTime - RUST_BILLFISH_REPEAT_SURGE_START) % RUST_BILLFISH_SURGE_PERIOD;
+  const pulseNumber = Math.floor((fightTime - RUST_BILLFISH_REPEAT_SURGE_START) / RUST_BILLFISH_SURGE_PERIOD);
+  return maneuverWindow(pulse, 0, RUST_BILLFISH_SURGE_DURATION,
+    pulseNumber % 2 === 0 ? "leap" : "cut", pulseNumber % 2 === 0 ? 1 : -1);
+};
+
 const jsEelModeAt = (fightTime: number, finale: number): { mode: FishFightMode; school: number } => {
   // The eel never becomes a rigid stop/start fish: a short acceleration is
   // followed by readable coasting windows, while the body wave keeps running.
   const pulse = fightTime < .9 || (fightTime - .9) % 4.8 < .62;
   if (finale >= 0 && finale < .7) return { mode: "warning", school: 1 };
   return { mode: pulse ? "surge" : "rest", school: 1 };
+};
+
+const jsEelManeuverAt = (fightTime: number, mode: FishFightMode): FishAttackManeuverState | null => {
+  if (mode !== "surge" || fightTime < .9) return null;
+  const pulse = (fightTime - .9) % 4.8;
+  const pulseNumber = Math.floor((fightTime - .9) / 4.8);
+  return maneuverWindow(pulse, 0, .62, "coil", pulseNumber % 2 === 0 ? -1 : 1);
 };
 
 const GO_FISH_PROFILE: FishFightProfile = {
@@ -183,6 +239,7 @@ const GO_FISH_PROFILE: FishFightProfile = {
   staminaRecovery: .018,
   gaitAt: goFishFightGait,
   modeAt: goModeAt,
+  maneuverAt: goManeuverAt,
 };
 
 const DOCKER_WHALE_PROFILE: FishFightProfile = {
@@ -220,6 +277,7 @@ const DOCKER_WHALE_PROFILE: FishFightProfile = {
   surgeEffort: 1,
   gaitAt: heavyFishGait,
   modeAt: dockerWhaleModeAt,
+  maneuverAt: dockerWhaleManeuverAt,
 };
 
 const CSS_FISH_PROFILE: FishFightProfile = {
@@ -260,6 +318,7 @@ const CSS_FISH_PROFILE: FishFightProfile = {
   staminaRecovery: .03,
   gaitAt: cssFishGait,
   modeAt: cssFishModeAt,
+  maneuverAt: cssFishManeuverAt,
 };
 
 const RUST_BILLFISH_PROFILE: FishFightProfile = {
@@ -296,6 +355,7 @@ const RUST_BILLFISH_PROFILE: FishFightProfile = {
   openingEffort: .98,
   gaitAt: rustBillfishGait,
   modeAt: rustMarlinModeAt,
+  maneuverAt: rustMarlinManeuverAt,
 };
 
 const JS_EEL_PROFILE: FishFightProfile = {
@@ -331,6 +391,7 @@ const JS_EEL_PROFILE: FishFightProfile = {
   openingEffort: .9,
   gaitAt: standardFightGait,
   modeAt: jsEelModeAt,
+  maneuverAt: jsEelManeuverAt,
 };
 
 const K8S_PULSE_PERIOD = 7.2;

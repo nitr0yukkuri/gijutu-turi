@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three.module.js';
 import {createGoFish} from './rendering/go-fish.js';
 import {createDockerWhale,setDockerWhaleMouthAnchor,whaleSection} from './rendering/docker-whale.js';
-import {fishOrientation} from './rendering/ocean-scene.js';
+import {fishOrientation,fightViewHeading} from './rendering/ocean-scene.js';
 import {OceanFishingGame} from './ocean-game.js';
 import {applyFishWater,fishApparentPoint,fishWaterCoverage,DOCKER_WHALE_WATER_PROFILE,CSS_FISH_WATER_PROFILE} from './rendering/fish-water.js';
 import {fishFightCues} from './rendering/fish-fight-cues.js';
@@ -98,6 +98,31 @@ test('fish heading preserves dorsal-up through both sides of a pitched turn',()=
   }
 });
 
+test('fight presentation keeps a Go fish readable when its swim points into the camera',()=>{
+  const fish={position:new THREE.Vector3(0,-2,0),heading:new THREE.Vector3(0,0,1)};
+  const camera=new THREE.Vector3(0,3,12),heading=new THREE.Vector3(),towardCamera=new THREE.Vector3(),screenSide=new THREE.Vector3();
+  const result=fightViewHeading(fish,'fish-001',camera,heading,towardCamera,screenSide);
+  const cameraDirection=new THREE.Vector3(camera.x-fish.position.x,0,camera.z-fish.position.z).normalize();
+  assert.equal(result,heading,'the combat pose reuses its output vector');
+  assert.ok(Math.abs(result.dot(cameraDirection))<=.51,'the body must not collapse to a nose-on silhouette');
+
+  fish.heading.set(0,1,0);
+  fightViewHeading(fish,'fish-001',camera,heading,towardCamera,screenSide);
+  assert.ok(Math.abs(heading.y)<.6,'a vertical burst should not rotate the short fish upright');
+});
+
+test('fight presentation keeps a continuous profile as a fish crosses the camera axis',()=>{
+  const fish={position:new THREE.Vector3(0,-2,0),heading:new THREE.Vector3()};
+  const camera=new THREE.Vector3(0,3,12),heading=new THREE.Vector3(),towardCamera=new THREE.Vector3(),screenSide=new THREE.Vector3();
+  const previous=new THREE.Vector3();
+  for(let angle=-.08;angle<=.0801;angle+=.01){
+    fish.heading.set(Math.sin(angle),0,Math.cos(angle));
+    fightViewHeading(fish,'fish-001',camera,heading,towardCamera,screenSide);
+    if(previous.lengthSq()>0)assert.ok(previous.angleTo(heading)<.02,'crossing the camera axis must not reverse the profile side');
+    previous.copy(heading);
+  }
+});
+
 test('fish orientation can reuse a caller-owned quaternion and scratch vectors',()=>{
   const target=new THREE.Quaternion();
   const scratch={forward:new THREE.Vector3(),z:new THREE.Vector3(),y:new THREE.Vector3(),worldUp:new THREE.Vector3(0,1,0),basis:new THREE.Matrix4()};
@@ -133,6 +158,24 @@ test('ocean optics cover every anatomical material but do not alter catalog mate
   for(const mesh of catalog.group.children)assert.ok(!mesh.material.customProgramCacheKey().includes('underwater'));
   assert.equal(catalog.group.children.find(mesh=>mesh.name==='merged-lights').material.toneMapped,false);
   submerged.dispose();catalog.dispose();
+});
+
+test('hooked Go fish uses solid body optics instead of the faint approach shadow',()=>{
+  const model=createGoFish({waterUniforms:{uWaterBackdrop:{value:null},uTime:{value:0}}});
+  model.update(0,{visibility:.32,combat:true});
+  assert.equal(model.body.material.transparent,false,'the hooked body is not an alpha-transparent mesh');
+  assert.equal(model.body.material.opacity,1,'the hooked body keeps full material opacity');
+  assert.equal(model.waterUniforms.uFishCombat.value,1,'fight state overrides the faint approach visibility');
+  const shader={uniforms:{...THREE.ShaderLib.physical.uniforms},vertexShader:THREE.ShaderLib.physical.vertexShader,fragmentShader:THREE.ShaderLib.physical.fragmentShader};
+  model.body.material.onBeforeCompile(shader);
+  assert.equal(shader.uniforms.uGoCombat.value,1,'Go body receives the readable fight pigment');
+  assert.equal(shader.uniforms.uFightCombat.value,1,'Go fins receive the fight silhouette override');
+  assert.match(shader.fragmentShader,/mix\(vec3\(\.24,\.43,\.49\), vec3\(\.055,\.18,\.25\), dorsal\)/,'fight body keeps a distinct pale belly and darker back');
+  assert.match(shader.fragmentShader,/if\(uFishCombat>\.5&&uWaterPart<3\.5\)return fishColor;/,'fight anatomy bypasses reflected-water blending');
+  assert.match(shader.fragmentShader,/underwater=mix\(underwater,fishColor,combatAnatomy\+combatDetail\)/);
+  model.update(1,{visibility:.32,combat:false});
+  assert.equal(model.waterUniforms.uFishCombat.value,0,'approach shadows keep their original reveal treatment');
+  model.dispose();
 });
 
 test('CSS fish has its own compact silhouette and exposes smooth state-material uniforms',()=>{
@@ -339,14 +382,17 @@ test('invalid tether loads never reach fish shaders or accumulate in whale cargo
     const shader={uniforms:{...THREE.ShaderLib.physical.uniforms},vertexShader:THREE.ShaderLib.physical.vertexShader,fragmentShader:THREE.ShaderLib.physical.fragmentShader};
     model.body.material.onBeforeCompile(shader);
     for(const tetherLoad of [NaN,Infinity,-Infinity,.7]){
-      model.update(0,{tetherLoad});
+      model.update(0,{tetherLoad,combat:true});
       assert.equal(shader.uniforms.uTetherLoad.value,Number.isFinite(tetherLoad)?tetherLoad:0,visualProfile);
+      assert.equal(shader.uniforms.uFightCombat.value,1,`${visualProfile} receives the fight-only fin cue`);
     }
+    model.update(1,{combat:false});
+    assert.equal(shader.uniforms.uFightCombat.value,0,`${visualProfile} returns to the non-combat appearance`);
     model.dispose();
   }
   const whale=createDockerWhale();
   for(const tetherLoad of [NaN,Infinity,-Infinity,.7]){
-    for(let frame=0;frame<10;frame++)whale.update(frame/60,{tetherLoad});
+    for(let frame=0;frame<10;frame++)whale.update(frame/60,{tetherLoad,combat:true});
     whale.group.updateMatrixWorld(true);
     assert.ok(whale.cargoMount.matrixWorld.elements.every(Number.isFinite),'cargo remains visible after invalid and valid loads');
   }

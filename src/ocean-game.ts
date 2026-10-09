@@ -173,6 +173,8 @@ export class OceanFishingGame {
       if(s.distance<6&&this.finalBurst<0)this.finalBurst=t;
       const finale=this.finalBurst<0?-1:t-this.finalBurst;
       ({mode:s.mode,school:s.school}=profile.modeAt(t,finale));
+      const maneuver=profile.maneuverAt?.(t,s.mode,finale)??null;
+      const maneuverEnvelope=maneuver?Math.sin(Math.PI*clamp(maneuver.progress,0,1)):0;
       const surge=s.mode==='surge'||s.mode==='split';
       // Go uses warning for its landing attack; K8s uses it to gather its
       // replica shadows before a cluster strike. Docker keeps its steady pull.
@@ -190,9 +192,13 @@ export class OceanFishingGame {
           : warning
             ? profile.warningPressure??profile.basePressure
             : profile.basePressure;
+      // A hook-shake briefly unloads even a line the player is winding in.
+      // Keep tension in its real 0..1 domain; the existing slack danger cue
+      // makes the drop readable without inventing a negative game value.
+      const headshakeSlack= maneuver?.kind==='headshake' ? .36*maneuverEnvelope : 0;
       s.tension=clamp(
-        s.tension+((reeling?profile.reelingLoad:-profile.releaseRecovery)+pressure*staminaFactor)*dt,
-        reeling?profile.minimumReelingTension:0,
+        s.tension+((reeling?profile.reelingLoad:-profile.releaseRecovery)+pressure*staminaFactor-headshakeSlack)*dt,
+        headshakeSlack>0?0:(reeling?profile.minimumReelingTension:0),
         1,
       );
       const previousDistance=s.distance,previousFishX=s.fishX,previousDepth=this.fishDepth;
@@ -245,7 +251,17 @@ export class OceanFishingGame {
             ? profile.reelingLateralAmplitude??profile.baseLateralAmplitude
             : profile.baseLateralAmplitude;
       const lungeSide=-Math.sign(this.approachDirection.x||1);
-      const lateral=Math.sin(this.steeringPhase)*lateralAmplitude+lungeSide*.72*surfaceLunge;
+      const attackOscillation=maneuver
+        ? Math.sin(maneuver.progress*Math.PI*2*(maneuver.kind==='headshake'?3:maneuver.kind==='coil'?2.4:1))
+        : 0;
+      const maneuverLateral=maneuver
+        ? maneuver.kind==='headshake'
+          ? maneuver.side*.3*maneuverEnvelope+attackOscillation*.85*maneuverEnvelope
+          : maneuver.kind==='coil'
+            ? maneuver.side*.25*maneuverEnvelope+attackOscillation*.9*maneuverEnvelope
+            : maneuver.side*(maneuver.kind==='dart'?1.05:.78)*maneuverEnvelope
+        : 0;
+      const lateral=Math.sin(this.steeringPhase)*lateralAmplitude+lungeSide*.72*surfaceLunge+maneuverLateral;
       const wantedVelocity=clamp((lateral-s.fishX)*2.2,-profile.lateralLimit,profile.lateralLimit);
       const lateralAcceleration=profile.lateralAcceleration??4;
       this.lateralVelocity+=clamp(wantedVelocity-this.lateralVelocity,-dt*lateralAcceleration,dt*lateralAcceleration);
@@ -261,16 +277,24 @@ export class OceanFishingGame {
       // Skim the surface with a low, forward lunge instead of launching the
       // long armored body upright out of the water.
       const rustBillfishRush=s.fishId==='rust-001'&&(opening||surge);
-      const targetDepth=k8sSurfaceLunge?-1.95+2*surfaceLunge:rustBillfishRush?-1.55:s.mode==='split'?-1.65:s.mode==='surge'?-1.8:warning?-2.05:-2.4;
+      const surfaceLeap=maneuver?.kind==='leap' ? maneuverEnvelope : 0;
+      const targetDepth=surfaceLeap>0
+        ? -1.95+2.7*surfaceLeap
+        : k8sSurfaceLunge?-1.95+2*surfaceLunge:rustBillfishRush?-1.55:s.mode==='split'?-1.65:s.mode==='surge'?-1.8:warning?-2.05:-2.4;
       const k8sSurfaceRecovery=s.fishId==='k8s-001'&&this.fishDepth>-2.4;
       const horizontalTravel=Math.hypot(s.fishX-previousFishX,s.distance-previousDistance);
-      const diveResponse=k8sSurfaceLunge?7:k8sSurfaceRecovery?1.8:profile.depthResponse??1.2;
+      const diveResponse=surfaceLeap>0?8:k8sSurfaceLunge?7:k8sSurfaceRecovery?1.8:profile.depthResponse??1.2;
       const diveStep=(targetDepth-this.fishDepth)*Math.min(1,dt*diveResponse);
-      const verticalLimit=k8sSurfaceLunge?dt*4.5:k8sSurfaceRecovery?dt*1.8:rustBillfishRush?dt*1.05:horizontalTravel*.18;
+      const verticalLimit=surfaceLeap>0?dt*5.4:k8sSurfaceLunge?dt*4.5:k8sSurfaceRecovery?dt*1.8:rustBillfishRush?dt*1.05:horizontalTravel*.18;
       this.fishDepth+=clamp(diveStep,-verticalLimit,verticalLimit);
       const velocity:Vec3={x:(s.fishX-previousFishX)/dt,y:(this.fishDepth-previousDepth)/dt,z:-(s.distance-previousDistance)/dt};
       const previousYaw=this.swimYaw;
-      const wantedYaw=Math.atan2(this.lateralVelocity,.8);
+      const maneuverYaw=maneuver
+        ? maneuver.kind==='headshake'||maneuver.kind==='coil'
+          ? attackOscillation*(maneuver.kind==='headshake'?.3:.42)*maneuverEnvelope
+          : maneuver.side*(maneuver.kind==='dart'?.28:.2)*maneuverEnvelope
+        : 0;
+      const wantedYaw=Math.atan2(this.lateralVelocity,.8)+maneuverYaw;
       const turnRate=profile.turnRate??1.65;
       this.swimYaw+=clamp(wantedYaw-this.swimYaw,-dt*turnRate,dt*turnRate);
       const effortTarget=(opening

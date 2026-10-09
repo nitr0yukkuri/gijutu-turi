@@ -8,6 +8,7 @@ import { updateFishingLineBuffers } from './fishing-line.js';
 import { dockerWhaleRodKick, rodCenterAt, rodFlexProfileFor, smoothRodLoad } from './rod-flex.js';
 import { escapeFishVisibility, fishVisibilityTarget, WAIT_APPROACH_FRACTION } from '../fish-approach.js';
 import { ESCAPE_ANIMATION_MS } from '../ocean-game.js';
+import { getFishFightProfile } from '../fish-behavior.js';
 import { OCEAN_RENDER_DELAY_MS, RETRIEVE_DURATION_MS } from '../ocean-timing.js';
 import { castDistanceForStrength } from '../cast-distance.js';
 import { TackleStateStore } from './tackle-state.js';
@@ -40,6 +41,60 @@ export function fishOrientation(direction,target=new THREE.Quaternion(),scratch=
   if(z.lengthSq()<.0001)z.set(0,0,1);else z.normalize();
   const y=scratch.y.crossVectors(z,x).normalize();
   return target.setFromRotationMatrix(scratch.basis.makeBasis(x,y,z));
+}
+
+function stableFightViewSide(fishId) {
+  const id=String(fishId??'');
+  let hash=0;
+  for(let i=0;i<id.length;i++)hash=(hash*31+id.charCodeAt(i))|0;
+  return (hash&1)===0?1:-1;
+}
+
+// Preserve the fish's server-owned position and swim, while keeping its live
+// fight pose legible from the angler view. Vertical velocity used to rotate
+// short fish almost upright, and a heading straight into the camera collapsed
+// the body to a thin silhouette. The line endpoint uses this same pose.
+export function fightViewHeading(fish,fishId,cameraPosition,target,towardCamera,screenSide,surfaceLunge=0) {
+  target.set(fish.heading.x,fish.heading.y,fish.heading.z);
+  if(target.lengthSq()<.0001)target.set(-1,0,0);else target.normalize();
+
+  towardCamera.set(cameraPosition.x-fish.position.x,0,cameraPosition.z-fish.position.z);
+  const hasCameraDirection=towardCamera.lengthSq()>=.0001;
+  if(hasCameraDirection)towardCamera.normalize();
+
+  const pitchLimit=surfaceLunge>.16?1.02:fishId==='whale-001'?.72:.56;
+  const pitch=Math.asin(THREE.MathUtils.clamp(target.y,-1,1));
+  const limitedPitch=THREE.MathUtils.clamp(pitch,-pitchLimit,pitchLimit);
+  const horizontalLength=Math.hypot(target.x,target.z);
+  const horizontalScale=Math.cos(limitedPitch);
+  if(horizontalLength<.08){
+    if(hasCameraDirection){
+      screenSide.set(-towardCamera.z,0,towardCamera.x);
+      target.set(screenSide.x*horizontalScale,Math.sin(limitedPitch),screenSide.z*horizontalScale);
+    }else{
+      target.set(-horizontalScale,Math.sin(limitedPitch),0);
+    }
+  }else if(horizontalLength>=.0001){
+    target.set(target.x/horizontalLength*horizontalScale,Math.sin(limitedPitch),target.z/horizontalLength*horizontalScale);
+  }
+
+  if(!hasCameraDirection)return target.normalize();
+  const cameraAlignment=Math.abs(target.x*towardCamera.x+target.z*towardCamera.z);
+  if(cameraAlignment<.72)return target.normalize();
+
+  screenSide.set(-towardCamera.z,0,towardCamera.x);
+  // Keep the same profile side as the heading passes through the camera axis.
+  // Choosing from the instantaneous lateral dot flips at zero and snaps the
+  // rendered fish by roughly 120 degrees. The fish identity makes the choice
+  // stable for the whole fight while still distributing fish across both sides.
+  const sideSign=stableFightViewSide(fishId);
+  const forwardSign=target.x*towardCamera.x+target.z*towardCamera.z<0?-1:1;
+  const sideAmount=Math.sqrt(1-.5*.5);
+  const linearBlend=THREE.MathUtils.clamp((cameraAlignment-.72)/.24,0,1);
+  const blend=linearBlend*linearBlend*(3-2*linearBlend);
+  target.x=THREE.MathUtils.lerp(target.x,screenSide.x*sideSign*sideAmount+towardCamera.x*forwardSign*.5,blend);
+  target.z=THREE.MathUtils.lerp(target.z,screenSide.z*sideSign*sideAmount+towardCamera.z*forwardSign*.5,blend);
+  return target.normalize();
 }
 
 // The ocean is ray/height-field intersected in world space. All tackle uses
@@ -351,6 +406,25 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   cssFish.group.visible=false;cssFish.group.renderOrder=4;
   cssFish.group.traverse(object=>{object.renderOrder=4;});
   scene.add(cssFish.group);
+  // Short, underwater copies make the CSS fish's server-driven dart read as a
+  // quick turn. They reuse the live pose history rather than inventing motion.
+  let cssFishAfterimages=[];
+  const ensureCssFishAfterimages=()=>{
+    if(cssFishAfterimages.length)return;
+    cssFishAfterimages=Array.from({length:2},(_,index)=>{
+      const model=createGoFish({detail:'high',phase:.7+index*.11,waterUniforms,visualProfile:'css'});
+      model.group.visible=false;model.group.renderOrder=3;
+      model.group.traverse(object=>{
+        object.renderOrder=3;
+        for(const material of Array.isArray(object.material)?object.material:object.material?[object.material]:[]){
+          material.depthWrite=false;
+        }
+      });
+      scene.add(model.group);
+      return model;
+    });
+  };
+  const cssFishProfile=getFishFightProfile('css-001');
   const rustFish=createGoFish({detail:'high',phase:.7,waterUniforms,visualProfile:'rust'});
   rustFish.group.visible=false;rustFish.group.renderOrder=4;
   rustFish.group.traverse(object=>{object.renderOrder=4;});
@@ -368,7 +442,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     scene.add(clusterFish.group);
     return clusterFish;
   };
-  const fightModelFor=(fishId)=>fishId==='whale-001'?dockerWhale:fishId==='css-001'?cssFish:fishId==='rust-001'?rustFish:fishId==='js-001'?jsEel:fishId==='k8s-001'?ensureClusterFish():fightFish;
+  const fightModelFor=(fishId)=>{if(fishId==='css-001')ensureCssFishAfterimages();return fishId==='whale-001'?dockerWhale:fishId==='css-001'?cssFish:fishId==='rust-001'?rustFish:fishId==='js-001'?jsEel:fishId==='k8s-001'?ensureClusterFish():fightFish;};
   const liveFishScale=(fishId,phase)=>fishScaleForResponsiveCamera(fishId==='whale-001'?.42:fishId==='k8s-001'?(phase==='fighting'?1.02:.76):fishId==='css-001'?(phase==='fighting'?.74:.55):fishId==='rust-001'?(phase==='fighting'?.80:.63):fishId==='js-001'?(phase==='fighting'?.78:.61):(phase==='fighting'?.84:.66),camera.fov,portraitBlend);
   const catchFishScale=(fishId)=>fishScaleForResponsiveCamera(catchFraming(fishId,camera.aspect,camera.fov).baseScale,camera.fov,portraitBlend);
   // The submerged line ends at the same undeformed nose anchor as the model.
@@ -443,20 +517,57 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   let state={phase:'idle',castAt:0,strength:.65,aim:0,revision:0};
   const tackleStore=new TackleStateStore();
   let time=0,lastFrame=0,lastRenderedFrame=0,overlayOpen=false,fightTackleForeground=false,landedRevision=-1,splashAt=-100,rodStrokeAt=-100,sprayPower=1,rippleIndex=0,charge=0,chargeAim=0,lastWake=0,lastStroke=0,reelPhase=0;
+  let marlinSurfaceExposed=false;
   let serverOffset=0,cameraProgress=0,frame,catchOrigin=null,displayedWave=null,displayedGlow=.65,displayedSwim=null,displayedLoad=0,displayedRodLoad=0,displayedFishVisibility=0,escapeStartVisibility=0,hookImpactAt=-100;
   let dockerRodSurgeAt=-100,wasDockerSurging=false,displayedDockerSurgeLoad=0;
+  let fishShaderWarmupTimer:ReturnType<typeof setTimeout>|null=null;
+  let scheduleFishShaderWarmup=(fishId)=>{};
+  let scheduledWarmupFishId=null;
+  let waterShaderWarmupAttempted=false;
+  const warmedFishShaderIds=new Set();
   const cameraLookTarget=new THREE.Vector3(0,-3.8,-35);
   const cameraLookDesired=new THREE.Vector3();
   const whaleCameraOffset=new THREE.Vector3(),whaleCameraDesiredOffset=new THREE.Vector3();
   const viewHeading=new THREE.Vector3(),viewSide=new THREE.Vector3();
   const whaleWakeHeading=new THREE.Vector3(),whaleWakeSide=new THREE.Vector3(),whaleWakePoint=new THREE.Vector3();
   const fightFishHeading=new THREE.Vector3(),fightSwimQuaternion=new THREE.Quaternion();
+  const fightViewDirection=new THREE.Vector3(),fightViewSide=new THREE.Vector3();
   const fightOrientationScratch=createFishOrientationScratch();
   const fightTurnAxis=new THREE.Vector3(-1,0,0),fightTurnQuaternion=new THREE.Quaternion();
   const fightNoseAxis=new THREE.Vector3(0,0,1),fightRollAxis=new THREE.Vector3(1,0,0);
   const fightNoseQuaternion=new THREE.Quaternion(),fightRollQuaternion=new THREE.Quaternion();
   const catchFinalPosition=new THREE.Vector3(),catchStartPosition=new THREE.Vector3();
   const catchFinalQuaternion=new THREE.Quaternion(),catchYawAxis=new THREE.Vector3(0,1,0),catchYawQuaternion=new THREE.Quaternion();
+  const cssFishAfterimageDelays=[42,86],cssFishAfterimageStrengths=[.2,.115];
+  const cssFishPoseHistory=Array.from({length:12},()=>({
+    at:-Infinity,position:new THREE.Vector3(),quaternion:new THREE.Quaternion(),scale:1,
+    power:.48,bodyPhase:0,bodyFrequency:3.5,bodyWavelength:1,turn:0,effort:.2,glow:.65,load:0,
+  }));
+  let cssFishPoseHistoryHead=0,cssFishPoseHistoryCount=0;
+  const resetCssFishAfterimages=()=>{
+    cssFishPoseHistoryHead=0;cssFishPoseHistoryCount=0;
+    for(const sample of cssFishPoseHistory)sample.at=-Infinity;
+    for(const model of cssFishAfterimages)model.group.visible=false;
+  };
+  const rememberCssFishPose=(now,fish)=>{
+    const sample=cssFishPoseHistory[cssFishPoseHistoryHead];
+    sample.at=now;sample.position.copy(cssFish.group.position);sample.quaternion.copy(cssFish.group.quaternion);
+    sample.scale=cssFish.group.scale.x;sample.power=THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1);
+    sample.bodyPhase=fish.bodyWave.phase;sample.bodyFrequency=fish.bodyWave.frequency;
+    sample.bodyWavelength=fish.bodyWave.wavelength;sample.turn=fish.swim?.turn||0;
+    sample.effort=fish.swim?.effort||.2;sample.glow=displayedGlow;sample.load=displayedLoad;
+    cssFishPoseHistoryHead=(cssFishPoseHistoryHead+1)%cssFishPoseHistory.length;
+    cssFishPoseHistoryCount=Math.min(cssFishPoseHistoryCount+1,cssFishPoseHistory.length);
+  };
+  const cssFishPoseAt=(at)=>{
+    let match=null;
+    const first=(cssFishPoseHistoryHead-cssFishPoseHistoryCount+cssFishPoseHistory.length)%cssFishPoseHistory.length;
+    for(let index=0;index<cssFishPoseHistoryCount;index++){
+      const sample=cssFishPoseHistory[(first+index)%cssFishPoseHistory.length];
+      if(sample.at<=at&&(!match||sample.at>match.at))match=sample;
+    }
+    return match;
+  };
   const waveHeight=(x,z,t)=>waterHeightAt(x,z,t,ripples);
   const lineSurfaceHeight=(x,z)=>waveHeight(x,z,time);
   const fishWorldPosition=(fish,result=new THREE.Vector3())=>result.set(fish.position.x,fish.position.y,fish.position.z);
@@ -480,6 +591,11 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     sprayOrigin.set(x,waveHeight(x,z,time),z);splashAt=time;sprayPower=power;addRipple(x,z,power);
   };
   const setState=(next,serverNow)=>{
+    // Resolve lazy species models on the network/state path, not on the first
+    // animation frame that tries to show the fish.
+    fightModelFor(next.fishId);
+    if(next.fishId==='k8s-001')ensureClusterEchoes();
+    scheduleFishShaderWarmup(next.fishId);
     if(Number.isFinite(serverNow)) serverOffset=serverNow-Date.now();
     if(ownsPresentationTimeline)presentationTimeline.push(next,Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset);
     tackleStore.update(next,Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset);
@@ -492,14 +608,14 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         ? displayedFishVisibility
         : fishVisibilityTarget('biting',1,next.fishId);
     }
-    if(changed){schoolAmount=0;schoolWasVisible=false;schoolCatchOrigins=null;clusterEchoAmount=0;previousK8sSurfaceGap=null;lastK8sBreachAt=-100;k8sSurfaceExposed=false;resetK8sWakeHistory();for(const motion of schoolMotion)motion.initialized=false;for(const motion of clusterEchoMotion)motion.initialized=false;}
+    if(changed){schoolAmount=0;schoolWasVisible=false;schoolCatchOrigins=null;clusterEchoAmount=0;previousK8sSurfaceGap=null;lastK8sBreachAt=-100;k8sSurfaceExposed=false;marlinSurfaceExposed=false;resetK8sWakeHistory();for(const motion of schoolMotion)motion.initialized=false;for(const motion of clusterEchoMotion)motion.initialized=false;}
     state={...next};
     target.set(next.aim*7,0,-castDistanceForStrength(next.strength));
     if(['fighting','caught'].includes(next.phase)&&next.fish)target.set(next.fish.position.x,0,next.fish.position.z);
     else if(['fighting','caught'].includes(next.phase))target.set(next.aim*7+(next.fishX||0),0,-next.distance);
     if(next.phase==='fighting'&&previousPhase==='biting'&&next.hookResult==='critical'&&next.fish){
       hookImpactAt=time;
-      addRipple(next.fish.position.x,next.fish.position.z,1.15);
+      launchSplash(next.fish.position.x,next.fish.position.z,1.65);
     }
     if(next.phase==='caught'&&previousPhase!=='caught'&&next.fish){
       const fish=copyFish(next.fish),heading=new THREE.Vector3(fish.heading.x,fish.heading.y,fish.heading.z);
@@ -545,6 +661,54 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     );
   };
   const observer=new ResizeObserver(resize);observer.observe(mount);resize();
+  scheduleFishShaderWarmup=(fishId)=>{
+    if(warmedFishShaderIds.has(fishId))return;
+    if(fishShaderWarmupTimer!==null){
+      if(scheduledWarmupFishId===fishId)return;
+      clearTimeout(fishShaderWarmupTimer);
+    }
+    scheduledWarmupFishId=fishId;
+    // Use the quiet approach window to compile the selected fish before its
+    // reveal. compileAsync skips invisible roots, so expose each group only
+    // for its synchronous traversal and restore it before rendering resumes.
+    fishShaderWarmupTimer=window.setTimeout(()=>{
+      fishShaderWarmupTimer=null;
+      const warmupFishId=scheduledWarmupFishId;
+      scheduledWarmupFishId=null;
+      warmedFishShaderIds.add(warmupFishId);
+      const previousTarget=renderer.getRenderTarget();
+      const previousWaterMaterial=waterQuad.material;
+      const pending:Promise<unknown>[]=[];
+      const compileHiddenGroup=(group)=>{
+        if(!group)return;
+        const wasVisible=group.visible;
+        group.visible=true;
+        try{pending.push(renderer.compileAsync(group,camera,scene));}
+        finally{group.visible=wasVisible;}
+      };
+      try{
+        const fishModel=fightModelFor(warmupFishId);
+        compileHiddenGroup(fishModel.group);
+        if(warmupFishId==='fish-001')compileHiddenGroup(schoolFish[0]?.group);
+        if(warmupFishId==='k8s-001')compileHiddenGroup(clusterEchoes[0]?.group);
+        if(!waterShaderWarmupAttempted){
+          waterShaderWarmupAttempted=true;
+          renderer.setRenderTarget(waterBackdrop);
+          pending.push(renderer.compileAsync(backgroundScene,screenCamera,backgroundScene));
+          renderer.setRenderTarget(null);
+          waterQuad.material=waterCopy;
+          pending.push(renderer.compileAsync(backgroundScene,screenCamera,backgroundScene));
+        }
+      }catch{
+        // Shader warmup is an optimization; the normal render path remains the
+        // fallback if a device cannot compile a program in advance.
+      }finally{
+        renderer.setRenderTarget(previousTarget);
+        waterQuad.material=previousWaterMaterial;
+      }
+      void Promise.allSettled(pending);
+    },250);
+  };
   const render=(now)=>{
     frame=requestAnimationFrame(render);
     if(document.hidden){lastFrame=now;return;}
@@ -649,8 +813,10 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     // Keep game tension immediate; only the rod's rendered flex eases toward it.
     const retrieveLoad=retrievePresentation?.rodLoad??0;
     const rodFlexProfile=rodFlexProfileFor(state.fishId);
-    const hookImpact=Math.exp(-Math.max(0,time-hookImpactAt)*18);
-    const rodLoadTarget=THREE.MathUtils.clamp((tackle.phase==='fighting'?strain+surfaceLunge*.26:retrieveLoad)+hookImpact*.075,0,1);
+    const hookImpactAge=time-hookImpactAt;
+    const hookImpact=hookImpactAge>=0?Math.exp(-hookImpactAge*13):0;
+    const hookKick=hookImpactAge>=0&&hookImpactAge<.48?Math.exp(-hookImpactAge*8)*Math.sin(hookImpactAge*24):0;
+    const rodLoadTarget=THREE.MathUtils.clamp((tackle.phase==='fighting'?strain+surfaceLunge*.26:retrieveLoad)+hookImpact*.16,0,1);
     const rodResponse=rodLoadTarget>displayedRodLoad?rodFlexProfile.loadingResponse:rodFlexProfile.recoveryResponse;
     displayedRodLoad=smoothRodLoad(displayedRodLoad,rodLoadTarget,dt,rodResponse);
     const dockerRodFight=state.fishId==='whale-001'&&tackle.phase==='fighting';
@@ -676,7 +842,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       // Approximate the hook point from the authoritative fish pose before
       // the model is updated below. The line itself is still built from the
       // exact displayed mouth position later in this frame.
-      const heading=fightFishHeading.set(visibleFish.heading.x,visibleFish.heading.y,visibleFish.heading.z);
+      const heading=fightViewHeading(visibleFish,state.fishId,camera.position,fightFishHeading,fightViewDirection,fightViewSide,surfaceLunge);
       if(heading.lengthSq()<.0001)heading.set(-1,0,0);else heading.normalize();
       const fishScale=liveFishScale(state.fishId,'fighting');
       fishMouthLocal(state.fishId,rodFishTarget)
@@ -693,8 +859,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     // During retrieval the angler lifts the tip slightly while the line comes
     // home. The lift eases out with the same progress as the bobber and reel.
     const retrieveLift=retrievePresentation?.rodLift??0;
-    rodTip.y+=charge*1.1-fling*.5-rodBendLoad*.43+retrieveLift+rodStrokeImpulse*.58;
-    rodTip.z+=charge*.6+rodStrokeImpulse*.22;
+    rodTip.y+=charge*1.1-fling*.5-rodBendLoad*.43+retrieveLift+rodStrokeImpulse*.58-hookImpact*.13+hookKick*.11;
+    rodTip.z+=charge*.6+rodStrokeImpulse*.22+hookKick*.045;
     if(rod.visible){
       const positions=rodGeometry.attributes.position.array,sheenPositions=rodSheenGeometry.attributes.position.array;
       const blankLoad=THREE.MathUtils.clamp(fling*.62+rodBendLoad*1.35+charge*.12+Math.abs(rodStrokeImpulse)*.8+Math.abs(dockerSurgeImpulse)*.28,0,1.65);
@@ -813,13 +979,19 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     rustFish.group.visible=activeFightFish===rustFish&&fishShowing&&Boolean(visibleFish);
     jsEel.group.visible=activeFightFish===jsEel&&fishShowing&&Boolean(visibleFish);
     if(clusterFish)clusterFish.group.visible=activeFightFish===clusterFish&&fishShowing&&Boolean(visibleFish);
+    let cssFishVisualState='normal';
     if (state.fishId === 'css-001') {
-      cssFish.setVisualState(resolveCssFishVisualState({phase:tackle.phase,mode:tackle.mode,tension:tackle.tension,fish:visibleFish}));
+      cssFishVisualState=resolveCssFishVisualState({phase:tackle.phase,mode:tackle.mode,tension:tackle.tension,fish:visibleFish});
+      cssFish.setVisualState(cssFishVisualState);
     }
+    const cssFishTrailActive=state.fishId==='css-001'&&state.phase==='fighting'&&cssFish.group.visible;
+    if(!cssFishTrailActive)resetCssFishAfterimages();
     let caughtEase=0;
     if(activeFightFish.group.visible){
       const fish=visibleFish;
-      const heading=fightFishHeading.set(fish.heading.x,fish.heading.y,fish.heading.z);
+      const heading=state.phase==='fighting'
+        ? fightViewHeading(fish,state.fishId,camera.position,fightFishHeading,fightViewDirection,fightViewSide,surfaceLunge)
+        : fightFishHeading.set(fish.heading.x,fish.heading.y,fish.heading.z);
       if(heading.lengthSq()<.0001)heading.set(-1,0,0);else heading.normalize();
       const swimQuaternion=fishOrientation(heading,fightSwimQuaternion,fightOrientationScratch)
         .multiply(fightTurnQuaternion.setFromAxisAngle(fightTurnAxis,(fish.swim?.turn||0)*.12));
@@ -840,7 +1012,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         const catchScale=catchFishScale(state.fishId);
         activeFightFish.group.scale.setScalar(THREE.MathUtils.lerp(catchOrigin?.scale||liveFishScale(state.fishId,state.phase),catchScale,ease));
         const wave=catchOrigin?.wave||fish.bodyWave,elapsed=age;
-        activeFightFish.update(time,{power:THREE.MathUtils.lerp(wave.amplitude/.3,rustCatch?.22:.15,ease),glow:THREE.MathUtils.lerp(catchOrigin?.glow??.65,1,ease),bodyPhase:wave.phase+elapsed*wave.frequency*Math.PI*2,bodyFrequency:wave.frequency,bodyWavelength:wave.wavelength,amplitude:THREE.MathUtils.lerp(wave.amplitude,rustCatch?.055:.03,ease),turn:(catchOrigin?.swim?.turn||0)*(1-ease),effort:THREE.MathUtils.lerp(catchOrigin?.swim?.effort||.2,rustCatch?.24:.15,ease),tetherLoad:(catchOrigin?.load||0)*(1-ease),visibility:renderedFishVisibility,styleDelta:dt});
+        activeFightFish.update(time,{power:THREE.MathUtils.lerp(wave.amplitude/.3,rustCatch?.22:.15,ease),glow:THREE.MathUtils.lerp(catchOrigin?.glow??.65,1,ease),bodyPhase:wave.phase+elapsed*wave.frequency*Math.PI*2,bodyFrequency:wave.frequency,bodyWavelength:wave.wavelength,amplitude:THREE.MathUtils.lerp(wave.amplitude,rustCatch?.055:.03,ease),turn:(catchOrigin?.swim?.turn||0)*(1-ease),effort:THREE.MathUtils.lerp(catchOrigin?.swim?.effort||.2,rustCatch?.24:.15,ease),tetherLoad:(catchOrigin?.load||0)*(1-ease),visibility:renderedFishVisibility,combat:false,styleDelta:dt});
       }else{
         // Go and K8s use warning as a readable attack telegraph. Docker's
         // steady warning and CSS fish's catch finale stay visually restrained.
@@ -857,10 +1029,45 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         const approaching=state.phase==='waiting'||state.phase==='biting';
         const biteReveal=THREE.MathUtils.clamp(((state.approach||0)-WAIT_APPROACH_FRACTION)/(1-WAIT_APPROACH_FRACTION),0,1);
         displayedWave={...fish.bodyWave};displayedGlow=approaching?THREE.MathUtils.lerp(.04,.65,state.phase==='waiting'?0:biteReveal):escapePresentation?.8:urgent?.8:.65;displayedSwim=fish.swim?{...fish.swim}:null;displayedLoad=cues.load;
-        activeFightFish.update(time,{power:THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1),glow:state.fishId==='whale-001'||state.fishId==='rust-001'?displayedGlow*.76:state.fishId==='js-001'?displayedGlow*.78:displayedGlow,bodyPhase:fish.bodyWave.phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,amplitude:fish.bodyWave.amplitude,turn:fish.swim?.turn||0,effort:escapePresentation?1:fish.swim?.effort||.2,tetherLoad:cues.load,surge:state.fishId==='rust-001'&&state.phase==='fighting'&&visualMode==='surge'?1:0,cargoMoment:state.fishId==='whale-001'&&state.phase==='fighting'&&state.mode==='surge',visibility:renderedFishVisibility,styleDelta:dt});
+        // Use the approach/escape water treatment in fights too; the combat
+        // override bypasses water blending and makes submerged anatomy opaque.
+        activeFightFish.update(time,{power:THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1),glow:state.fishId==='whale-001'||state.fishId==='rust-001'?displayedGlow*.76:state.fishId==='js-001'?displayedGlow*.78:displayedGlow,bodyPhase:fish.bodyWave.phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,amplitude:fish.bodyWave.amplitude,turn:fish.swim?.turn||0,effort:escapePresentation?1:fish.swim?.effort||.2,tetherLoad:cues.load,surge:state.fishId==='rust-001'&&state.phase==='fighting'&&visualMode==='surge'?1:0,cargoMoment:state.fishId==='whale-001'&&state.phase==='fighting'&&state.mode==='surge',visibility:renderedFishVisibility,combat:state.phase==='fighting',styleDelta:dt});
+        if(cssFishTrailActive)rememberCssFishPose(now,fish);
       }
     }
+    const cssFishDart=cssFishTrailActive
+      ? cssFishProfile.maneuverAt?.(renderedFightTime,renderedMode,-1)
+      : null;
+    const cssFishDartStrength=cssFishDart?.kind==='dart'?Math.sin(Math.PI*cssFishDart.progress):0;
+    for(let index=0;index<cssFishAfterimages.length;index++){
+      const model=cssFishAfterimages[index];
+      const pose=cssFishDartStrength>.015
+        ? cssFishPoseAt(now-cssFishAfterimageDelays[index])
+        : null;
+      const visibility=pose
+        ? cssFishDartStrength*cssFishAfterimageStrengths[index]*renderedFishVisibility
+        : 0;
+      if(!pose||visibility<.006){model.group.visible=false;continue;}
+      model.group.visible=true;model.group.position.copy(pose.position);
+      model.group.quaternion.copy(pose.quaternion);model.group.scale.setScalar(pose.scale);
+      model.setVisualState(cssFishVisualState);
+      model.update(time,{
+        power:pose.power,glow:pose.glow*.68,bodyPhase:pose.bodyPhase,bodyFrequency:pose.bodyFrequency,
+        bodyWavelength:pose.bodyWavelength,turn:pose.turn,effort:pose.effort,tetherLoad:pose.load,
+        visibility,combat:false,styleDelta:dt,
+      });
+    }
     k8sSurfaceContactGap=-Infinity;
+    if(state.fishId==='rust-001'&&state.phase==='fighting'&&activeFightFish.group.visible&&visibleFish){
+      // A hooked marlin's surface leap is server-owned. Let the rendered wave
+      // crossings produce the same splash and expanding ripple as the K8s breach.
+      const marlinGap=visibleFish.position.y-waveHeight(visibleFish.position.x,visibleFish.position.z,time);
+      if(!marlinSurfaceExposed&&marlinGap>.06){
+        marlinSurfaceExposed=true;launchSplash(visibleFish.position.x,visibleFish.position.z,1.7);
+      }else if(marlinSurfaceExposed&&marlinGap<-.14){
+        marlinSurfaceExposed=false;launchSplash(visibleFish.position.x,visibleFish.position.z,1.95);
+      }
+    }else marlinSurfaceExposed=false;
     if(state.fishId==='k8s-001'&&state.phase==='fighting'&&activeFightFish.group.visible&&visibleFish){
       activeFightFish.group.updateMatrixWorld(true);
       for(const probe of k8sContactProbes){
@@ -977,6 +1184,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       model.group.position.copy(motion.position);
       model.group.quaternion.slerp(fishOrientation(followerHeading,motion.orientation,motion.orientationScratch),1-Math.exp(-dt*10));
       model.group.scale.setScalar(.29);
+      // School copies use the same underwater treatment as the leader.
       model.update(time,{power:THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1),glow:.42,bodyPhase:phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,turn:fish.swim?.turn||0,effort:fish.swim?.effort||.2,visibility:schoolAmount});
     }
     const clusterEchoRequested=showLiveTackle&&state.phase==='fighting'&&state.fishId==='k8s-001'&&Boolean(visibleFish);
@@ -1099,9 +1307,12 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     renderer.clear();renderer.render(backgroundScene,screenCamera);waterQuad.material=material;
     // Idle and post-escape frames contain no visible 3D objects. Avoid a
     // second scene traversal and depth clear while keeping the same pixels.
-    if(active||fishShowing||charge>0){renderer.clearDepth();renderer.render(scene,camera);}
+    // renderer.clear() above already cleared the default framebuffer depth;
+    // the background water quad has depthTest/depthWrite disabled, so no 3D
+    // object can dirty it before the scene pass.
+    if(active||fishShowing||charge>0)renderer.render(scene,camera);
     if(!mount.dataset.ready)mount.dataset.ready='true';
   };
   frame=requestAnimationFrame(render);
-    return {setState,setCharge,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){cancelAnimationFrame(frame);observer.disconnect();fightFish.dispose();dockerWhale.dispose();cssFish.dispose();clusterFish?.dispose();for(const model of clusterEchoes)model.dispose();for(const model of schoolFish)model.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
+    return {setState,setCharge,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fightFish.dispose();dockerWhale.dispose();cssFish.dispose();for(const model of cssFishAfterimages)model.dispose();clusterFish?.dispose();for(const model of clusterEchoes)model.dispose();for(const model of schoolFish)model.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
 }

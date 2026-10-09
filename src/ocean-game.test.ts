@@ -123,6 +123,36 @@ test('Go fish attack phases take line and stay physically readable',()=>{
   assert.ok(game.state.tension>attackTension,'the attack should load the line instead of becoming inert');
 });
 
+test('fight profiles give species distinct, server-clocked attack shapes',()=>{
+  assert.equal(getFishFightProfile('fish-001').maneuverAt?.(6.4,'split',-1)?.kind,'cut','Go cuts across the line during its split attack');
+  assert.equal(getFishFightProfile('fish-001').maneuverAt?.(15,'split',1.2)?.kind,'headshake','Go shakes the hook during its near-catch finale');
+  assert.equal(getFishFightProfile('whale-001').maneuverAt?.(3.8,'surge',-1)?.kind,'headshake','Docker uses a heavy hook-shake');
+  assert.equal(getFishFightProfile('css-001').maneuverAt?.(3,'surge',-1)?.kind,'dart','CSS fish makes a compact startle dart');
+  assert.equal(getFishFightProfile('rust-001').maneuverAt?.(3.6,'surge',-1)?.kind,'leap','Rust alternates its repeat run with a surface leap');
+  assert.equal(getFishFightProfile('js-001').maneuverAt?.(1,'surge',-1)?.kind,'coil','the eel uses a full-body coil');
+});
+
+test('the Rust leap crosses the water surface without moving the fish by renderer-only motion',()=>{
+  const {game,step,now}=setup(.5,'rust-001');game.action({action:'hook'},now());
+  game.state.fightTime=3.25;
+  let highest=game.state.fish.position.y;
+  for(let i=0;i<24;i++){
+    step(false);
+    highest=Math.max(highest,game.state.fish.position.y);
+  }
+  assert.ok(highest>.05,`the authoritative fish body should clear the water during the leap (${highest})`);
+  assert.equal(game.state.fish.position.z,-game.state.distance,'the attack still follows authoritative line distance');
+});
+
+test('a hook-shake briefly unloads the line, then keeps tension in its valid range',()=>{
+  const {game,step,now}=setup(.5,'whale-001');game.action({action:'hook'},now());
+  game.state.fightTime=3.2;
+  const before=game.state.tension;
+  for(let i=0;i<12;i++)step(false);
+  assert.ok(game.state.tension<before-.05,'the head shake should pull the line toward slack');
+  assert.ok(game.state.tension>=0&&game.state.tension<=1,'a visual slack attack must not create invalid negative tension');
+});
+
 test('Docker whale starts heavy, settles into a steady pull, and remains catchable',()=>{
   const game=new OceanFishingGame(()=>.5,'whale-001');let now=1000;
   const step=(held=false)=>{now+=50;game.step(.05,held,now);};
