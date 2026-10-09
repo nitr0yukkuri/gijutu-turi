@@ -533,7 +533,10 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
           onRenderError: () => { if (!disposed) setRenderFailed(true); },
         }) as OceanSceneController;
         sceneRef.current = scene;
-        scene.setState(initialFishId ? { ...stateRef.current, fishId: initialFishId } : stateRef.current);
+        // An unpinned room chooses its first species on the server. Do not
+        // request the placeholder Go model before that authoritative snapshot
+        // arrives, or a random Docker room downloads both species chunks.
+        if (initialFishId) scene.setState({ ...stateRef.current, fishId: initialFishId });
       } catch (error) {
         console.error("Ocean rendering unavailable", error);
         setRenderFailed(true);
