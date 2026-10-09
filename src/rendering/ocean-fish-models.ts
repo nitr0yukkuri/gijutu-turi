@@ -117,7 +117,10 @@ export function createOceanFishModels(scene, waterUniforms, createFishOrientatio
   const fightModelFor=fishId=>fishId==='k8s-001'?clusterFish:fightModels.peek(fishId==='whale-001'||fishId==='css-001'||fishId==='rust-001'||fishId==='js-001'?fishId:'fish-001');
   const requestFightModel=async fishId=>{
     if(fishId==='k8s-001')await Promise.all([ensureClusterFish(),ensureClusterEchoes()]);
-    else await fightModels.load(fishId==='whale-001'||fishId==='css-001'||fishId==='rust-001'||fishId==='js-001'?fishId:'fish-001');
+    else{
+      await fightModels.load(fishId==='whale-001'||fishId==='css-001'||fishId==='rust-001'||fishId==='js-001'?fishId:'fish-001');
+      if(fishId==='fish-001')ensureSchoolFish();
+    }
     if(fishId==='css-001')await ensureCssFishAfterimages();
   };
 
