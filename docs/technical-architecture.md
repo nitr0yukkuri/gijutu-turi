@@ -129,15 +129,15 @@ Three.jsのメインscene、魚モデル、魚水面材質、図鑑プレビュ�
 - `player_collections`: プレイヤー×魚種ごとの釣果回数、初回/直近日時
 - `collection_catch_events`: イベントキーによる冪等な捕獲履歴
 
-捕獲処理はイベント記録と集計更新を一つのD1バッチトランザクションにまとめ、新規イベントの場合だけ集計を加算する。イベントキーの一意制約と `changes()` 条件により、再送時の二重加算を防ぐ。ローカル既定DBは `data/gijutu-turi.sqlite`、環境変数 `GIJUTU_DB_PATH` で変更できる。Cloud RunでD1を使う場合、APIトークンはSecret Managerから `CLOUDFLARE_API_TOKEN` として渡す。D1設定がなければDockerfile既定の `/tmp` SQLiteとなり、再起動後の永続化は保証されない。
+捕獲処理はイベント記録と集計更新を一つのD1バッチトランザクションにまとめ、新規イベントの場合だけ集計を加算する。イベントキーの一意制約と `changes()` 条件により、再送時の二重加算を防ぐ。ローカル既定DBは `data/gijutu-turi.sqlite`、環境変数 `GIJUTU_DB_PATH` で変更できる。Cloud RunでD1を使う場合、APIトークンはSecret Managerから `CLOUDFLARE_API_TOKEN` として渡す。`NODE_ENV=production` ではD1またはPostgreSQLを必須とし、未設定時は起動を拒否する。
 
 ## 9. 配信・運用
 
 ### Docker / Cloud Run
 
-DockerはNode 22 slimのマルチステージ構成。実行段階はproduction依存のみをinstallし、ポート8080、`HOST=0.0.0.0` で単一Nodeサーバーを起動する。D1環境変数がそろえばCloudflare D1、未設定なら `/tmp/gijutu-turi.sqlite` を使う。互換用の `DATABASE_URL` はPostgreSQLを選ぶ。Cloud Run向けのリポジトリ文書は、部屋がプロセスメモリにあるため最大1インスタンスを推奨し、WebSocket接続とsession affinityを運用上の制約として説明している。
+DockerはNode 22 slimのマルチステージ構成。実行段階はproduction依存のみをinstallし、ポート8080、`HOST=0.0.0.0` で単一Nodeサーバーを起動する。Cloud RunではD1環境変数またはPostgreSQL用の `DATABASE_URL` が必要で、どちらもなければ起動しない。ローカル開発では従来どおりSQLiteを利用する。Cloud Run向けのリポジトリ文書は、部屋がプロセスメモリにあるため最大1インスタンスを推奨し、WebSocket接続とsession affinityを運用上の制約として説明している。
 
-D1接続コードは実装されているが、D1データベース作成とCloud Run環境変数・Secret設定は運用者の設定が必要。D1未設定時の `/tmp` SQLiteは永続化されない。インスタンス再起動では進行中の部屋も消え、セッションアフィニティはベストエフォートで、複数インスタンスの協調機構ではない。
+D1接続コードは実装されているが、D1データベース作成とCloud Run環境変数・Secret設定は運用者の設定が必要。`/ready` は `collectionBackend` を返し、選択された保存先と疎通を確認できる。インスタンス再起動では進行中の部屋も消え、セッションアフィニティはベストエフォートで、複数インスタンスの協調機構ではない。
 
 ### Vercel
 
