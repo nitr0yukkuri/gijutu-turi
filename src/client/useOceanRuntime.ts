@@ -529,7 +529,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
           onRenderError: () => { if (!disposed) setRenderFailed(true); },
         }) as OceanSceneController;
         sceneRef.current = scene;
-        scene.setState(stateRef.current);
+        scene.setState(initialFishId ? { ...stateRef.current, fishId: initialFishId } : stateRef.current);
       } catch (error) {
         console.error("Ocean rendering unavailable", error);
         setRenderFailed(true);
@@ -544,7 +544,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       scene?.dispose();
       if (sceneRef.current === scene) sceneRef.current = null;
     };
-  }, [getFishingAudio, isPhone, oceanMountRef]);
+  }, [getFishingAudio, initialFishId, isPhone, oceanMountRef]);
 
   useEffect(() => { sceneRef.current?.setOverlayOpen?.(collectionOpen); }, [collectionOpen]);
 
