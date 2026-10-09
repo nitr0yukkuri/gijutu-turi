@@ -16,6 +16,7 @@ for (const route of routes) {
       : [route === "/dockerwhale" ? "docker-whale" : "go-fish"];
     const loadedModelChunks = new Set<string>();
     page.on("response", response => {
+      if (response.request().resourceType() !== "script") return;
       const path = new URL(response.url()).pathname;
       if (path.includes("/chunks/go-fish-")) loadedModelChunks.add("go-fish");
       if (path.includes("/chunks/docker-whale-") && !path.includes("/chunks/docker-whale-profile-")) loadedModelChunks.add("docker-whale");
