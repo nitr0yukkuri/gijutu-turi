@@ -47,10 +47,12 @@ gcloud run deploy gijutu-turi `
   --session-affinity `
   --cpu-throttling `
   --no-cpu-boost `
-  --set-env-vars "HOST=0.0.0.0,GIJUTU_DB_PATH=/tmp/gijutu-turi.sqlite,FRONTEND_ORIGIN=https://<VERCELの本番URL>"
+  --update-env-vars "HOST=0.0.0.0,FRONTEND_ORIGIN=https://<VERCELの本番URL>,CLOUDFLARE_ACCOUNT_ID=<ACCOUNT_ID>,CLOUDFLARE_D1_DATABASE_ID=<DATABASE_ID>" `
+  --update-secrets "CLOUDFLARE_API_TOKEN=d1-api-token:latest"
 ```
 
 `--source .`はリポジトリ内のDockerfileを使ってビルドします。デプロイ後に表示されるHTTPS URLをPCで開き、PC画面のQRをスマホで読み取ります。
+この例はD1を使う場合です。アカウントIDとデータベースIDを実際の値に置き換え、APIトークンをSecret Managerの`d1-api-token`として登録してください。`--update-env-vars`と`--update-secrets`は記載していない既存設定を保ちます。PostgreSQLを使う場合はD1変数と同時に設定せず、`DATABASE_URL`をSecretとして渡してください。本番で保存先を設定しない場合、Cloud Runの一時SQLiteへ誤保存しないようアプリが起動を拒否します。設定手順は[D1ガイド](./cloudflare-d1-persistence.md)または[Cloud SQL/PostgreSQLガイド](./cloud-sql-persistence.md)を参照してください。
 
 Vercelと分離する場合、Application Load Balancerは使いません。VercelからCloud Runの`run.app` URLへAPI/WebSocket接続するため、ALBの固定転送ルール料金を避けられます。`FRONTEND_ORIGIN`には本番Vercel URLなど利用するOriginだけを設定します。
 
@@ -66,9 +68,9 @@ Vercelと分離する場合、Application Load Balancerは使いません。Verc
 
 将来、多人数同時利用をする場合は、部屋状態をRedisなどの共有ストアへ移し、WebSocket接続を複数インスタンスで同期してから`max`を増やします。
 
-### 3. `/tmp` SQLite
+### 3. 捕獲履歴の永続化
 
-Cloud Runのファイルシステムはインスタンス固有で、インスタンス停止時に永続保存されません。今回の設定では捕獲履歴はデモ中だけ保持し、再起動・再デプロイ・スケール移動で消える前提です。
+Cloud Runの `/tmp` はインスタンス固有で、インスタンス停止時に永続保存されません。本番はD1またはPostgreSQLを必須とし、未設定なら起動しません。現在の稼働リビジョンが一時SQLiteを使っている場合、そのリビジョンの履歴は再起動・再デプロイ・スケール移動で消え得ます。
 
 永続化が必要な場合はCloudflare D1を選べます。Cloud RunからD1 APIへ接続し、起動時に図鑑スキーマと魚種マスタを初期化します。Cloud SQLを作成せずに済みますが、D1 APIトークンの設定と無料枠上限の確認が必要です。設定は[Cloudflare D1永続化ガイド](./cloudflare-d1-persistence.md)を参照してください。
 
@@ -100,7 +102,7 @@ Write-Output $serviceUrl
 確認項目は次のとおりです。
 
 1. `/health`が`ok: true`を返す（プロセスの生存確認）。
-2. `/ready`が`ok: true`を返す（図鑑DBを含む準備完了確認）。DBが使えない場合は`503`になる。
+2. `/ready`が`ok: true`と`collectionBackend: "d1"`または`"postgres"`を返す（永続DBへの疎通を含む準備完了確認）。DBが使えない場合は`503`になる。`"sqlite"`ならローカル開発環境であり、本番では起動しない。
 3. PCでトップ画面を開き、ペアリングダイアログにQRが表示される。
 4. スマホでQRを読み取り、PCと同じ部屋へ接続できる。
 5. スマホの「振る」「引く」「巻く」でPC側の釣り状態が同期する。
