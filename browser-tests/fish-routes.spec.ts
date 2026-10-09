@@ -5,11 +5,20 @@ const routes = ["/", "/gofish", "/dockerwhale", "/cssfish", "/k8sfish", "/rustfi
 for (const route of routes) {
   test(`${route} renders its WebGL scene without browser errors`, async ({ page }) => {
     if (route === "/") {
-      // Make the server's otherwise-random first species deterministic. This
-      // catches a client-side fallback model load before the initial snapshot.
+      // Prepare a deterministic Docker room, then return it to the default
+      // route without pinning a client fish. This exercises the unqualified
+      // root before the server's authoritative species snapshot arrives.
+      const baseURL = test.info().project.use.baseURL;
+      if (typeof baseURL !== "string") throw new Error("Playwright baseURL is required for the root route test");
+      const sessionResponse = await page.request.post(new URL("/api/ocean-sessions", baseURL).toString(), {
+        data: { playerId: "player_browser-test-root", fishId: "whale-001" },
+      });
+      expect(sessionResponse.status()).toBe(201);
+      const session = await sessionResponse.json() as { id: string; host?: string };
       await page.route("**/api/ocean-sessions", async route => {
         const payload = route.request().postDataJSON() as Record<string, unknown>;
-        await route.continue({ postData: JSON.stringify({ ...payload, fishId: "whale-001" }) });
+        expect(payload.fishId).toBeUndefined();
+        await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(session) });
       });
     }
 
