@@ -4,6 +4,15 @@ const routes = ["/", "/gofish", "/dockerwhale", "/cssfish", "/k8sfish", "/rustfi
 
 for (const route of routes) {
   test(`${route} renders its WebGL scene without browser errors`, async ({ page }) => {
+    if (route === "/") {
+      // Make the server's otherwise-random first species deterministic. This
+      // catches a client-side fallback model load before the initial snapshot.
+      await page.route("**/api/ocean-sessions", async route => {
+        const payload = route.request().postDataJSON() as Record<string, unknown>;
+        await route.continue({ postData: JSON.stringify({ ...payload, fishId: "whale-001" }) });
+      });
+    }
+
     const pageErrors: string[] = [];
     const consoleErrors: string[] = [];
     page.on("pageerror", error => pageErrors.push(error.message));
@@ -11,9 +20,9 @@ for (const route of routes) {
       if (message.type() === "error") consoleErrors.push(message.text());
     });
 
-    const expectedModelChunks = route === "/"
-      ? ["go-fish", "docker-whale"]
-      : [route === "/dockerwhale" ? "docker-whale" : "go-fish"];
+    const expectedModelChunks = route === "/" || route === "/dockerwhale"
+      ? ["docker-whale"]
+      : ["go-fish"];
     const loadedModelChunks = new Set<string>();
     page.on("response", response => {
       if (response.request().resourceType() !== "script") return;
