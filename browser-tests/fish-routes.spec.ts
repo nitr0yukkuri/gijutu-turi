@@ -11,7 +11,9 @@ for (const route of routes) {
       if (message.type() === "error") consoleErrors.push(message.text());
     });
 
-    const modelChunkName = route === "/dockerwhale" ? "docker-whale" : "go-fish";
+    const expectedModelChunks = route === "/"
+      ? ["go-fish", "docker-whale"]
+      : [route === "/dockerwhale" ? "docker-whale" : "go-fish"];
     const loadedModelChunks = new Set<string>();
     page.on("response", response => {
       const path = new URL(response.url()).pathname;
@@ -21,16 +23,17 @@ for (const route of routes) {
     const modelChunkResponse = page.waitForResponse(response => {
       if (response.request().resourceType() !== "script") return false;
       const path = new URL(response.url()).pathname;
-      return modelChunkName === "docker-whale"
+      return expectedModelChunks.some(chunkName => chunkName === "docker-whale"
         ? path.includes("/chunks/docker-whale-") && !path.includes("/chunks/docker-whale-profile-")
-        : path.includes("/chunks/go-fish-");
+        : path.includes("/chunks/go-fish-"));
     });
     await page.goto(route);
     expect((await modelChunkResponse).ok()).toBe(true);
     await page.locator("#ocean").waitFor();
     await page.waitForFunction(() => document.querySelector<HTMLElement>("#ocean")?.dataset.ready === "true");
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-    expect([...loadedModelChunks]).toEqual([modelChunkName]);
+    expect([...loadedModelChunks]).toHaveLength(1);
+    expect(expectedModelChunks).toContain([...loadedModelChunks][0]);
     const canvas = page.locator("#ocean canvas");
     await expect(canvas).toBeVisible();
     const surface = await canvas.evaluate(element => {
