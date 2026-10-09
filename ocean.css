@@ -75,7 +75,6 @@ body:has(#collection-dialog[open]) #sea #escape-ui {
 #collection-model { position: absolute; inset: 0; touch-action: pan-y; border-radius: 8px; }
 #collection-model canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 #collection-model canvas:active { cursor: grabbing; }
-#collection-model .collection-silhouette-caption { pointer-events: none; text-shadow: 0 1px 8px #00121c; }
 .collection-silhouette { position: relative; display: grid; place-items: center; width: min(100%, 520px); height: 100%; min-height: 210px; color: #050b10; }
 .collection-silhouette::before { content: ""; position: absolute; width: min(70%, 360px); aspect-ratio: 1.8; border-radius: 50%; background: radial-gradient(ellipse, #000 0%, transparent 70%); opacity: .16; filter: blur(20px); }
 .collection-silhouette svg { position: relative; width: min(88%, 430px); height: auto; overflow: visible; filter: drop-shadow(0 12px 24px #0000008c); }
@@ -100,7 +99,6 @@ body:has(#collection-dialog[open]) #sea #escape-ui {
 .collection-silhouette--js-eel .silhouette-eye { fill: #dfd0ae; stroke: none; opacity: .95; }
 .collection-silhouette--js-eel .silhouette-gill { fill: none; stroke: #b3a080; stroke-width: 1.5; opacity: .62; }
 .collection-silhouette--css-fish::before { background: radial-gradient(ellipse, #000 0%, transparent 70%); opacity: .16; }
-.collection-silhouette-caption { position: absolute; bottom: 8px; color: #b9d4d9; font-size: 10px; letter-spacing: .14em; opacity: .72; }
 .collection-detail-copy { width: min(100%, 480px); margin: 0 auto; padding: 8px 8px 0; text-align: center; overflow-wrap: anywhere; }
 .collection-eyebrow { margin: 0 0 10px !important; color: #91bdc6 !important; font: 10px ui-monospace, monospace !important; letter-spacing: .16em; text-transform: uppercase; }
 .collection-detail-copy h3 { margin: 0 0 14px; color: #f1f6f4; font-size: clamp(30px, 5vw, 44px); font-weight: 400; line-height: 1.2; letter-spacing: .025em; }

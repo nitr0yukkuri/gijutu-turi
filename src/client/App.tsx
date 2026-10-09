@@ -63,10 +63,9 @@ function CollectionModel({ entry, modelKey = entry.modelKey ?? "go-fish", silhou
     }).catch(() => setFailed(true));
     return () => { disposed = true; preview?.dispose(); };
   }, [entry.id, modelKey, silhouette]);
-  const label = silhouette ? "未発見の魚影" : collectionName(entry);
+  const label = silhouette ? "未発見の魚" : collectionName(entry);
   return <>
     <div id="collection-model" ref={mountRef} hidden={failed} role="img" aria-label={`${label}。ドラッグまたは左右の矢印キーで回転。`} tabIndex={failed ? -1 : 0}>
-      {silhouette && <span className="collection-silhouette-caption">魚影を観察中</span>}
     </div>
     {failed && <p className="collection-model-error" role="status">魚の表示を読み込めませんでした。図鑑を開き直してください。</p>}
   </>;
@@ -127,7 +126,6 @@ function CollectionSilhouette({ silhouetteKey, label }: { silhouetteKey: FishSil
         <path className="silhouette-gill" d={silhouetteKey === "rust-striped-marlin" ? "M112 72c-6 12-6 25 1 37" : silhouetteKey === "js-eel" ? "M101 75c-4 8-4 16 0 24" : silhouetteKey === "docker-whale" ? "M94 73c-7 14-7 27 0 39" : "M101 72c-7 13-7 25 0 37"} />
         {silhouetteKey === "css-fish" && <path className="silhouette-color-trace" d="M92 111c35 10 68 9 103-1" />}
       </svg>
-      <span className="collection-silhouette-caption">魚影を観察中</span>
     </div>
   );
 }
@@ -420,7 +418,7 @@ export function CollectionDialog({
             <div id="collection-preview" className="collection-preview">
               {hasModel && isOpen && selected && <CollectionModel key={`${selected.id}:caught`} entry={selected} />}
               {hasSilhouetteModel && isOpen && selected && selectedSpecies?.modelKey && <CollectionModel key={`${selected.id}:silhouette`} entry={selected} modelKey={selectedSpecies.modelKey} silhouette />}
-              {!hasModel && !hasSilhouetteModel && <CollectionSilhouette silhouetteKey={silhouetteKey} label={selectedSpecies?.unknownTitle ?? "未発見の魚影"} />}
+              {!hasModel && !hasSilhouetteModel && <CollectionSilhouette silhouetteKey={silhouetteKey} label={selectedSpecies?.unknownTitle ?? "未発見の魚"} />}
             </div>
             <div className="collection-detail-copy" aria-live="polite">
               {caught && selected ? <>
@@ -429,11 +427,11 @@ export function CollectionDialog({
                 <p className="collection-catches">{selected.catches} 回釣り上げた</p>
               </> : preview ? <>
                 <p className="collection-eyebrow">調査予定</p>
-                <h3 id="collection-detail-name">これから出会う魚</h3>
+                <h3 id="collection-detail-name">未発見の魚</h3>
                 <p id="collection-detail-description" className="collection-detail-description">この魚は、まだ釣ることができません。</p>
               </> : <>
                 <h3 id="collection-detail-name">{selectedSpecies?.unknownTitle ?? "まだ見ぬ魚"}</h3>
-                <p id="collection-detail-description" className="collection-detail-description">{selectedSpecies?.unknownHint ?? "魚影の特徴を調査中です。"}</p>
+                <p id="collection-detail-description" className="collection-detail-description">{selectedSpecies?.unknownHint ?? "魚の特徴は未確認です。"}</p>
               </>}
             </div>
           </section>
