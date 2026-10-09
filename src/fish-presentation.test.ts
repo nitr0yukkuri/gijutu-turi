@@ -384,7 +384,10 @@ test('invalid tether loads never reach fish shaders or accumulate in whale cargo
     for(const tetherLoad of [NaN,Infinity,-Infinity,.7]){
       model.update(0,{tetherLoad,combat:true});
       assert.equal(shader.uniforms.uTetherLoad.value,Number.isFinite(tetherLoad)?tetherLoad:0,visualProfile);
+      assert.equal(shader.uniforms.uFightCombat.value,1,`${visualProfile} receives the fight-only fin cue`);
     }
+    model.update(1,{combat:false});
+    assert.equal(shader.uniforms.uFightCombat.value,0,`${visualProfile} returns to the non-combat appearance`);
     model.dispose();
   }
   const whale=createDockerWhale();
