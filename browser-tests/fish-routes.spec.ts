@@ -92,4 +92,3 @@ test("the fishing scene stays within common desktop and phone viewports", async 
     expect(dimensions.canvas).toBeGreaterThan(0);
   }
 });
-
