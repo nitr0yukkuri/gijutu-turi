@@ -1,6 +1,6 @@
 # 技術釣り — 技術構成とアーキテクチャ分析
 
-この文書は、2026-10-02時点の `C:\src\gijutu-turi` 作業ツリーを、設定ファイルではなく実際の import・起動経路・ランタイム処理をたどって整理したもの。作業ツリーには未コミットの K8s 魚表現・挙動変更が含まれるため、その内容も現在のコードとして記述している。デプロイ済み環境の状態を示すものではない。
+この文書は、2026-10-09時点の `C:\src\gijutu-turi` 作業ツリーを、設定ファイルではなく実際の import・起動経路・ランタイム処理をたどって整理したもの。作業ツリー上の実装を記述しており、デプロイ済み環境の状態を示すものではない。
 
 ## 1. 結論
 
@@ -67,7 +67,7 @@ PCブラウザー (React UI + Three.js WebGL)
 ### 本番ビルド
 
 - `npm run build` は `vite build` のあと `tsc -p tsconfig.server.json` を実行。
-- Viteは `index.html`、魚モデルビューアー2ページ、Service Workerを入力に `dist/client` を生成する。
+- Viteは `index.html` とService Workerを入力に `dist/client` を生成する。
 - `base: "./"`、`publicDir: false`。ロゴ、favicon、ライセンス表示はVite pluginが明示的に出力へコピーする。
 - サーバーはビルド済みクライアント資産を `dist/client` から配信する。開発/互換用の一部ルートは許可リストのソースファイルへfallbackする。
 - `npm start` は `node dist/index.js`。
@@ -117,7 +117,7 @@ PC画面はThree.jsの海とゲーム表示を担当し、キーボード・ポ�
 
 結果として、通信遅延時にも両端末のゲーム判定はサーバーで一致し、描画は滑らかさを補う。表示に使う揺れやechoがゲーム上の魚状態へ逆流しないのが重要な境界。
 
-Three.jsのメインscene、魚モデル、魚水面材質、図鑑プレビューなど一部は `@ts-nocheck`。これはvendored Three.jsに型宣言がない境界を簡略化する一方、描画コード内部の型エラーをTypeScriptが発見しない。メイン描画は命令的に一つの大きなscene/controllerへ集約されており、機能追加時に回帰テストと小さな純粋関数への分離が重要。
+Three.jsのメインscene、魚モデル、魚水面材質、図鑑プレビューなど一部は `@ts-nocheck`。これはvendored Three.jsに型宣言がない境界を簡略化する一方、描画コード内部の型エラーをTypeScriptが発見しない。メイン描画は命令的に一つの大きなscene/controllerへ集約されており、機能追加時に回帰テストと小さな純粋関数への分離が重要。魚モデルの生成・魚種別動的import・遅延生成・破棄は `ocean-fish-models.ts` に分け、未選択モデル・群れモデルの起動時生成を避けるようにした。scene/controller自体の責務分割は継続課題である。
 
 通信DTOは `ocean-contract.ts` のZod schemaと型を共有する。サーバーは `wireSnapshot()` で公開フィールドを明示的に選び、`initialDistance` と `biteRemaining` 等のシミュレーション専用値をWebSocketへ含めない。`fightTime` はK8sの水面突進表示が使うため、表示用の共有フィールドとしてschemaに含む。ブラウザーは受信JSONを検証してからUI/sceneへ渡す。
 
@@ -149,13 +149,14 @@ D1接続コードは実装されているが、D1データベース作成とClou
 
 ## 10. 検証・CI
 
-- `npm run typecheck`: 全体TypeScript型検査。
+- `npm run typecheck`: 全体TypeScript型検査。`noUnusedLocals` と `noUnusedParameters` も有効にし、未使用のimport・変数・引数を検出する。
 - `npm test`: Node test runnerで `src/**/*.test.ts` を実行。
 - `npm run test:ocean`: 起動済みbackendに対する公開ルート、ルーム、入力、WebSocketの統合検証。
 - `npm run test:fish` / `npm run test:whale`: 手続き生成モデルの構造・描画契約を検証。
+- `npm run test:browser`: Playwright + Chromium/SwiftShaderでホームと6魚種routeのcanvas/WebGL初期化、選択モデルだけのチャンク取得、4画面幅での横はみ出しを検査する。CIではChromiumを導入して実行する。
 - CIはさらにproduction buildとDocker image buildを行う。
 
-テストは泳ぎ・魚種挙動、hook timing、ルーム、SQLite、魚体presentation、竿flex、糸、水中表示などを細かく分けている。ブラウザー全体の実機WebGL/スマホセンサー自動E2Eや、本番デプロイ後の継続監視まではこのCIに含まれない。
+テストは泳ぎ・魚種挙動、hook timing、ルーム、SQLite、魚体presentation、竿flex、糸、水中表示などを細かく分けている。ブラウザーE2EはChromiumのソフトウェアWebGLと画面幅を検査する。実GPU差、実機スマホセンサー、本番デプロイ後の継続監視まではこのCIに含まれない。
 
 ## 11. アーキテクチャレビュー（優先順）
 
@@ -173,7 +174,7 @@ D1接続コードは実装されているが、D1データベース作成とClou
 
 ### P2 — 描画・入力hookが大きく、型検査除外の境界が広い
 
-`useOceanRuntime.ts` はWebSocket、モーション、入力、音、図鑑、PWA、Three.js lifecycleまで持つ。`ocean-scene.ts` と魚モデルも `@ts-nocheck`。変更速度は上がるが、状態条件の組合せと描画回帰を追う負担が増す。接続hook、device input hook、collection hook、scene controllerに段階分割し、描画入出力を型のあるDTOに限定するのが有効。
+`useOceanRuntime.ts` はWebSocket、モーション、入力、音、図鑑、PWA、Three.js lifecycleまで持つ。`ocean-scene.ts` と魚モデルも `@ts-nocheck`。変更速度は上がるが、状態条件の組合せと描画回帰を追う負担が増す。未使用ローカル/引数の自動検出、共通逃走ヒントの共有、魚モデルの遅延生成は対応した。接続hook、device input hook、collection hook、scene controllerへの分割と、描画入出力を型のあるDTOに限定する作業は引き続き必要。
 
 ### 対応済み — Vercelの旧魚種path
 
@@ -188,7 +189,7 @@ Vercelに共有別名の各旧path rewriteを追加し、`src/fishing-routes.tes
 - `package.json` の `three` と `vendor/three.module.js` の双方があり、Vite aliasで実行時の参照先が変わる。更新時にnpm packageだけを更新すると表示側へ反映されない可能性があるため、vendored版の更新手順と出所を記録する。
 - 開発Vite proxyは現行endpoint `/ocean-ws` に一本化した。
 - `vercel.json` は静的frontend向けで、Docker/Cloud Runとはサーバー責務が異なる。配備手順にはbackend URL・CORS・WS Originをひとまとまりの環境設定として記載する。
-- `go-fish` chunk はビルドサイズ警告の500KB閾値を超える。メインsceneを動的importにし、通常のスマホ操作画面ではこの3D chunkを取得しないようにした。PCの海では必要になるため、初期描画が遅い場合は魚種別renderer分割やvendor管理を次に検討する。
+- 2026-10-09のビルドでは共有の `docker-whale-profile` chunk が592.17KB（gzip 150.36KB）で500KB警告を超える。これは魚モデル専用チャンクではなく、デスクトップ3D描画が使う共有依存である。Go魚モデルは33.30KB（gzip 12.62KB）、Docker whaleモデルは14.40KB（gzip 6.08KB）へ分割され、魚モデルのmodule評価と未選択魚・群れ形状の生成は必要になるまで遅延する。ただしService Workerは全chunkを事前cacheするため、初回の転送・cache容量は減らない。残る共有chunkの分割は、見た目と起動経路を計測しながら検討する。
 
 ## 12. 推奨する次の設計作業
 
@@ -197,4 +198,4 @@ Vercelに共有別名の各旧path rewriteを追加し、`src/fishing-routes.tes
 3. PCの3D初期表示が重い場合、魚種別rendererやThree.js vendor chunkの分割を測定ベースで行う。
 4. Cloud Runを複数instance化する必要が出た段階で、room共有・永続DB・rate limit共有の順に基盤を拡張する。
 
-現在のデモ規模では、サーバー権威のゲーム判定、検証可能なWire契約、魚種レジストリ、冪等な捕獲記録、描画と判定の分離はよい土台である。最も大きな未解決制約は、単一プロセスに結びついたルームと一時DB、次に大きなデスクトップ3D chunkとモノリシックなランタイムhookである。
+現在のデモ規模では、サーバー権威のゲーム判定、検証可能なWire契約、魚種レジストリ、冪等な捕獲記録、描画と判定の分離はよい土台である。最も大きな未解決制約は、単一プロセスに結びついたルームと一時DB、共有Three.js chunk、モノリシックな描画・ランタイム責務である。魚種別コードと形状の遅延化、未使用コード検査、Chromiumブラウザー回帰検出を加えたが、scene/runtimeの段階分割と実GPU・実機検証は次の課題となる。
