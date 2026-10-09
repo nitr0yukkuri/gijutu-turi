@@ -20,7 +20,11 @@ export function resolveCollectionBackend(environment: Environment = process.env)
     if (databaseUrl) throw new Error("multiple_collection_backends_configured");
     return "d1";
   }
-  return databaseUrl ? "postgres" : "sqlite";
+  if (databaseUrl) return "postgres";
+  if (read(environment, "NODE_ENV") === "production") {
+    throw new Error("persistent_collection_backend_required");
+  }
+  return "sqlite";
 }
 
 export async function createCollectionRepository(environment: Environment = process.env): Promise<CollectionRepository> {

@@ -9,7 +9,7 @@ import type { Context } from "hono";
 import { z } from "zod";
 import { createOceanRooms } from "./ocean-room.js";
 import { isPlayerId, type CollectionRepository } from "./collection-contract.js";
-import { createCollectionRepository } from "./collection-repository.js";
+import { createCollectionRepository, resolveCollectionBackend } from "./collection-repository.js";
 import { CANONICAL_FISH_ROUTE_PATHS, FISHING_ROUTE_PATHS, LEGACY_FISH_PATH_ALIASES } from "./fishing-routes.js";
 import { publicAssetCandidates, resolveContainedAssetPath } from "./public-asset-path.js";
 import { apiCorsHeaders } from "./api-cors.js";
@@ -24,6 +24,7 @@ app.use("/api/*", async (c, next) => {
   if (c.req.method === "OPTIONS") return c.body(null, 204);
   await next();
 });
+const collectionBackend = resolveCollectionBackend();
 const collectionStore: CollectionRepository = await createCollectionRepository();
 const pendingCatchWrites = new Set<Promise<void>>();
 const oceanRooms = createOceanRooms(app, {
@@ -122,9 +123,9 @@ app.get("/ready", async c => {
   c.header("Cache-Control", "no-store");
   try {
     await collectionStore.ping();
-    return c.json({ ok: true, service: "gijutu-turi-backend" });
+    return c.json({ ok: true, service: "gijutu-turi-backend", collectionBackend });
   } catch {
-    return c.json({ ok: false, service: "gijutu-turi-backend", error: "collection_store_unavailable" }, 503);
+    return c.json({ ok: false, service: "gijutu-turi-backend", collectionBackend, error: "collection_store_unavailable" }, 503);
   }
 });
 

@@ -7,6 +7,27 @@ test("collection storage defaults to local SQLite", () => {
   assert.equal(resolveCollectionBackend({ GIJUTU_DB_PATH: "/tmp/test.sqlite" }), "sqlite");
 });
 
+test("production requires a persistent collection backend instead of ephemeral SQLite", () => {
+  assert.throws(
+    () => resolveCollectionBackend({ NODE_ENV: "production" }),
+    { message: "persistent_collection_backend_required" },
+  );
+  assert.throws(
+    () => resolveCollectionBackend({ NODE_ENV: "production", GIJUTU_DB_PATH: "/tmp/collections.sqlite" }),
+    { message: "persistent_collection_backend_required" },
+  );
+  assert.equal(resolveCollectionBackend({
+    NODE_ENV: "production",
+    DATABASE_URL: "postgres://example.invalid/database",
+  }), "postgres");
+  assert.equal(resolveCollectionBackend({
+    NODE_ENV: "production",
+    CLOUDFLARE_ACCOUNT_ID: "account",
+    CLOUDFLARE_D1_DATABASE_ID: "database",
+    CLOUDFLARE_API_TOKEN: "secret",
+  }), "d1");
+});
+
 test("D1 is selected only with complete credentials and cannot conflict with PostgreSQL", () => {
   assert.equal(resolveCollectionBackend({
     CLOUDFLARE_ACCOUNT_ID: "account",
