@@ -344,7 +344,6 @@ function TechTreeView({ entries, selectedId, onSelect, isOpen, showCatchCounts =
                       >
                         <span className="tech-tree-node-icon" aria-hidden="true">
                           <FishTechIcon speciesId={entry.id} />
-                          <span className="tech-tree-node-mark">{caught ? "✓" : "?"}</span>
                         </span>
                         <span className="tech-tree-node-copy"><strong>{title}</strong><small>{caught ? details?.nodeLabel ?? subtitle : subtitle}</small></span>
                       </button>;
