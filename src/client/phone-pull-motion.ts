@@ -1,8 +1,8 @@
 type MotionVector = { x: number; y: number; z: number };
 
-const TOWARD_USER_THRESHOLD = 5.5;
+const TOWARD_USER_THRESHOLD = 3.0;
 const DIRECTION_DOMINANCE = 0.55;
-const CONFIRM_GAP_MS = 100;
+const CONFIRM_GAP_MS = 220;
 const MIN_CONFIRM_SPAN_MS = 25;
 const CONFIRM_SAMPLES = 2;
 const COOLDOWN_MS = 800;
