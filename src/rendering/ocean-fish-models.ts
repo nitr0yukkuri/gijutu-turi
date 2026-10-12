@@ -7,6 +7,35 @@ import { createLazyModelRegistry } from './lazy-model-registry.js';
 export function createOceanFishModels(scene, waterUniforms, createFishOrientationScratch) {
   let disposed=false;
   let goFishModulePromise=null,dockerWhaleModulePromise=null,createGoFishModel=null;
+  const optionalModelPreparation=new Set();
+  const optionalModelTasks=[];
+  let idleWorkHandle=null,idleWorkTimer=null,idleWorkScheduledAt=0;
+  const runOptionalModelTask=deadline=>{
+    idleWorkHandle=null;idleWorkTimer=null;
+    if(disposed){optionalModelTasks.length=0;idleWorkScheduledAt=0;return;}
+    if(!deadline.didTimeout&&deadline.timeRemaining()<5){scheduleOptionalModelTask();return;}
+    const task=optionalModelTasks.shift();
+    try{task?.();}catch(error){console.error('Optional fish model preparation failed',error);}
+    if(optionalModelTasks.length)scheduleOptionalModelTask();
+    else idleWorkScheduledAt=0;
+  };
+  const scheduleOptionalModelTask=()=>{
+    if(disposed||!optionalModelTasks.length||idleWorkHandle!==null||idleWorkTimer!==null)return;
+    if(idleWorkScheduledAt===0)idleWorkScheduledAt=performance.now();
+    const idleWindow=typeof window==='undefined'?null:window;
+    const requestIdleCallback=idleWindow?.requestIdleCallback;
+    if(requestIdleCallback){
+      idleWorkHandle=requestIdleCallback.call(idleWindow,runOptionalModelTask,{
+        timeout:Math.max(0,900-(performance.now()-idleWorkScheduledAt)),
+      });
+      return;
+    }
+    idleWorkTimer=setTimeout(()=>runOptionalModelTask({didTimeout:true,timeRemaining:()=>0}),16);
+  };
+  const enqueueOptionalModelTasks=tasks=>{
+    if(disposed||!tasks.length)return;
+    optionalModelTasks.push(...tasks);scheduleOptionalModelTask();
+  };
   const loadGoFishModule=()=>goFishModulePromise??=(import('./go-fish.js').then(module=>{createGoFishModel=module.createGoFish;return module;}).catch(error=>{goFishModulePromise=null;throw error;}));
   const loadDockerWhaleModule=()=>dockerWhaleModulePromise??=(import('./docker-whale.js').catch(error=>{dockerWhaleModulePromise=null;throw error;}));
 
@@ -47,22 +76,24 @@ export function createOceanFishModels(scene, waterUniforms, createFishOrientatio
   const jsEel=()=>fightModels.peek('js-001');
 
   let cssFishAfterimages=[],cssFishAfterimagesPromise=null;
+  const createNextCssFishAfterimage=()=>{
+    if(disposed||!createGoFishModel||cssFishAfterimages.length>=2)return false;
+    const index=cssFishAfterimages.length;
+    const model=createGoFishModel({detail:'high',phase:.7+index*.11,waterUniforms,visualProfile:'css'});
+    model.group.visible=false;model.group.renderOrder=3;
+    model.group.traverse(object=>{
+      object.renderOrder=3;
+      for(const material of Array.isArray(object.material)?object.material:object.material?[object.material]:[])material.depthWrite=false;
+    });
+    scene.add(model.group);cssFishAfterimages.push(model);
+    return true;
+  };
   const ensureCssFishAfterimages=()=>{
-    if(cssFishAfterimages.length)return Promise.resolve(cssFishAfterimages);
+    if(cssFishAfterimages.length>=2)return Promise.resolve(cssFishAfterimages);
     if(cssFishAfterimagesPromise)return cssFishAfterimagesPromise;
     if(disposed)return Promise.resolve(cssFishAfterimages);
-    cssFishAfterimagesPromise=loadGoFishModule().then(({createGoFish})=>{
-      if(disposed)return cssFishAfterimages;
-      cssFishAfterimages=Array.from({length:2},(_,index)=>{
-        const model=createGoFish({detail:'high',phase:.7+index*.11,waterUniforms,visualProfile:'css'});
-        model.group.visible=false;model.group.renderOrder=3;
-        model.group.traverse(object=>{
-          object.renderOrder=3;
-          for(const material of Array.isArray(object.material)?object.material:object.material?[object.material]:[])material.depthWrite=false;
-        });
-        scene.add(model.group);
-        return model;
-      });
+    cssFishAfterimagesPromise=loadGoFishModule().then(()=>{
+      while(createNextCssFishAfterimage());
       return cssFishAfterimages;
     }).finally(()=>{cssFishAfterimagesPromise=null;});
     return cssFishAfterimagesPromise;
@@ -86,42 +117,67 @@ export function createOceanFishModels(scene, waterUniforms, createFishOrientatio
 
   const schoolSlot=new THREE.Group();schoolSlot.renderOrder=3;scene.add(schoolSlot);
   let schoolFish=[];
-  const ensureSchoolFish=()=>{
-    if(schoolFish.length||!createGoFishModel||disposed)return;
-    schoolFish=Array.from({length:6},(_,index)=>{
-      const model=createGoFishModel({detail:'low',phase:index*.87,waterUniforms});
-      model.group.visible=false;model.group.renderOrder=3;schoolSlot.add(model.group);return model;
-    });
+  const createNextSchoolFish=()=>{
+    if(disposed||!createGoFishModel||schoolFish.length>=6)return false;
+    const index=schoolFish.length;
+    const model=createGoFishModel({detail:'low',phase:index*.87,waterUniforms});
+    model.group.visible=false;model.group.renderOrder=3;schoolSlot.add(model.group);schoolFish.push(model);
+    return true;
   };
+  const ensureSchoolFish=()=>{while(createNextSchoolFish());};
 
   let clusterEchoes=[],clusterEchoMotion=[],clusterEchoesPromise=null;
+  const createNextClusterEcho=()=>{
+    if(disposed||!createGoFishModel||clusterEchoes.length>=K8S_ECHO_COUNT)return false;
+    const index=clusterEchoes.length;
+    const model=createGoFishModel({detail:'low',phase:1.7+index,waterUniforms,visualProfile:'cluster'});
+    model.group.visible=false;model.group.renderOrder=3;scene.add(model.group);
+    clusterEchoes.push(model);
+    clusterEchoMotion.push({
+      position:new THREE.Vector3(),velocity:new THREE.Vector3(),orientation:new THREE.Quaternion(),
+      orientationScratch:createFishOrientationScratch(),initialized:false,
+    });
+    return true;
+  };
   const ensureClusterEchoes=()=>{
-    if(clusterEchoes.length)return Promise.resolve(clusterEchoes);
+    if(clusterEchoes.length>=K8S_ECHO_COUNT)return Promise.resolve(clusterEchoes);
     if(clusterEchoesPromise)return clusterEchoesPromise;
     if(disposed)return Promise.resolve(clusterEchoes);
-    clusterEchoesPromise=loadGoFishModule().then(({createGoFish})=>{
+    clusterEchoesPromise=loadGoFishModule().then(()=>{
       if(disposed)return clusterEchoes;
-      clusterEchoes=Array.from({length:K8S_ECHO_COUNT},(_,index)=>{
-        const model=createGoFish({detail:'low',phase:1.7+index,waterUniforms,visualProfile:'cluster'});
-        model.group.visible=false;model.group.renderOrder=3;scene.add(model.group);return model;
-      });
-      clusterEchoMotion=Array.from({length:K8S_ECHO_COUNT},()=>({
-        position:new THREE.Vector3(),velocity:new THREE.Vector3(),orientation:new THREE.Quaternion(),
-        orientationScratch:createFishOrientationScratch(),initialized:false,
-      }));
+      while(createNextClusterEcho());
       return clusterEchoes;
     }).finally(()=>{clusterEchoesPromise=null;});
     return clusterEchoesPromise;
   };
 
   const fightModelFor=fishId=>fishId==='k8s-001'?clusterFish:fightModels.peek(fishId==='whale-001'||fishId==='css-001'||fishId==='rust-001'||fishId==='js-001'?fishId:'fish-001');
-  const requestFightModel=async fishId=>{
-    if(fishId==='k8s-001')await Promise.all([ensureClusterFish(),ensureClusterEchoes()]);
-    else{
-      await fightModels.load(fishId==='whale-001'||fishId==='css-001'||fishId==='rust-001'||fishId==='js-001'?fishId:'fish-001');
-      if(fishId==='fish-001')ensureSchoolFish();
-    }
-    if(fishId==='css-001')await ensureCssFishAfterimages();
+  const scheduleOptionalModelPreparation=fishId=>{
+    if(optionalModelPreparation.has(fishId))return;
+    const createNext=fishId==='fish-001'?createNextSchoolFish:fishId==='k8s-001'?createNextClusterEcho:fishId==='css-001'?createNextCssFishAfterimage:null;
+    const count=fishId==='fish-001'?6:fishId==='k8s-001'?K8S_ECHO_COUNT:fishId==='css-001'?2:0;
+    if(!createNext||!count)return;
+    optionalModelPreparation.add(fishId);
+    void loadGoFishModule().then(()=>{
+      if(disposed)return;
+      enqueueOptionalModelTasks(Array.from({length:count},()=>createNext));
+    }).catch(error=>{
+      optionalModelPreparation.delete(fishId);
+      console.error('Optional fish models unavailable',error);
+    });
+  };
+  const fightModelRequests=new Map();
+  const requestFightModel=fishId=>{
+    const existing=fightModelRequests.get(fishId);
+    if(existing)return existing;
+    const request=(async()=>{
+      if(fishId==='k8s-001')await ensureClusterFish();
+      else await fightModels.load(fishId==='whale-001'||fishId==='css-001'||fishId==='rust-001'||fishId==='js-001'?fishId:'fish-001');
+      scheduleOptionalModelPreparation(fishId);
+    })();
+    fightModelRequests.set(fishId,request);
+    void request.catch(()=>{if(fightModelRequests.get(fishId)===request)fightModelRequests.delete(fishId);});
+    return request;
   };
 
   return {
@@ -135,6 +191,9 @@ export function createOceanFishModels(scene, waterUniforms, createFishOrientatio
     dispose(){
       if(disposed)return;
       disposed=true;
+      if(idleWorkHandle!==null&&typeof window!=='undefined')window.cancelIdleCallback?.(idleWorkHandle);
+      if(idleWorkTimer!==null)clearTimeout(idleWorkTimer);
+      optionalModelTasks.length=0;
       fightModels.dispose();
       for(const model of cssFishAfterimages)model.dispose();
       clusterFish?.dispose();

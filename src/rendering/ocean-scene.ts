@@ -394,7 +394,6 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const dropSpeeds=Array.from({length:36},(_,i)=>{const a=i*2.399;return new THREE.Vector3(Math.cos(a)*(.5+(i%5)*.16),.75+(i%7)*.21,Math.sin(a)*(.5+(i%5)*.16));});
   const fishModelStore=createOceanFishModels(scene,waterUniforms,createFishOrientationScratch);
   const {fightFish,dockerWhale,cssFish,rustFish,jsEel,fightModelFor,requestFightModel}=fishModelStore;
-  const ensureSchoolFish=fishModelStore.ensureSchoolFish;
   const cssFishProfile=getFishFightProfile('css-001');
   const liveFishScale=(fishId,phase)=>fishScaleForResponsiveCamera(fishId==='whale-001'?.42:fishId==='k8s-001'?(phase==='fighting'?1.02:.76):fishId==='css-001'?(phase==='fighting'?.74:.55):fishId==='rust-001'?(phase==='fighting'?.80:.63):fishId==='js-001'?(phase==='fighting'?.78:.61):(phase==='fighting'?.84:.66),camera.fov,portraitBlend);
   const catchFishScale=(fishId)=>fishScaleForResponsiveCamera(catchFraming(fishId,camera.aspect,camera.fov).baseScale,camera.fov,portraitBlend);
@@ -922,7 +921,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if (state.fishId === 'css-001'&&currentCssFish) {
       currentCssFish.setVisualState(cssFishVisualState);
     }
-    const cssFishTrailActive=state.fishId==='css-001'&&state.phase==='fighting'&&Boolean(currentCssFish?.group.visible);
+    const cssFishTrailActive=state.fishId==='css-001'&&state.phase==='fighting'&&Boolean(currentCssFish?.group.visible)
+      &&fishModelStore.cssFishAfterimages.length===cssFishAfterimageDelays.length;
     if(!cssFishTrailActive)resetCssFishAfterimages();
     let caughtEase=0;
     if(activeFightFish?.group.visible){
@@ -1067,8 +1067,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     lastStroke=state.phase==='fighting'&&Boolean(activeFightFish?.group.visible)?stroke:0;
     const schoolRequested=showLiveTackle&&state.phase==='fighting'&&state.fishId==='fish-001'&&state.school===7&&Boolean(visibleFish);
     const schoolCatchActive=showLiveTackle&&state.phase==='caught'&&state.fishId==='fish-001'&&Boolean(visibleFish)&&Boolean(activeFightFish)&&Boolean(schoolCatchOrigins?.some(Boolean));
-    if(schoolRequested||schoolCatchActive)ensureSchoolFish();
-    const schoolPresentationActive=schoolRequested||schoolCatchActive;
+    const schoolModelsReady=fishModelStore.schoolFish.length===schoolMotion.length;
+    const schoolPresentationActive=schoolModelsReady&&(schoolRequested||schoolCatchActive);
     schoolAmount=THREE.MathUtils.damp(schoolAmount,schoolPresentationActive?1:0,schoolPresentationActive?4:6,dt);
     const schoolVisible=(schoolPresentationActive||schoolAmount>.02)&&(fishInWater||schoolCatchActive)&&Boolean(visibleFish);
     if(!schoolVisible&&schoolWasVisible)for(const motion of schoolMotion)motion.initialized=false;
@@ -1128,7 +1128,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     const clusterEchoRequested=showLiveTackle&&state.phase==='fighting'&&state.fishId==='k8s-001'&&Boolean(visibleFish);
     const clusterEchoTarget=clusterEchoRequested?k8sPresentation.echoVisibility:0;
     clusterEchoAmount=THREE.MathUtils.damp(clusterEchoAmount,clusterEchoTarget,clusterEchoTarget>clusterEchoAmount?1.8:state.phase==='caught'?12:4.5,dt);
-    const clusterEchoVisible=clusterEchoAmount>.015&&fishInWater&&Boolean(visibleFish);
+    const clusterEchoVisible=clusterEchoAmount>.015&&fishInWater&&Boolean(visibleFish)
+      &&fishModelStore.clusterEchoes.length===clusterEchoOffsets.length;
     for(let index=0;index<fishModelStore.clusterEchoes.length;index++){
       const model=fishModelStore.clusterEchoes[index],motion=fishModelStore.clusterEchoMotion[index];
       model.group.visible=clusterEchoVisible;
