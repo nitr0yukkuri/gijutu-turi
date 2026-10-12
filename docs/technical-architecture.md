@@ -86,14 +86,17 @@ PC画面はThree.jsの海とゲーム表示を担当し、キーボード・ポ�
 
 ### HTTP/API
 
-- `POST /api/ocean-sessions`: プレイヤーIDと任意の魚種IDを検証し、ルームを作成。セッション数と送信元IPにインメモリのレート制限を適用。
-- `GET /api/collection?playerId=...`: プレイヤー別図鑑を返す。`playerId` は検証し、API CORSは `FRONTEND_ORIGIN` に限定可能。
+- `POST /api/player-sessions`: 匿名プレイヤーIDと不透明なBearer tokenを発行し、token自体ではなくSHA-256 hashをRepositoryへ保存。既存ブラウザーに限り旧IDを一度引き継げる。ログインや本人確認を提供するものではない。
+- `POST /api/ocean-sessions`: 有効なBearer tokenに対応するプレイヤーへルームを作成し、任意の魚種IDを検証。本文にプレイヤーIDを受け取らず、セッション数と送信元IPにインメモリのレート制限を適用。
+- `GET /api/collection`: Bearer tokenからプレイヤーを解決して図鑑を返す。プレイヤーIDだけでは読めず、応答は `Cache-Control: no-store`。API CORSは `FRONTEND_ORIGIN` に限定可能。
 - `GET /health`: プロセスのhealth応答。DB接続やルーム処理全体の準備完了を確認する深いreadiness probeではない。
 - HTML/静的資産: 公開パスのallow-listとビルド資産用のパス検査を使い、`.env` やソースツリーを一般ファイル配信しない。
 
+これらHTTP routeとrequest rate limitは `src/ocean-session-route.ts` に集約し、`src/ocean-room.ts` はルームのWebSocket接続とtickを担当する。ブラウザーの認証付きHTTP通信は `src/client/ocean-api.ts` に置き、`useOceanRuntime.ts` は通信結果を画面状態へ反映する。
+
 ### WebSocketルーム
 
-`src/ocean-room.ts` はルームIDからゲーム状態、接続、入力キューを引く。ルームは最大128、1ルーム最大8ソケット、スマホcontrollerは1接続。PC displayが未接続だとゲーム入力は処理されず、controller接続後はPCとスマホの同時操作を抑止する。Originを検査するが、Originはブラウザー保護向けであり、アカウント認証の代わりにはならない。
+`src/ocean-room.ts` はルームIDからゲーム状態、接続、入力キューを引く。ルームは最大128、1ルーム最大8ソケット、スマホcontrollerは1接続。PC displayが未接続だとゲーム入力は処理されず、controller接続後はPCとスマホの同時操作を抑止する。Originを検査するが、Originはブラウザー保護向けであり、アカウント認証の代わりにはならない。ルームIDはcontroller URLを成立させるための共有アクセスキーとして扱う。
 
 各接続は毎秒40メッセージを上限とし、JSONとZod unionでアクションを検査する。一回操作は最大16件のキューを通して次のゲームtickで消費する。リールは押下状態を400msのleaseとして保持し、releaseメッセージが失われても巻きっぱなしにならないようにする。竿アクションは300ms間隔を課す。送信先の送信待ちデータが64KB以上ならそのbroadcastをスキップする。
 
@@ -123,11 +126,12 @@ Three.jsのメインscene、魚モデル、魚水面材質、図鑑プレビュ�
 
 ## 8. 永続データ・魚カタログ
 
-`CollectionRepository` を通して保存先を切り替える。既定は `src/collection-db.ts` の同期SQLite (`node:sqlite`)。`CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_D1_DATABASE_ID`、`CLOUDFLARE_API_TOKEN` の3つを設定すると `src/d1-collection-db.ts` がD1 APIを使う。`DATABASE_URL` を設定したPostgreSQLモードも互換用に残しているが、D1と同時には設定できない。各保存先は起動時に `FISH_SPECIES` をupsertし、同じ3テーブルを用意する。
+`CollectionRepository` を通して保存先を切り替える。既定は `src/collection-db.ts` の同期SQLite (`node:sqlite`)。`CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_D1_DATABASE_ID`、`CLOUDFLARE_API_TOKEN` の3つを設定すると `src/d1-collection-db.ts` がD1 APIを使う。`DATABASE_URL` を設定したPostgreSQLモードも互換用に残しているが、D1と同時には設定できない。各保存先は起動時に `FISH_SPECIES` をupsertし、魚種・図鑑・釣果イベント・セッションの各テーブルを用意する。
 
 - `fish_species`: 魚種マスタと表示メタデータ
 - `player_collections`: プレイヤー×魚種ごとの釣果回数、初回/直近日時
 - `collection_catch_events`: イベントキーによる冪等な捕獲履歴
+- `player_sessions`: 匿名プレイヤーIDごとのBearer token hash
 
 捕獲処理はイベント記録と集計更新を一つのD1バッチトランザクションにまとめ、新規イベントの場合だけ集計を加算する。イベントキーの一意制約と `changes()` 条件により、再送時の二重加算を防ぐ。ローカル既定DBは `data/gijutu-turi.sqlite`、環境変数 `GIJUTU_DB_PATH` で変更できる。Cloud RunでD1を使う場合、APIトークンはSecret Managerから `CLOUDFLARE_API_TOKEN` として渡す。`NODE_ENV=production` ではD1またはPostgreSQLを必須とし、未設定時は起動を拒否する。
 
@@ -174,7 +178,7 @@ D1接続コードは実装されているが、D1データベース作成とClou
 
 ### P2 — 描画・入力hookが大きく、型検査除外の境界が広い
 
-`useOceanRuntime.ts` はWebSocket、モーション、入力、音、図鑑、PWA、Three.js lifecycleまで持つ。`ocean-scene.ts` と魚モデルも `@ts-nocheck`。変更速度は上がるが、状態条件の組合せと描画回帰を追う負担が増す。未使用ローカル/引数の自動検出、共通逃走ヒントの共有、魚モデルの遅延生成は対応した。接続hook、device input hook、collection hook、scene controllerへの分割と、描画入出力を型のあるDTOに限定する作業は引き続き必要。
+`useOceanRuntime.ts` はWebSocket、ゲーム状態、音、PWA、Three.js lifecycleを調整する。モーション入力は `usePhoneMotion.ts`、図鑑の取得・状態・競合リクエスト抑止は `useOceanCollection.ts` と `ocean-api.ts` へ分けた。`ocean-scene.ts` と魚モデルも `@ts-nocheck`。変更時に状態条件の組合せと描画回帰を追う負担はまだあるため、接続、音、scene lifecycleの分割と、描画入出力を型のあるDTOに限定する作業は引き続き必要。
 
 ### 対応済み — Vercelの旧魚種path
 
@@ -193,7 +197,7 @@ Vercelに共有別名の各旧path rewriteを追加し、`src/fishing-routes.tes
 
 ## 12. 推奨する次の設計作業
 
-1. `useOceanRuntime` を接続・端末入力・図鑑/音の責務へ小さく分け、各境界を単体テスト可能にする。
+1. `useOceanRuntime` を接続・音の責務へさらに小さく分け、各境界を単体テスト可能にする。
 2. Three.jsの型境界を細くし、scene/modelの `@ts-nocheck` を段階的に減らす。
 3. PCの3D初期表示が重い場合、魚種別rendererやThree.js vendor chunkの分割を測定ベースで行う。
 4. Cloud Runを複数instance化する必要が出た段階で、room共有・永続DB・rate limit共有の順に基盤を拡張する。

@@ -62,6 +62,11 @@ export class CollectionStore implements CollectionRepository {
         fish_id TEXT NOT NULL REFERENCES fish_species(id),
         caught_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS player_sessions (
+        player_id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL
+      );
     `);
     const insert = this.db.prepare(`
       INSERT INTO fish_species
@@ -192,5 +197,21 @@ export class CollectionStore implements CollectionRepository {
       throw error;
     }
     return this.getCollection(playerId);
+  }
+
+  registerPlayerSession(playerId: string, tokenHash: string, createdAt = new Date().toISOString()): boolean {
+    if (!isPlayerId(playerId) || !/^[a-f0-9]{64}$/.test(tokenHash)) throw new Error("invalid_player_session");
+    this.db.prepare(`
+      INSERT OR IGNORE INTO player_sessions (player_id, token_hash, created_at)
+      VALUES (?, ?, ?)
+    `).run(playerId, tokenHash, createdAt);
+    const row = this.db.prepare("SELECT token_hash FROM player_sessions WHERE player_id = ?").get(playerId) as { token_hash: string } | undefined;
+    return row?.token_hash === tokenHash;
+  }
+
+  getPlayerIdForSession(tokenHash: string): string | undefined {
+    if (!/^[a-f0-9]{64}$/.test(tokenHash)) return undefined;
+    const row = this.db.prepare("SELECT player_id FROM player_sessions WHERE token_hash = ?").get(tokenHash) as { player_id: string } | undefined;
+    return row?.player_id;
   }
 }
