@@ -45,6 +45,11 @@ const schema = `
     fish_id TEXT NOT NULL REFERENCES fish_species(id),
     caught_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS player_sessions (
+    player_id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL
+  );
 `;
 
 export class PostgresCollectionStore implements CollectionRepository {
@@ -207,5 +212,28 @@ export class PostgresCollectionStore implements CollectionRepository {
       client.release();
     }
     return this.getCollection(playerId);
+  }
+
+  async registerPlayerSession(playerId: string, tokenHash: string, createdAt = new Date().toISOString()): Promise<boolean> {
+    if (!isPlayerId(playerId) || !/^[a-f0-9]{64}$/.test(tokenHash)) throw new Error("invalid_player_session");
+    await this.pool.query(`
+      INSERT INTO player_sessions (player_id, token_hash, created_at)
+      VALUES ($1, $2, $3)
+      ON CONFLICT DO NOTHING
+    `, [playerId, tokenHash, createdAt]);
+    const result = await this.pool.query<{ token_hash: string } & QueryResultRow>(
+      "SELECT token_hash FROM player_sessions WHERE player_id = $1",
+      [playerId],
+    );
+    return result.rows[0]?.token_hash === tokenHash;
+  }
+
+  async getPlayerIdForSession(tokenHash: string): Promise<string | undefined> {
+    if (!/^[a-f0-9]{64}$/.test(tokenHash)) return undefined;
+    const result = await this.pool.query<{ player_id: string } & QueryResultRow>(
+      "SELECT player_id FROM player_sessions WHERE token_hash = $1",
+      [tokenHash],
+    );
+    return result.rows[0]?.player_id;
   }
 }

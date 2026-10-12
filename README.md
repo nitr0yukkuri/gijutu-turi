@@ -82,7 +82,7 @@ PCブラウザー（React + Three.js） ── WebSocket ──┐
 
 | 課題 | 設計・実装 | 根拠となるコード・検証 |
 | --- | --- | --- |
-| PC画面とスマートフォンで同じ釣りを成立させる | サーバーが釣り状態を決定し、WebSocketで入力と状態を同期します。スマートフォン接続中は入力担当を一台に限定し、画面側は受信状態を補間して描画します。 | [`src/ocean-room.ts`](src/ocean-room.ts)、[`src/ocean-game.ts`](src/ocean-game.ts)、[`scripts/verify-ocean.ts`](scripts/verify-ocean.ts) |
+| PC画面とスマートフォンで同じ釣りを成立させる | サーバーが釣り状態を決定し、共有Zod契約でWebSocket入力を検証して状態を同期します。スマートフォン接続中は入力担当を一台に限定し、画面側は受信状態を補間して描画します。 | [`src/ocean-contract.ts`](src/ocean-contract.ts)、[`src/ocean-room.ts`](src/ocean-room.ts)、[`src/ocean-game.ts`](src/ocean-game.ts)、[`scripts/verify-ocean.ts`](scripts/verify-ocean.ts) |
 | K8s魚の浮上と海面反応をずらさない | 魚の補間済み表示状態から水面接触を判定し、CPU側の接触計算と海面シェーダーで同じ波・波紋の式を使います。波の小さな上下で飛沫が連続発生しないよう、接触判定にはヒステリシスを設けています。 | [`src/rendering/k8s-surface-motion.ts`](src/rendering/k8s-surface-motion.ts)、[`src/rendering/fish-water.ts`](src/rendering/fish-water.ts)、[`src/rendering/k8s-surface-motion.test.ts`](src/rendering/k8s-surface-motion.test.ts)、[`src/rendering/fish-water.test.ts`](src/rendering/fish-water.test.ts) |
 | 再試行で捕獲数を二重加算しない | 捕獲イベントに一意なキーを付け、同じイベントの再送を保存層で重複扱いにします。SQLite・D1・PostgreSQLの保存実装を分けています。 | [`src/catch-save.ts`](src/catch-save.ts)、[`src/catch-save.test.ts`](src/catch-save.test.ts)、[`src/collection-db.test.ts`](src/collection-db.test.ts) |
 
@@ -213,9 +213,13 @@ npm run test:whale
 ## 主なファイル
 
 - `src/client/App.tsx`: Reactのゲーム画面、コントローラー、図鑑UI
-- `src/client/useOceanRuntime.ts`: 接続、入力、音、センサー、画面ライフサイクル
+- `src/client/useOceanRuntime.ts`: WebSocket接続、魚状態と画面ライフサイクルの調整
+- `src/client/usePhoneMotion.ts`: スマートフォンの加速度・回転入力と釣り操作への変換
+- `src/client/useOceanCollection.ts` / `src/client/ocean-api.ts`: 図鑑状態と認証付きHTTP通信
 - `src/ocean-game.ts`: サーバー権威の釣り状態機械と魚種別の戦闘判定
-- `src/ocean-room.ts`: WebSocketルーム、接続役割、入力キュー、状態配信
+- `src/ocean-session-route.ts`: 匿名セッション認可、HTTPルーム作成、図鑑API
+- `src/ocean-room.ts`: WebSocketルーム、接続役割、入力キュー、状態配信と固定tick
+- `src/ocean-contract.ts`: WebSocket送信コマンドと受信状態の共有Zod契約
 - `src/ocean-contract.ts` / `src/fish-contract.ts`: 通信DTOと魚の泳ぎデータ契約
 - `src/fish-species.ts` / `src/fishing-routes.ts`: 魚種レジストリとURL解決
 - `src/rendering/ocean-scene.ts`: Three.jsの海・魚・竿・糸・水面演出

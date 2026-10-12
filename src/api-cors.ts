@@ -1,7 +1,7 @@
 export function apiCorsHeaders(origin: string | undefined, configuredOrigins: ReadonlySet<string>): Readonly<Record<string, string>> {
   const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Expose-Headers": "Retry-After",
   };
   if (configuredOrigins.has("*")) headers["Access-Control-Allow-Origin"] = "*";

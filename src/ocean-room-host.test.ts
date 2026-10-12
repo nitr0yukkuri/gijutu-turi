@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { networkInterfaces } from "node:os";
 import { test } from "node:test";
-import { accessHost } from "./ocean-room.js";
+import { accessHost } from "./ocean-host.js";
 
 const fakeInterfaces = (interfaces: ReturnType<typeof networkInterfaces>): ReturnType<typeof networkInterfaces> => interfaces;
 

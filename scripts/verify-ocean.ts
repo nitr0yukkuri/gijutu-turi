@@ -11,16 +11,22 @@ for(const path of ['/','/gofish','/dockerwhale','/docker','/cssfish','/rustfish'
 }
 for(const path of ['/.env','/.git/config','/src/server.ts','/package.json'])assert.equal((await fetch(base+path)).status,404);
 assert.equal((await fetch(base+'/api/sessions',{method:'POST'})).status,404,'legacy session API must not remain public');
-const invalidSession=await fetch(base+'/api/ocean-sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
-assert.equal(invalidSession.status,400,'rooms must be associated with a valid player ID');
+const anonymousRoom=await fetch(base+'/api/ocean-sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+assert.equal(anonymousRoom.status,401,'room creation must require an anonymous player session');
+const playerSessionResponse=await fetch(base+'/api/player-sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+assert.equal(playerSessionResponse.status,201,'the server must issue an anonymous player session');
+const {playerId,token}=await playerSessionResponse.json();
+const authHeaders={Authorization:`Bearer ${token}`};
 const invalidFishSession=await fetch(base+'/api/ocean-sessions',{
-  method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:'player_abcdefghijkl',fishId:'unknown-fish'}),
+  method:'POST',headers:{'Content-Type':'application/json',...authHeaders},body:JSON.stringify({fishId:'unknown-fish'}),
 });
 assert.equal(invalidFishSession.status,400,'rooms must reject unknown fish species');
-const playerId=`player_${crypto.randomUUID().replaceAll('-','')}`;
-const {id}=await (await fetch(base+'/api/ocean-sessions',{
-  method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId,fishId:'fish-001'}),
-})).json();
+assert.equal((await fetch(`${base}/api/collection?playerId=${encodeURIComponent(playerId)}`)).status,401,'a player ID alone must not authorize a collection read');
+const roomResponse=await fetch(base+'/api/ocean-sessions',{
+  method:'POST',headers:{'Content-Type':'application/json',...authHeaders},body:JSON.stringify({fishId:'fish-001'}),
+});
+assert.equal(roomResponse.status,201);
+const {id}=await roomResponse.json();
 const peers=[];
 function peer(role){
   const ws=new WebSocket(base.replace('http','ws')+`/ocean-ws?room=${id}&role=${role}`,{origin:base});
@@ -86,7 +92,7 @@ try{
   assert.ok(['fighting','caught'].includes(latestState()?.phase),`fish fight must remain active: ${JSON.stringify(latestState())}`);
   assert.ok(sawSchool,'fight should expose the parallel school phase');
   if(latestState()?.phase==='caught'){
-    const collection=await (await fetch(`${base}/api/collection?playerId=${encodeURIComponent(playerId)}`)).json();
+    const collection=await (await fetch(`${base}/api/collection`,{headers:authHeaders})).json();
     assert.equal(collection.entries.find(entry=>entry.id==='fish-001')?.catches,1,'server-verified catch must be recorded once');
   }
   const forgedCatch=await fetch(base+'/api/collection/catches',{
@@ -98,16 +104,18 @@ try{
   await new Promise(resolve=>setTimeout(resolve,100));
   assert.equal(display.messages.at(-1).state.phase,'fighting','invalid cast must be rejected during a fight');
   const cssPlayer=`player_${crypto.randomUUID().replaceAll('-','')}`;
+  const cssIdentity=await (await fetch(base+'/api/player-sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:cssPlayer})})).json();
   const cssRoom=await (await fetch(base+'/api/ocean-sessions',{
-    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:cssPlayer,fishId:'css-001'}),
+    method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${cssIdentity.token}`},body:JSON.stringify({fishId:'css-001'}),
   })).json();
   const cssSocket=new WebSocket(base.replace('http','ws')+`/ocean-ws?room=${cssRoom.id}&role=display`,{origin:base});
   const cssMessages=[];cssSocket.on('message',raw=>cssMessages.push(JSON.parse(raw)));cssSocket.on('error',()=>{});peers.push(cssSocket);
   await until(()=>cssMessages.length,'CSS fish room open');
   assert.equal(cssMessages.at(-1).state.fishId,'css-001','CSS fish route must not fall back to Docker');
   const dockerPlayer=`player_${crypto.randomUUID().replaceAll('-','')}`;
+  const dockerIdentity=await (await fetch(base+'/api/player-sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:dockerPlayer})})).json();
   const dockerRoom=await (await fetch(base+'/api/ocean-sessions',{
-    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:dockerPlayer,fishId:'whale-001'}),
+    method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${dockerIdentity.token}`},body:JSON.stringify({fishId:'whale-001'}),
   })).json();
   const dockerSocket=new WebSocket(base.replace('http','ws')+`/ocean-ws?room=${dockerRoom.id}&role=display`,{origin:base});
   const dockerMessages=[];dockerSocket.on('message',raw=>dockerMessages.push(JSON.parse(raw)));dockerSocket.on('error',()=>{});

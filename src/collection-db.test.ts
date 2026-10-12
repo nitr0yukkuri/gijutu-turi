@@ -5,6 +5,22 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CollectionStore } from "./collection-db.js";
+
+test("SQLite binds one bearer-token hash to each anonymous player identity", () => {
+  const store = new CollectionStore(":memory:");
+  try {
+    const playerId = "player_abcdefghijkl";
+    const firstHash = "a".repeat(64);
+    const otherHash = "b".repeat(64);
+    assert.equal(store.registerPlayerSession(playerId, firstHash), true);
+    assert.equal(store.registerPlayerSession(playerId, firstHash), true);
+    assert.equal(store.registerPlayerSession(playerId, otherHash), false);
+    assert.equal(store.getPlayerIdForSession(firstHash), playerId);
+    assert.equal(store.getPlayerIdForSession(otherHash), undefined);
+  } finally {
+    store.close();
+  }
+});
 import { FISH_SPECIES } from "./fish-species.js";
 
 test("collection store records each catch event once", () => {

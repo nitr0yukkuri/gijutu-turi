@@ -6,9 +6,9 @@ import { URL } from "node:url";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { z } from "zod";
 import { createOceanRooms } from "./ocean-room.js";
-import { isPlayerId, type CollectionRepository } from "./collection-contract.js";
+import type { CollectionRepository } from "./collection-contract.js";
+import { registerOceanSessionRoutes } from "./ocean-session-route.js";
 import { createCollectionRepository, resolveCollectionBackend } from "./collection-repository.js";
 import { CANONICAL_FISH_ROUTE_PATHS, COMPLETE_SHOWCASE_PATH, FISHING_ROUTE_PATHS, LEGACY_FISH_PATH_ALIASES } from "./fishing-routes.js";
 import { publicAssetCandidates, resolveContainedAssetPath } from "./public-asset-path.js";
@@ -27,7 +27,7 @@ app.use("/api/*", async (c, next) => {
 const collectionBackend = resolveCollectionBackend();
 const collectionStore: CollectionRepository = await createCollectionRepository();
 const pendingCatchWrites = new Set<Promise<void>>();
-const oceanRooms = createOceanRooms(app, {
+const oceanRooms = createOceanRooms({
   onCatch: (playerId, eventKey, fishId) => {
     const pending = Promise.resolve(collectionStore.recordCatch(playerId, fishId, eventKey)).then(() => undefined);
     pendingCatchWrites.add(pending);
@@ -39,13 +39,7 @@ const oceanRooms = createOceanRooms(app, {
   },
 });
 
-const playerIdSchema = z.string().refine(isPlayerId);
-
-app.get("/api/collection", async (c) => {
-  const playerId = playerIdSchema.safeParse(c.req.query("playerId"));
-  if (!playerId.success) return c.json({ error: "invalid_player_id" }, 400);
-  return c.json(await collectionStore.getCollection(playerId.data));
-});
+registerOceanSessionRoutes(app, { rooms: oceanRooms, repository: collectionStore });
 
 // Explicit public assets only: never expose .git, .env, or the source tree.
 const publicAssets = new Map<string, string[]>([

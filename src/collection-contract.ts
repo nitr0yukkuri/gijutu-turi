@@ -29,6 +29,8 @@ export interface CollectionRepository {
   ping(): void | Promise<void>;
   getCollection(playerId: string): CollectionSnapshot | Promise<CollectionSnapshot>;
   recordCatch(playerId: string, fishId: string, eventKey: string, caughtAt?: string): CollectionSnapshot | Promise<CollectionSnapshot>;
+  registerPlayerSession(playerId: string, tokenHash: string): boolean | Promise<boolean>;
+  getPlayerIdForSession(tokenHash: string): string | undefined | Promise<string | undefined>;
   close(): void | Promise<void>;
 }
 

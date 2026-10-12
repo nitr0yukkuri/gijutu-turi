@@ -72,6 +72,13 @@ const schemaStatements: D1Statement[] = [
       caught_at TEXT NOT NULL
     )`,
   },
+  {
+    sql: `CREATE TABLE IF NOT EXISTS player_sessions (
+      player_id TEXT PRIMARY KEY,
+      token_hash TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL
+    )`,
+  },
 ];
 
 const upsertSpeciesSql = `INSERT INTO fish_species
@@ -294,5 +301,27 @@ export class D1CollectionStore implements CollectionRepository {
     ]);
 
     return this.getCollection(playerId);
+  }
+
+  async registerPlayerSession(playerId: string, tokenHash: string, createdAt = new Date().toISOString()): Promise<boolean> {
+    if (!isPlayerId(playerId) || !/^[a-f0-9]{64}$/.test(tokenHash)) throw new Error("invalid_player_session");
+    await this.execute([{
+      sql: `INSERT OR IGNORE INTO player_sessions (player_id, token_hash, created_at) VALUES (?, ?, ?)`,
+      params: [playerId, tokenHash, createdAt],
+    }]);
+    const rows = await this.query<{ token_hash: string }>({
+      sql: "SELECT token_hash FROM player_sessions WHERE player_id = ?",
+      params: [playerId],
+    });
+    return rows[0]?.token_hash === tokenHash;
+  }
+
+  async getPlayerIdForSession(tokenHash: string): Promise<string | undefined> {
+    if (!/^[a-f0-9]{64}$/.test(tokenHash)) return undefined;
+    const rows = await this.query<{ player_id: string }>({
+      sql: "SELECT player_id FROM player_sessions WHERE token_hash = ?",
+      params: [tokenHash],
+    });
+    return rows[0]?.player_id;
   }
 }

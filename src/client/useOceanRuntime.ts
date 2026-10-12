@@ -1,26 +1,23 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
-import { isOceanMessage } from "../ocean-contract.js";
+import { isOceanMessage, type OceanCommand } from "../ocean-contract.js";
 import { FishingAudioController } from "../audio/fishing-audio.js";
 import type { FishSurfaceImpactCue } from "../fish-surface-impact.js";
-import { CastMotionGesture, ReelMotionGesture, castStrengthFromSwing, isScreenReelBlockingMotion, reelAngularSignal } from "./cast-motion.js";
 import { createControllerLink, isLoopbackHost } from "./controller-url.js";
-import { PhonePullMotion } from "./phone-pull-motion.js";
-import { UpwardHookMotion } from "./upward-hook-motion.js";
-import { fetchCollection, type CollectionLoadResult } from "./collection-response.js";
-import { LatestRequestGuard } from "./latest-request.js";
+import { createPlayerOceanRoom, OceanRoomRateLimitError } from "./ocean-api.js";
+import { COLLECTION_LOAD_ERROR_MESSAGE, useOceanCollection } from "./useOceanCollection.js";
+import { usePhoneMotion } from "./usePhoneMotion.js";
 import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH } from "../cast-distance.js";
 import { OCEAN_RENDER_DELAY_MS } from "../ocean-timing.js";
 import { OceanPresentationTimeline } from "../ocean-presentation-timeline.js";
-import { FISH_SPECIES, type FishSpeciesId } from "../fish-species.js";
+import { type FishSpeciesId } from "../fish-species.js";
 import { isFirstCatch } from "./catch-discovery.js";
 import { FISH_ESCAPE_HINTS } from "./escape-hints.js";
-import type { CatchSaveStatus, Collection, CollectionEntry, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
+import type { CatchSaveStatus, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
 
 const configuredBackendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim().replace(/\/+$/, "");
 const staticRouteMode = import.meta.env.VITE_STATIC_ROUTE_MODE === "query";
 const backendUrl = (path: string): string => configuredBackendUrl ? `${configuredBackendUrl}${path}` : path;
 const roomFishStorageKey = "gijutu.ocean-room-fish";
-const COLLECTION_LOAD_ERROR_MESSAGE = "図鑑を読み込めません。DBとの接続を確認してください。";
 const staticFishQueryById: Partial<Record<FishSpeciesId, string>> = {
   "fish-001": "gofish",
   "whale-001": "docker",
@@ -30,45 +27,7 @@ const staticFishQueryById: Partial<Record<FishSpeciesId, string>> = {
   "js-001": "jseel",
 };
 
-class OceanRoomRateLimitError extends Error {
-  constructor(readonly retryAfterSeconds: number) {
-    super("ocean_room_rate_limited");
-  }
-}
-
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
-
-const fallbackCatalog: CollectionEntry[] = FISH_SPECIES.map(species => ({
-  ...species,
-  status: "unknown" as const,
-  catches: 0,
-  firstCaughtAt: null,
-  lastCaughtAt: null,
-}));
-
-const createPlayerId = (): string => {
-  try {
-    const key = "gijutu.player-id";
-    let value = localStorage.getItem(key);
-    if (!value) {
-      const uuid = typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID().replaceAll("-", "")
-        : `${Date.now()}${Math.random().toString(36).slice(2)}`;
-      value = `player_${uuid}`;
-      localStorage.setItem(key, value);
-    }
-    return value;
-  } catch {
-    return `player_${Date.now()}${Math.random().toString(36).slice(2)}`;
-  }
-};
-
-const initialCollection = (caught: boolean): Collection => ({
-  entries: fallbackCatalog.map(entry => entry.id === "fish-001" && caught ? { ...entry, status: "caught", catches: 1 } : { ...entry }),
-  registered: caught ? 1 : 0,
-  activeTotal: fallbackCatalog.length,
-  catalogTotal: fallbackCatalog.length,
-});
 
 const initialState = (): OceanState => ({
   phase: "idle", revision: 0, strength: .65, aim: 0, castAt: 0, retrieveAt: 0,
@@ -87,6 +46,10 @@ type UseOceanRuntimeOptions = {
 };
 
 export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePath, oceanMountRef, collectionOpen }: UseOceanRuntimeOptions) {
+  const { collection, collectionRef, loadCollection, isCurrentCollectionLoad } = useOceanCollection(
+    backendUrl("/api/player-sessions"),
+    backendUrl("/api/collection"),
+  );
   // Include the selection policy in the cache key so a room created before
   // fish-specific routes became fixed cannot be reused after the fix.
   const roomFishKey = initialFishId ? `fixed:${initialFishId}` : "rotate";
@@ -109,9 +72,6 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const [reticle, setReticle] = useState<Reticle>(null);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const soundEnabledRef = useRef(false);
-  const [collection, setCollection] = useState<Collection>(() => initialCollection(false));
-  const collectionRef = useRef(collection);
-  const collectionRequestGuardRef = useRef(new LatestRequestGuard());
   const [newEncounter, setNewEncounter] = useState(false);
   const [catchSaveStatus, setCatchSaveStatus] = useState<CatchSaveStatus>("none");
   const catchSaveStatusRef = useRef<CatchSaveStatus>("none");
@@ -119,10 +79,6 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const [controllerUrl, setControllerUrl] = useState("");
   const [controllerHost, setControllerHost] = useState("");
   const [controllerUrlError, setControllerUrlError] = useState("");
-  const [sensorStatus, setSensorStatus] = useState("アタリでは下から上へ振って合わせます。戦闘中は画面を自分に向け、遠くから手前へ引くと短く巻きます。");
-  const [sensorButtonLabel, setSensorButtonLabel] = useState("モーション操作を有効にする");
-  const [sensorsOn, setSensorsOn] = useState(false);
-
   const sceneRef = useRef<OceanSceneController | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const closingRef = useRef(false);
@@ -138,20 +94,8 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const toastTimerRef = useRef<number | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
   const hookFeedbackTimerRef = useRef<number | null>(null);
-  const playerIdRef = useRef(createPlayerId());
   const fishingAudioRef = useRef<FishingAudioController | null>(null);
-  const sensorTimerRef = useRef<number | null>(null);
-  const sensorSamplesRef = useRef(0);
-  const lastGestureRef = useRef(0);
-  const gravityRef = useRef({ x: 0, y: 0, z: 0 });
-  const gravitySampleAtRef = useRef(0);
-  const gravityInitializedRef = useRef(false);
   const motionReelRef = useRef(false);
-  const motionListenerRef = useRef<((event: DeviceMotionEvent) => void) | null>(null);
-  const phonePullMotionRef = useRef(new PhonePullMotion());
-  const upwardHookMotionRef = useRef(new UpwardHookMotion());
-  const castGestureRef = useRef(new CastMotionGesture());
-  const reelMotionGestureRef = useRef(new ReelMotionGesture());
   const receivedRodStrokeRef = useRef<number | null>(null);
 
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -191,7 +135,8 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   }, []);
 
   const stopReel = useCallback(() => {
-    if (reelHeldRef.current && socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(JSON.stringify({ action: "reel", held: false }));
+    const releaseCommand: OceanCommand = { action: "reel", held: false };
+    if (reelHeldRef.current && socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(JSON.stringify(releaseCommand));
     setReelHeld(false);
     if (reelTimerRef.current !== null) window.clearInterval(reelTimerRef.current);
     reelTimerRef.current = null;
@@ -223,17 +168,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     if (next) getFishingAudio().sync(stateRef.current, stateRef.current, !isPhone);
   }, [getFishingAudio, isPhone]);
 
-  const loadCollection = useCallback(async (): Promise<{ result: CollectionLoadResult; revision: number }> => {
-    const revision = collectionRequestGuardRef.current.begin();
-    const result = await fetchCollection(`${backendUrl("/api/collection")}?playerId=${encodeURIComponent(playerIdRef.current)}`);
-    if (result.ok && collectionRequestGuardRef.current.isCurrent(revision)) {
-      collectionRef.current = result.value;
-      setCollection(result.value);
-    }
-    return { result, revision };
-  }, []);
-
-  const send = useCallback((action: object): boolean => {
+  const send = useCallback((action: OceanCommand): boolean => {
     if (!onlineRef.current || socketRef.current?.readyState !== WebSocket.OPEN) {
       showToast("海との接続を確認してください。");
       return false;
@@ -360,7 +295,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       // server confirms the write, and never submits a duplicate catch.
       const previousCatches = collectionRef.current.entries.find(entry => entry.id === next.fishId)?.catches ?? 0;
       void loadCollection().then(({ result, revision }) => {
-        if (!collectionRequestGuardRef.current.isCurrent(revision)) return;
+        if (!isCurrentCollectionLoad(revision)) return;
         if (!result.ok) { showToast(COLLECTION_LOAD_ERROR_MESSAGE); return; }
         const loaded = result.value;
         const caughtEntry = loaded.entries.find(entry => entry.id === next.fishId);
@@ -391,7 +326,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
         lastVibrationRef.current = now;
       }
     }
-  }, [cancelCharge, getFishingAudio, isPhone, loadCollection, setConnected, showFeedback, showHookFeedback, showToast, stopReel, vibrate]);
+  }, [cancelCharge, getFishingAudio, isCurrentCollectionLoad, isPhone, loadCollection, setConnected, showFeedback, showHookFeedback, showToast, stopReel, vibrate]);
 
   const presentationActive = ["casting", "waiting", "biting", "fighting"].includes(state.phase);
   useEffect(() => {
@@ -414,17 +349,11 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     if (stored) sessionStorage.removeItem("gijutu.ocean-room");
     if (storedHost) sessionStorage.removeItem("gijutu.ocean-host-v2");
     if (storedFish) sessionStorage.removeItem(roomFishStorageKey);
-    const response = await fetch(backendUrl("/api/ocean-sessions"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ playerId: playerIdRef.current, ...(initialFishId ? { fishId: initialFishId } : {}) }),
-    });
-    if (response.status === 429) {
-      const retryAfter = Number(response.headers.get("Retry-After"));
-      throw new OceanRoomRateLimitError(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 60);
-    }
-    if (!response.ok) throw new Error("room");
-    const result = await response.json() as { id: string; host?: string };
+    const result = await createPlayerOceanRoom(
+      backendUrl("/api/player-sessions"),
+      backendUrl("/api/ocean-sessions"),
+      initialFishId,
+    );
     sessionStorage.setItem("gijutu.ocean-room", result.id);
     sessionStorage.setItem(roomFishStorageKey, roomFishKey);
     if (result.host) sessionStorage.setItem("gijutu.ocean-host-v2", result.host);
@@ -568,9 +497,9 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
 
   useEffect(() => {
     void loadCollection().then(({ result, revision }) => {
-      if (collectionRequestGuardRef.current.isCurrent(revision) && !result.ok) showToast(COLLECTION_LOAD_ERROR_MESSAGE);
+      if (isCurrentCollectionLoad(revision) && !result.ok) showToast(COLLECTION_LOAD_ERROR_MESSAGE);
     });
-  }, [loadCollection, showToast]);
+  }, [isCurrentCollectionLoad, loadCollection, showToast]);
 
   useEffect(() => {
     const pointerMove = (event: globalThis.PointerEvent) => {
@@ -656,141 +585,20 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   }, [activate, startCharge, startReel]);
   const handlePointerUp = useCallback(() => { releaseCharge(); stopReel(); }, [releaseCharge, stopReel]);
   const handlePointerCancel = useCallback(() => { cancelCharge(); stopReel(); }, [cancelCharge, stopReel]);
-
-  const toggleSensor = useCallback(async () => {
-    if (sensorsOn) { showToast("釣り竿センサーは有効です。狙って一度振ってください。"); return; }
-    try {
-      if (!window.isSecureContext || !window.DeviceMotionEvent) { setSensorStatus("センサーが使えない環境です。下のボタンで投げられます。"); return; }
-      const motionApi = window.DeviceMotionEvent as typeof DeviceMotionEvent & { requestPermission?: () => Promise<"granted" | "denied"> };
-      if (typeof motionApi.requestPermission === "function" && await motionApi.requestPermission() !== "granted") { setSensorStatus("センサーは許可されていません。タッチ操作で遊べます。"); return; }
-      sensorSamplesRef.current = 0;
-      gravitySampleAtRef.current = 0;
-      gravityInitializedRef.current = false;
-      castGestureRef.current.reset();
-      upwardHookMotionRef.current.reset();
-      reelMotionGestureRef.current.reset();
-      phonePullMotionRef.current.reset();
-      if (sensorTimerRef.current !== null) window.clearTimeout(sensorTimerRef.current);
-      const motion = (event: DeviceMotionEvent) => {
-        if (document.hidden) {
-          castGestureRef.current.reset();
-          upwardHookMotionRef.current.reset();
-          reelMotionGestureRef.current.reset();
-          phonePullMotionRef.current.reset();
-          if (motionReelRef.current) stopReel();
-          return;
-        }
-        const linear = event.acceleration;
-        const hasLinear = Boolean(linear && [linear.x, linear.y, linear.z].every(Number.isFinite));
-        const raw = hasLinear ? linear : event.accelerationIncludingGravity;
-        if (!raw || typeof raw.x !== "number" || typeof raw.y !== "number" || typeof raw.z !== "number" || ![raw.x, raw.y, raw.z].every(Number.isFinite)) return;
-        sensorSamplesRef.current += 1;
-        if (sensorSamplesRef.current === 1) { setSensorStatus("アタリでは下から上へ振って合わせます。戦闘中は画面を自分に向け、遠くから手前へ引くと短く巻きます。"); setSensorButtonLabel("モーション操作は有効です"); }
-        let { x, y, z } = raw;
-        const now = performance.now();
-        if (!hasLinear) {
-          const gravity = gravityRef.current;
-          if (!gravityInitializedRef.current) {
-            gravity.x = x; gravity.y = y; gravity.z = z;
-            gravityInitializedRef.current = true;
-            x = 0; y = 0; z = 0;
-          } else {
-            const elapsed = gravitySampleAtRef.current === 0 ? 1 / 60 : clamp((now - gravitySampleAtRef.current) / 1000, .005, .1);
-            const alpha = 1 - Math.exp(-elapsed / .1);
-            gravity.x += (x - gravity.x) * alpha; gravity.y += (y - gravity.y) * alpha; gravity.z += (z - gravity.z) * alpha;
-            x -= gravity.x; y -= gravity.y; z -= gravity.z;
-          }
-          gravitySampleAtRef.current = now;
-        }
-        const acceleration = Math.hypot(x, y, z);
-        const rate = event.rotationRate;
-        const hasRotationRate = Boolean(rate && [rate.alpha, rate.beta, rate.gamma].every(Number.isFinite));
-        const castRotationRate = hasRotationRate
-          ? { alpha: rate?.alpha ?? 0, beta: rate?.beta ?? 0, gamma: rate?.gamma ?? 0 }
-          : undefined;
-        const angularSpeed = castRotationRate
-          ? Math.hypot(castRotationRate.alpha, castRotationRate.beta, castRotationRate.gamma)
-          : 0;
-        const phase = stateRef.current.phase;
-        if (!(phase === "idle" || phase === "biting" || phase === "fighting") || !onlineRef.current || now - lastGestureRef.current < 700 && phase !== "fighting") {
-          castGestureRef.current.reset();
-          upwardHookMotionRef.current.reset();
-          reelMotionGestureRef.current.reset();
-          phonePullMotionRef.current.reset();
-          if (motionReelRef.current) stopReel();
-          return;
-        }
-        if (phase === "fighting") {
-          castGestureRef.current.reset();
-          upwardHookMotionRef.current.reset();
-          const rotation = reelAngularSignal(rate?.alpha ?? null, rate?.beta ?? null, rate?.gamma ?? null);
-          const canRecognizePhonePull = !reelHeldRef.current;
-          if (!canRecognizePhonePull) phonePullMotionRef.current.reset();
-          else {
-            if (phonePullMotionRef.current.update({ x, y, z }, now)) {
-              performPhonePull();
-              lastGestureRef.current = now;
-              reelMotionGestureRef.current.reset();
-              return;
-            }
-            if (phonePullMotionRef.current.isPending(now)) {
-              reelMotionGestureRef.current.reset();
-              return;
-            }
-          }
-          if (isScreenReelBlockingMotion(reelHeldRef.current, motionReelRef.current)) {
-            reelMotionGestureRef.current.reset();
-            return;
-          }
-          const reelGesture = reelMotionGestureRef.current.update(rotation, now);
-          if (reelGesture === "start") {
-            // Motion owns the lease only when it started it. This prevents a
-            // sensor sample from stopping a reel held by the screen control.
-            motionReelRef.current = true;
-            startReel();
-          } else if (motionReelRef.current && reelGesture === "stop") {
-            stopReel();
-          }
-          return;
-        }
-        if (phase === "biting") {
-          castGestureRef.current.reset();
-          phonePullMotionRef.current.reset();
-          reelMotionGestureRef.current.reset();
-          if (upwardHookMotionRef.current.update({ x, y, z }, now)) {
-            if (send({ action: "hook" })) lastGestureRef.current = now;
-          }
-          return;
-        }
-        upwardHookMotionRef.current.reset();
-        phonePullMotionRef.current.reset();
-        reelMotionGestureRef.current.reset();
-        const gesture = castGestureRef.current.update(acceleration, angularSpeed, now, castRotationRate);
-        if (gesture) {
-          cast(castStrengthFromSwing(gesture.acceleration, gesture.angularSpeed, gesture.swingAngle), 0);
-          lastGestureRef.current = now;
-        }
-      };
-      motionListenerRef.current = motion;
-      window.addEventListener("devicemotion", motion);
-      setSensorsOn(true); setSensorButtonLabel("モーション操作を確認しています");
-      sensorTimerRef.current = window.setTimeout(() => {
-        sensorTimerRef.current = null;
-        if (sensorSamplesRef.current === 0) {
-          window.removeEventListener("devicemotion", motion);
-          motionListenerRef.current = null;
-          setSensorsOn(false);
-          setSensorStatus("センサーの動きを取得できません。もう一度試すか、タッチで投げられます。");
-          setSensorButtonLabel("センサーを再試行");
-        }
-        else setSensorButtonLabel("モーション操作は有効です");
-      }, 2500);
-    } catch { setSensorStatus("センサーを開始できません。タッチで投げられます。"); }
-  }, [cast, isPhone, performPhonePull, send, sensorsOn, showToast, startReel, stopReel]);
+  const { sensorStatus, sensorButtonLabel, sensorsOn, toggleSensor } = usePhoneMotion({
+    stateRef,
+    onlineRef,
+    reelHeldRef,
+    motionReelRef,
+    cast,
+    send,
+    startReel,
+    stopReel,
+    performPhonePull,
+    showToast,
+  });
 
   useEffect(() => () => {
-    if (motionListenerRef.current) window.removeEventListener("devicemotion", motionListenerRef.current);
-    if (sensorTimerRef.current !== null) window.clearTimeout(sensorTimerRef.current);
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
     if (hookFeedbackTimerRef.current !== null) window.clearTimeout(hookFeedbackTimerRef.current);

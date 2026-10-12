@@ -20,6 +20,7 @@ const config: D1CollectionConfig = {
 function createFakeD1(options: { seedReferencedLegacyPlaceholder?: boolean } = {}) {
   const species = new Map<string, SpeciesRow>();
   const events = new Set<string>();
+  const playerSessions = new Map<string, string>();
   const collections = new Map<string, { catches: number; first: string; last: string }>();
   const legacyCatchEvents = new Map<string, string>();
   if (options.seedReferencedLegacyPlaceholder) {
@@ -116,6 +117,18 @@ function createFakeD1(options: { seedReferencedLegacyPlaceholder?: boolean } = {
           });
           changes = 1;
         }
+      } else if (sql.startsWith("INSERT OR IGNORE INTO player_sessions")) {
+        const [playerId, tokenHash] = params;
+        if (![...playerSessions.values()].includes(String(tokenHash)) && !playerSessions.has(String(playerId))) {
+          playerSessions.set(String(playerId), String(tokenHash));
+          changes = 1;
+        }
+      } else if (sql.startsWith("SELECT token_hash FROM player_sessions")) {
+        const tokenHash = playerSessions.get(params[0] ?? "");
+        rows = tokenHash ? [{ token_hash: tokenHash }] : [];
+      } else if (sql.startsWith("SELECT player_id FROM player_sessions")) {
+        const playerId = [...playerSessions].find(([, tokenHash]) => tokenHash === params[0])?.[0];
+        rows = playerId ? [{ player_id: playerId }] : [];
       } else {
         throw new Error(`Unexpected D1 query: ${sql}`);
       }
@@ -130,7 +143,7 @@ function createFakeD1(options: { seedReferencedLegacyPlaceholder?: boolean } = {
     });
   };
 
-  return { fetcher, requests, species, events, collections, legacyCatchEvents };
+  return { fetcher, requests, species, events, collections, legacyCatchEvents, playerSessions };
 }
 
 test("D1 seeds the catalog and records each catch event exactly once", async () => {
@@ -154,11 +167,17 @@ test("D1 seeds the catalog and records each catch event exactly once", async () 
     const first = await store.recordCatch(playerId, "fish-001", "sea_room:1", firstCaughtAt);
     const retry = await store.recordCatch(playerId, "fish-001", "sea_room:1", "2026-10-03T00:00:01.000Z");
     const second = await store.recordCatch(playerId, "fish-001", "sea_room:2", "2026-10-03T00:00:02.000Z");
+    const tokenHash = "c".repeat(64);
+    assert.equal(await store.registerPlayerSession(playerId, tokenHash), true);
+    assert.equal(await store.registerPlayerSession(playerId, tokenHash), true);
+    assert.equal(await store.registerPlayerSession(playerId, "d".repeat(64)), false);
+    assert.equal(await store.getPlayerIdForSession(tokenHash), playerId);
 
     assert.equal(first.entries[0]?.catches, 1);
     assert.equal(retry.entries[0]?.catches, 1);
     assert.equal(second.entries[0]?.catches, 2);
     assert.equal(fake.events.size, 2);
+    assert.equal(fake.playerSessions.size, 1);
     assert.equal(fake.collections.get(`${playerId}:fish-001`)?.first, firstCaughtAt);
 
     const catchBatch = fake.requests.find(request => request.body.batch?.some(statement => statement.sql.startsWith("INSERT OR IGNORE INTO collection_catch_events")));

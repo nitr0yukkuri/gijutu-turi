@@ -42,10 +42,13 @@ export function parseCollectionResponse(value: unknown): CollectionLoadResult {
   return { ok: true, value: value as unknown as Collection };
 }
 
-export async function fetchCollection(url: string): Promise<CollectionLoadResult> {
+export async function fetchCollection(url: string, sessionToken: string): Promise<CollectionLoadResult> {
   let response: Response;
   try {
-    response = await fetch(url, { cache: "no-store" });
+    response = await fetch(url, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    });
   } catch {
     return { ok: false, error: "network" };
   }

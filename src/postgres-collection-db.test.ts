@@ -7,6 +7,7 @@ import { PostgresCollectionStore } from "./postgres-collection-db.js";
 test("PostgreSQL catch persistence seeds catalog and counts each event key once", async () => {
   const species = new Map<string, Record<string, unknown>>();
   const events = new Set<string>();
+  const playerSessions = new Map<string, string>();
   const legacyCatchEvents = new Map<string, string>();
   const collections = new Map<string, { catches: number; first: string; last: string }>();
   species.set("unknown-003", { id: "unknown-003", number: 3, catalog_status: "preview" });
@@ -23,6 +24,20 @@ test("PostgreSQL catch persistence seeds catalog and counts each event key once"
       const [id, number, name, classification, tagline, description, habitat, rarity, model_key, catalog_status] = values;
       species.set(String(id), { id, number, name, classification, tagline, description, habitat, rarity, model_key, catalog_status });
       return result<T>();
+    }
+    if (normalized.startsWith("INSERT INTO player_sessions")) {
+      const playerId = String(values[0]);
+      const tokenHash = String(values[1]);
+      if (![...playerSessions.values()].includes(tokenHash) && !playerSessions.has(playerId)) playerSessions.set(playerId, tokenHash);
+      return result<T>();
+    }
+    if (normalized.startsWith("SELECT token_hash FROM player_sessions")) {
+      const tokenHash = playerSessions.get(String(values[0]));
+      return result(tokenHash ? [{ token_hash: tokenHash } as unknown as T] : []);
+    }
+    if (normalized.startsWith("SELECT player_id FROM player_sessions")) {
+      const playerId = [...playerSessions].find(([, tokenHash]) => tokenHash === String(values[0]))?.[0];
+      return result(playerId ? [{ player_id: playerId } as unknown as T] : []);
     }
     if (normalized.startsWith("SELECT species.id")) {
       const playerId = String(values[0]);
@@ -102,6 +117,11 @@ test("PostgreSQL catch persistence seeds catalog and counts each event key once"
     const playerId = "player_abcdefghijkl";
     const first = await store.recordCatch(playerId, fish.id, "sea_room:1", "2026-10-03T00:00:00.000Z");
     const retry = await store.recordCatch(playerId, fish.id, "sea_room:1", "2026-10-03T00:00:01.000Z");
+    const tokenHash = "c".repeat(64);
+    assert.equal(await store.registerPlayerSession(playerId, tokenHash), true);
+    assert.equal(await store.registerPlayerSession(playerId, tokenHash), true);
+    assert.equal(await store.registerPlayerSession(playerId, "d".repeat(64)), false);
+    assert.equal(await store.getPlayerIdForSession(tokenHash), playerId);
 
     assert.equal(species.size, FISH_SPECIES.length + 1);
     assert.equal(species.get("css-001")?.number, 3);
@@ -112,6 +132,7 @@ test("PostgreSQL catch persistence seeds catalog and counts each event key once"
     assert.equal(first.entries.find(entry => entry.id === fish.id)?.catches, 1);
     assert.equal(retry.entries.find(entry => entry.id === fish.id)?.catches, 1);
     assert.equal(retry.registered, 1);
+    assert.equal(playerSessions.size, 1);
   } finally {
     await store.close();
   }
