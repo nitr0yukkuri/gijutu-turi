@@ -1,9 +1,12 @@
 .git
 .gitignore
+.aws
+.local-certs
 .npm-cache
 node_modules
 dist
 data
+submission
 .env
 .env.*
 !.env.example
