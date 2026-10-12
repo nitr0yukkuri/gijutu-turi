@@ -540,7 +540,7 @@ function FishingApp() {
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
   const runtime = useOceanRuntime({ isPhone, controllerId, initialFishId: fishingRoute.initialFishId, routePath: fishingRoute.path, oceanMountRef, collectionOpen });
-  const { state, presentationState, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle, soundEnabled, collection, selectedCollectionId, controllerUrl, controllerHost, controllerUrlError, sensorStatus, sensorButtonLabel } = runtime;
+  const { state, presentationState, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle, soundEnabled, collection, selectedCollectionId, controllerUrl, controllerHost, controllerUrlError, sensorStatus, sensorButtonLabel, sensorsOn } = runtime;
   const { activate, retryCatchSave, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, startReel, stopReel, performPhonePull, toggleSensor, toggleSound, showToast } = runtime.actions;
   const fighting = state.phase === "fighting";
   const biting = state.phase === "biting";
@@ -654,7 +654,7 @@ function FishingApp() {
         </footer>
         <p id="render-notice" className="render-notice" role="status" hidden={!renderFailed}>3D表示を開始できませんでした。WebGLに対応したブラウザで開き直してください。</p>
       </main>
-      <section id="phone" className="phone" hidden={!isPhone} aria-label="釣り竿コントローラー" data-fight={String(fighting || biting)}>
+      <section id="phone" className="phone" hidden={!isPhone} aria-label="釣り竿コントローラー" data-fight={String(fighting || biting)} data-sensors={String(sensorsOn)}>
         <a className="phone-brand" href="./">技術釣り</a><div id="phone-connection" className="phone-connection" data-connected={String(online && displayConnected)} aria-live="polite"><i aria-hidden="true" /><span>{!online ? "海に接続しています…" : displayConnected ? "PC画面と接続済み" : "PC画面を待っています"}</span></div>
         <div className="phone-instruction"><p id="phone-kicker">スマホ操作</p><h1 id="phone-title">{phoneTitles[state.phase]}</h1><p id="phone-hint">{phoneHint}</p>{hookFeedback && <p className="hook-critical-status" role="status">ナイスフッキング！</p>}</div>
         <div key={rodStrokeRevision} className={`rod-symbol${fighting ? " is-fighting" : ""}${state.fishId === "k8s-001" && fighting ? " is-k8s-fighting" : ""}${k8sLunge > .01 ? " is-k8s-lunge" : ""}`} style={k8sRodStyle} aria-hidden="true"><svg viewBox="0 0 160 230"><path d="M48 220 93 32 Q101 14 113 18" /><path className="rod-thread" d="M113 18q22 112-12 164" /><circle cx="101" cy="185" r="4" /><path d="m85 51 15 4m-19 11 16 4m-30 53 16 4" /></svg></div>
@@ -689,3 +689,4 @@ function FishingApp() {
     </>
   );
 }
+

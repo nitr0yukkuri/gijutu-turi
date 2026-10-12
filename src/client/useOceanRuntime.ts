@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefOb
 import { isOceanMessage } from "../ocean-contract.js";
 import { FishingAudioController } from "../audio/fishing-audio.js";
 import type { FishSurfaceImpactCue } from "../fish-surface-impact.js";
-import { CastMotionGesture, ReelMotionGesture, castStrengthFromSwing, isScreenReelBlockingMotion, reelAngularSignal } from "./cast-motion.js";
+import { CastMotionGesture, ReelMotionGesture, castStrengthFromMotion, isScreenReelBlockingMotion, reelAngularSignal } from "./cast-motion.js";
 import { createControllerLink, isLoopbackHost } from "./controller-url.js";
 import { PhonePullMotion } from "./phone-pull-motion.js";
 import { UpwardHookMotion } from "./upward-hook-motion.js";
@@ -145,7 +145,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const lastGestureRef = useRef(0);
   const gravityRef = useRef({ x: 0, y: 0, z: 0 });
   const gravitySampleAtRef = useRef(0);
-  const warmupRef = useRef(0);
+  const gravityInitializedRef = useRef(false);
   const motionReelRef = useRef(false);
   const motionListenerRef = useRef<((event: DeviceMotionEvent) => void) | null>(null);
   const phonePullMotionRef = useRef(new PhonePullMotion());
@@ -664,8 +664,8 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       const motionApi = window.DeviceMotionEvent as typeof DeviceMotionEvent & { requestPermission?: () => Promise<"granted" | "denied"> };
       if (typeof motionApi.requestPermission === "function" && await motionApi.requestPermission() !== "granted") { setSensorStatus("センサーは許可されていません。タッチ操作で遊べます。"); return; }
       sensorSamplesRef.current = 0;
-      warmupRef.current = 0;
       gravitySampleAtRef.current = 0;
+      gravityInitializedRef.current = false;
       castGestureRef.current.reset();
       upwardHookMotionRef.current.reset();
       reelMotionGestureRef.current.reset();
@@ -690,21 +690,22 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
         const now = performance.now();
         if (!hasLinear) {
           const gravity = gravityRef.current;
-          const elapsed = gravitySampleAtRef.current === 0 ? 1 / 60 : clamp((now - gravitySampleAtRef.current) / 1000, .005, .1);
-          const alpha = 1 - Math.exp(-elapsed / .1);
-          gravity.x += (x - gravity.x) * alpha; gravity.y += (y - gravity.y) * alpha; gravity.z += (z - gravity.z) * alpha;
-          x -= gravity.x; y -= gravity.y; z -= gravity.z;
+          if (!gravityInitializedRef.current) {
+            gravity.x = x; gravity.y = y; gravity.z = z;
+            gravityInitializedRef.current = true;
+            x = 0; y = 0; z = 0;
+          } else {
+            const elapsed = gravitySampleAtRef.current === 0 ? 1 / 60 : clamp((now - gravitySampleAtRef.current) / 1000, .005, .1);
+            const alpha = 1 - Math.exp(-elapsed / .1);
+            gravity.x += (x - gravity.x) * alpha; gravity.y += (y - gravity.y) * alpha; gravity.z += (z - gravity.z) * alpha;
+            x -= gravity.x; y -= gravity.y; z -= gravity.z;
+          }
           gravitySampleAtRef.current = now;
         }
-        if (warmupRef.current++ < 15) return;
         const acceleration = Math.hypot(x, y, z);
         const rate = event.rotationRate;
-        const hasRotationRate = Boolean(rate && [rate.alpha, rate.beta, rate.gamma].every(Number.isFinite));
-        const castRotationRate = hasRotationRate
-          ? { alpha: rate?.alpha ?? 0, beta: rate?.beta ?? 0, gamma: rate?.gamma ?? 0 }
-          : undefined;
-        const angularSpeed = castRotationRate
-          ? Math.hypot(castRotationRate.alpha, castRotationRate.beta, castRotationRate.gamma)
+        const angularSpeed = rate && [rate.alpha, rate.beta, rate.gamma].every(Number.isFinite)
+          ? Math.hypot(rate.alpha ?? 0, rate.beta ?? 0, rate.gamma ?? 0)
           : 0;
         const phase = stateRef.current.phase;
         if (!(phase === "idle" || phase === "biting" || phase === "fighting") || !onlineRef.current || now - lastGestureRef.current < 700 && phase !== "fighting") {
@@ -760,9 +761,9 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
         upwardHookMotionRef.current.reset();
         phonePullMotionRef.current.reset();
         reelMotionGestureRef.current.reset();
-        const gesture = castGestureRef.current.update(acceleration, angularSpeed, now, castRotationRate);
+        const gesture = castGestureRef.current.update(acceleration, angularSpeed, now);
         if (gesture) {
-          cast(castStrengthFromSwing(gesture.acceleration, gesture.angularSpeed, gesture.swingAngle), 0);
+          cast(castStrengthFromMotion(gesture.acceleration, gesture.angularSpeed), 0);
           lastGestureRef.current = now;
         }
       };
@@ -803,3 +804,4 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     },
   };
 }
+
