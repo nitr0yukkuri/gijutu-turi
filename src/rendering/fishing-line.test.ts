@@ -109,3 +109,17 @@ test('keeps a fully submerged line out of the air buffer',()=>{
   assert.equal(pointAt(water,0).y,-1);
   assert.equal(pointAt(water,16).y,-3);
 });
+
+test('samples the unchanged water surface once per generated line point',()=>{
+  const air=buffer(),water=buffer();
+  let heightSamples=0;
+  const split=updateFishingLineBuffers(
+    {x:0,y:2,z:0},{x:4,y:1,z:0},air,water,
+    ()=>{heightSamples++;return 0;},.3,.2,0,
+  );
+  assert.equal(split.waterFraction,null);
+  // Two endpoints + 48 crossing probes + 17 output vertices. Previously each
+  // probe/vertex evaluated the same deterministic surface height a second time.
+  assert.equal(heightSamples,67);
+});
+
