@@ -4,12 +4,18 @@ const clamp = (value: number, min: number, max: number): number =>
 const finiteMagnitude = (value: number): number =>
   Number.isFinite(value) ? Math.max(0, value) : 0;
 
-const CAST_START_ACCELERATION = 13;
-const CAST_START_ANGULAR_SPEED = 240;
+const CAST_START_ACCELERATION = 8;
+const CAST_START_ANGULAR_SPEED = 120;
+const CAST_FULL_ACCELERATION = 28;
+const CAST_FULL_ANGULAR_SPEED = 500;
+const CAST_MIN_SWING_ANGLE = 15;
+const CAST_FULL_SWING_ANGLE = 100;
 const CAST_RELEASE_ACCELERATION = 5;
 const CAST_RELEASE_ANGULAR_SPEED = 100;
+const CAST_FILTER_SAMPLES = 5;
+const CAST_SIGNAL_SMOOTH_SECONDS = .08;
 const CAST_CONFIRM_SAMPLES = 2;
-const CAST_CONFIRM_WINDOW_MS = 90;
+const CAST_CONFIRM_WINDOW_MS = 150;
 const CAST_CONFIRM_SPAN_MS = 25;
 const CAST_RELEASE_STABLE_MS = 90;
 const CAST_MIN_IMPULSE_MS = 50;
@@ -19,13 +25,48 @@ const CAST_MAX_SAMPLE_GAP_MS = 120;
 
 /** Map a phone flick's linear acceleration and angular speed to cast power. */
 export function castStrengthFromMotion(acceleration: number, angularSpeed: number | null): number {
-  const accelerationScore = clamp((finiteMagnitude(acceleration) - 8) / 20, 0, 1);
+  // Start thresholds are the bottom of the distance scale, so a just-detected
+  // slow flick casts close instead of jumping straight to the middle distance.
+  const accelerationScore = clamp(
+    (finiteMagnitude(acceleration) - CAST_START_ACCELERATION)
+      / (CAST_FULL_ACCELERATION - CAST_START_ACCELERATION),
+    0,
+    1,
+  );
   const angularScore = angularSpeed === null
     ? 0
-    : clamp((finiteMagnitude(angularSpeed) - 120) / 380, 0, 1);
+    : clamp(
+      (finiteMagnitude(angularSpeed) - CAST_START_ANGULAR_SPEED)
+        / (CAST_FULL_ANGULAR_SPEED - CAST_START_ANGULAR_SPEED),
+      0,
+      1,
+    );
   const strongest = Math.max(accelerationScore, angularScore);
-  const combined = clamp(strongest + Math.min(accelerationScore, angularScore) * .15, 0, 1);
-  return .2 + combined * .8;
+  const speedScore = clamp(strongest + Math.min(accelerationScore, angularScore) * .15, 0, 1);
+  return .2 + speedScore * .8;
+}
+
+/**
+ * Convert the strength and angular sweep of a phone cast into cast power.
+ * A fast wrist snap over a small arc should not travel as far as a full swing.
+ */
+export function castStrengthFromSwing(
+  acceleration: number,
+  angularSpeed: number | null,
+  swingAngle: number,
+): number {
+  const speedStrength = castStrengthFromMotion(acceleration, angularSpeed);
+  const speedScore = (speedStrength - .2) / .8;
+  const rangeScore = clamp(
+    (finiteMagnitude(swingAngle) - CAST_MIN_SWING_ANGLE)
+      / (CAST_FULL_SWING_ANGLE - CAST_MIN_SWING_ANGLE),
+    0,
+    1,
+  );
+  // Keep some influence from speed for short swings, while making a broad,
+  // deliberate sweep count more than a brief high-speed wrist flick.
+  const combinedScore = speedScore * (.35 + rangeScore * .65);
+  return .2 + clamp(combinedScore, 0, 1) * .8;
 }
 
 export function isCastMotionStart(acceleration: number, angularSpeed: number): boolean {
@@ -38,7 +79,12 @@ export function isCastMotionReleased(acceleration: number, angularSpeed: number)
     && finiteMagnitude(angularSpeed) < CAST_RELEASE_ANGULAR_SPEED;
 }
 
-export type CastMotionPeak = { acceleration: number; angularSpeed: number };
+export type CastMotionPeak = { acceleration: number; angularSpeed: number; swingAngle: number };
+export type CastRotationRate = { alpha: number; beta: number; gamma: number };
+type CastMotionSample = CastMotionPeak & CastRotationRate;
+type CastMotionFilteredSample = Pick<CastMotionSample, "acceleration" | "angularSpeed" | "alpha" | "beta" | "gamma">;
+
+const zeroRotation: CastRotationRate = { alpha: 0, beta: 0, gamma: 0 };
 
 /** Requires a sustained throw impulse followed by a stable release. */
 export class CastMotionGesture {
@@ -48,26 +94,84 @@ export class CastMotionGesture {
   private lastAt: number | null = null;
   private startSamples = 0;
   private releaseAt: number | null = null;
-  private peak: CastMotionPeak = { acceleration: 0, angularSpeed: 0 };
+  private peak: CastMotionPeak = { acceleration: 0, angularSpeed: 0, swingAngle: 0 };
+  private recentSamples: CastMotionSample[] = [];
+  private filtered: CastMotionFilteredSample = { acceleration: 0, angularSpeed: 0, ...zeroRotation };
+  private lastFilteredRotation: CastRotationRate | null = null;
+  private accumulatedRotation: CastRotationRate = { ...zeroRotation };
+  private gestureStartRotation: CastRotationRate | null = null;
 
-  update(acceleration: number, angularSpeed: number, now: number): CastMotionPeak | null {
-    if (![acceleration, angularSpeed, now].every(Number.isFinite)) {
+  update(
+    acceleration: number,
+    angularSpeed: number,
+    now: number,
+    rotationRate: CastRotationRate = { alpha: angularSpeed, beta: 0, gamma: 0 },
+  ): CastMotionPeak | null {
+    if (![acceleration, angularSpeed, now, rotationRate.alpha, rotationRate.beta, rotationRate.gamma].every(Number.isFinite)) {
       this.reset();
       return null;
     }
-    acceleration = Math.max(0, acceleration);
-    angularSpeed = Math.max(0, angularSpeed);
+    let elapsed = this.lastAt === null ? 1 / 60 : (now - this.lastAt) / 1000;
+    if (this.lastAt !== null && (now <= this.lastAt || now - this.lastAt > CAST_MAX_SAMPLE_GAP_MS)) {
+      this.reset();
+      elapsed = 1 / 60;
+    }
+    this.lastAt = now;
+    this.recentSamples.push({
+      acceleration: Math.max(0, acceleration),
+      angularSpeed: Math.max(0, angularSpeed),
+      alpha: rotationRate.alpha,
+      beta: rotationRate.beta,
+      gamma: rotationRate.gamma,
+      swingAngle: 0,
+    });
+    if (this.recentSamples.length > CAST_FILTER_SAMPLES) this.recentSamples.shift();
+    if (this.recentSamples.length < CAST_FILTER_SAMPLES) return null;
 
-    if (this.lastAt !== null && (now <= this.lastAt || now - this.lastAt > CAST_MAX_SAMPLE_GAP_MS)) this.reset();
+    // A short median rejects one- and two-frame device-motion spikes before
+    // they can arm a cast or become its peak power. It preserves sustained
+    // movement while making the result insensitive to a single bad sample.
+    const median = (key: keyof CastMotionSample): number => {
+      const sorted = this.recentSamples.map(sample => sample[key]).sort((a, b) => a - b);
+      return sorted[Math.floor(sorted.length / 2)] ?? 0;
+    };
+    const medianAcceleration = median("acceleration");
+    const medianAngularSpeed = median("angularSpeed");
+    const smoothing = 1 - Math.exp(-elapsed / CAST_SIGNAL_SMOOTH_SECONDS);
+    this.filtered.acceleration += (medianAcceleration - this.filtered.acceleration) * smoothing;
+    this.filtered.angularSpeed += (medianAngularSpeed - this.filtered.angularSpeed) * smoothing;
+    this.filtered.alpha += (median("alpha") - this.filtered.alpha) * smoothing;
+    this.filtered.beta += (median("beta") - this.filtered.beta) * smoothing;
+    this.filtered.gamma += (median("gamma") - this.filtered.gamma) * smoothing;
+    acceleration = this.filtered.acceleration;
+    angularSpeed = this.filtered.angularSpeed;
+
+    if (this.phase === "idle") this.accumulatedRotation = { ...zeroRotation };
+    const previousRotation = this.lastFilteredRotation;
+    if (previousRotation !== null) {
+      this.accumulatedRotation.alpha += (previousRotation.alpha + this.filtered.alpha) * .5 * elapsed;
+      this.accumulatedRotation.beta += (previousRotation.beta + this.filtered.beta) * .5 * elapsed;
+      this.accumulatedRotation.gamma += (previousRotation.gamma + this.filtered.gamma) * .5 * elapsed;
+    }
+    this.lastFilteredRotation = {
+      alpha: this.filtered.alpha,
+      beta: this.filtered.beta,
+      gamma: this.filtered.gamma,
+    };
+    const swingAngle = this.gestureStartRotation === null ? 0 : Math.hypot(
+      this.accumulatedRotation.alpha - this.gestureStartRotation.alpha,
+      this.accumulatedRotation.beta - this.gestureStartRotation.beta,
+      this.accumulatedRotation.gamma - this.gestureStartRotation.gamma,
+    );
 
     if (this.phase === "idle") {
       if (!isCastMotionStart(acceleration, angularSpeed)) return null;
       this.phase = "arming";
       this.startedAt = now;
       this.lastStartAt = now;
-      this.lastAt = now;
       this.startSamples = 1;
-      this.peak = { acceleration, angularSpeed };
+      this.gestureStartRotation = { ...this.accumulatedRotation };
+      this.peak = { acceleration, angularSpeed, swingAngle };
       return null;
     }
 
@@ -88,17 +192,17 @@ export class CastMotionGesture {
         return null;
       }
       this.lastStartAt = now;
-      this.lastAt = now;
       this.startSamples += 1;
       this.peak.acceleration = Math.max(this.peak.acceleration, acceleration);
       this.peak.angularSpeed = Math.max(this.peak.angularSpeed, angularSpeed);
+      this.peak.swingAngle = Math.max(this.peak.swingAngle, swingAngle);
       if (this.startSamples >= CAST_CONFIRM_SAMPLES && now - startedAt >= CAST_CONFIRM_SPAN_MS) this.phase = "active";
       return null;
     }
 
-    this.lastAt = now;
     this.peak.acceleration = Math.max(this.peak.acceleration, acceleration);
     this.peak.angularSpeed = Math.max(this.peak.angularSpeed, angularSpeed);
+    this.peak.swingAngle = Math.max(this.peak.swingAngle, swingAngle);
     if (isCastMotionReleased(acceleration, angularSpeed)) {
       if (now - startedAt < CAST_MIN_IMPULSE_MS) {
         this.reset();
@@ -123,7 +227,12 @@ export class CastMotionGesture {
     this.lastAt = null;
     this.startSamples = 0;
     this.releaseAt = null;
-    this.peak = { acceleration: 0, angularSpeed: 0 };
+    this.peak = { acceleration: 0, angularSpeed: 0, swingAngle: 0 };
+    this.recentSamples = [];
+    this.filtered = { acceleration: 0, angularSpeed: 0, ...zeroRotation };
+    this.lastFilteredRotation = null;
+    this.accumulatedRotation = { ...zeroRotation };
+    this.gestureStartRotation = null;
   }
 }
 
