@@ -1,5 +1,6 @@
 export type FishingLinePoint = Readonly<{x:number;y:number;z:number}>;
 export type MutableFishingLinePoint = {x:number;y:number;z:number};
+type MutableFishingLineSample = MutableFishingLinePoint & {surfaceY:number};
 
 export type FishingLineBuffer = Readonly<{
   positions:Float32Array;
@@ -25,12 +26,13 @@ function setLinePoint(
   waterSag:number,
   surfaceHeight:(x:number,z:number)=>number,
   maxSag:number,
-  result:MutableFishingLinePoint,
-):MutableFishingLinePoint {
+  result:MutableFishingLineSample,
+):MutableFishingLineSample {
   const x=start.x+(end.x-start.x)*fraction;
   const z=start.z+(end.z-start.z)*fraction;
   const baseY=start.y+(end.y-start.y)*fraction;
-  const depth=surfaceHeight(x,z)-baseY;
+  const surfaceY=surfaceHeight(x,z);
+  const depth=surfaceY-baseY;
   // Blend the two media around the surface instead of starting a new sag curve
   // at the crossing. This keeps both the line position and tangent continuous.
   const wet=smoothstep(clamp((depth+.12)/.24));
@@ -40,6 +42,7 @@ function setLinePoint(
   result.x=x;
   result.y=baseY-sag*bow;
   result.z=z;
+  result.surfaceY=surfaceY;
   return result;
 }
 
@@ -51,10 +54,10 @@ function signedSurfaceDistance(
   waterSag:number,
   surfaceHeight:(x:number,z:number)=>number,
   maxSag:number,
-  point:MutableFishingLinePoint,
+  point:MutableFishingLineSample,
 ):number {
   setLinePoint(start,end,fraction,airSag,waterSag,surfaceHeight,maxSag,point);
-  return point.y-surfaceHeight(point.x,point.z);
+  return point.y-point.surfaceY;
 }
 
 function findSurfaceCrossing(
@@ -67,7 +70,7 @@ function findSurfaceCrossing(
   startsUnderwater:boolean,
   startDelta:number,
   endDelta:number,
-  point:MutableFishingLinePoint,
+  point:MutableFishingLineSample,
 ):number|null {
   let previous=0,previousDelta=startDelta;
   for(let sample=1;sample<=48;sample++){
@@ -109,7 +112,7 @@ export function updateFishingLineBuffers(
   load:number,
   projectSubmergedPoint?:FishingLinePointProjector,
 ):FishingLineSplit {
-  const point:MutableFishingLinePoint={x:0,y:0,z:0};
+  const point:MutableFishingLineSample={x:0,y:0,z:0,surfaceY:0};
   const length=Math.hypot(end.x-start.x,end.y-start.y,end.z-start.z);
   const maxSag=length*.12;
   const normalizedLoad=clamp(load);
@@ -124,7 +127,7 @@ export function updateFishingLineBuffers(
   const waterVisible=waterFraction===null?startsUnderwater:startsUnderwater?waterFraction>.001:waterFraction<.999;
   writeSharedCurve(
     air,water,start,end,airSag,waterSag,normalizedLoad,waterFraction,startsUnderwater,
-    airVisible,waterVisible,surfaceHeight,maxSag,point,projectSubmergedPoint,
+    airVisible,waterVisible,surfaceHeight,maxSag,Math.max(0,-startDelta,-endDelta),point,projectSubmergedPoint,
   );
   return {waterFraction,airVisible,waterVisible};
 }
@@ -143,7 +146,8 @@ function writeSharedCurve(
   waterVisible:boolean,
   surfaceHeight:(x:number,z:number)=>number,
   maxSag:number,
-  point:MutableFishingLinePoint,
+  endpointDepth:number,
+  point:MutableFishingLineSample,
   projectSubmergedPoint?:FishingLinePointProjector,
 ):void {
   const count=Math.min(
@@ -155,7 +159,6 @@ function writeSharedCurve(
     ? -1
     : Math.max(1,Math.min(last-1,Math.round(surfaceFraction*last)));
   const airAlpha=.48+.30*load,waterAlpha=.34+.14*load;
-  const endpointDepth=Math.max(0,surfaceHeight(start.x,start.z)-start.y,surfaceHeight(end.x,end.z)-end.y);
 
   for(let index=0;index<count;index++){
     const q=last<=0?0:index/last;
@@ -167,7 +170,7 @@ function writeSharedCurve(
           ? surfaceFraction!*index/crossingIndex
           : surfaceFraction!+(1-surfaceFraction!)*(index-crossingIndex)/(last-crossingIndex);
     setLinePoint(start,end,fraction,airSag,waterSag,surfaceHeight,maxSag,point);
-    const physicalDepth=Math.max(0,surfaceHeight(point.x,point.z)-point.y);
+    const physicalDepth=Math.max(0,point.surfaceY-point.y);
     const submergedProgress=surfaceFraction===null
       ? q
       : startsUnderwater
@@ -196,3 +199,4 @@ function writeSharedCurve(
     water.rgba[colorOffset+3]=waterWeight*waterAlpha*depthFade*(1-.16*submergedProgress);
   }
 }
+
