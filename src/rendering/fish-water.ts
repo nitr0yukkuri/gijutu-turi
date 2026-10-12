@@ -36,6 +36,36 @@ export function waterHeightAt(x:number,z:number,time:number,ripples:readonly Wat
   return height;
 }
 
+function rippleHeightAt(x:number,z:number,time:number,ripples:readonly WaterRippleSample[]):number {
+  let height=0;
+  for(const ripple of ripples){
+    const age=time-ripple.z;
+    if(age<=0||age>=RIPPLE_LIFETIME)continue;
+    const distance=Math.hypot(x-ripple.x,z-ripple.y),radius=distance-age*RIPPLE_EXPANSION_SPEED;
+    height+=Math.sin(radius*RIPPLE_FREQUENCY)*Math.exp(-radius*radius*RIPPLE_WIDTH)*Math.exp(-age*RIPPLE_DECAY)*RIPPLE_HEIGHT*ripple.w;
+  }
+  return height;
+}
+
+/** CPU mirror of the shader's h(p-eps)-h(p+eps) normal differences. */
+export function waterNormalHeightDifferenceAt(
+  x:number,z:number,time:number,epsilon:number,ripples:readonly WaterRippleSample[]=[]
+):Readonly<{x:number;z:number}> {
+  let hx=0,hz=0,frequency=OCEAN_WAVE_FREQUENCY,amplitude=OCEAN_WAVE_AMPLITUDE,angle=.3;
+  for(let octave=0;octave<OCEAN_WAVE_OCTAVES;octave++){
+    const directionX=Math.cos(angle),directionZ=Math.sin(angle);
+    const phase=(x*directionX+z*directionZ)*frequency+time*(OCEAN_WAVE_TIME_BASE+octave*OCEAN_WAVE_TIME_STEP);
+    hx-=2*amplitude*Math.cos(phase)*Math.sin(frequency*epsilon*directionX);
+    hz-=2*amplitude*Math.cos(phase)*Math.sin(frequency*epsilon*directionZ);
+    frequency*=OCEAN_WAVE_FREQUENCY_MULTIPLIER;
+    amplitude*=OCEAN_WAVE_AMPLITUDE_DECAY;
+    angle+=OCEAN_WAVE_ANGLE_STEP;
+  }
+  hx+=rippleHeightAt(x-epsilon,z,time,ripples)-rippleHeightAt(x+epsilon,z,time,ripples);
+  hz+=rippleHeightAt(x,z-epsilon,time,ripples)-rippleHeightAt(x,z+epsilon,time,ripples);
+  return {x:hx,z:hz};
+}
+
 export const waterHeightGLSL = `
 float heightAt(vec2 p) {
   float h=0.0;
@@ -63,7 +93,7 @@ varying float vWaterFinFacing;
 ${waterHeightGLSL}
 `;
 
-const dockerWhaleNormalDifference = `
+export const waterNormalDifferenceGLSL = `
 // Keep the existing centered-difference normal, but evaluate its seven
 // sinusoidal wave octaves from the equivalent trigonometric identity. Ripple
 // differences remain on the original height function for the same appearance.
@@ -226,14 +256,11 @@ export function fishWaterCoverage(depth,distance,transmission,part='body',profil
 }
 
 const opticsFor = (profile: FishWaterProfile) => {
-const normal = profile === DOCKER_WHALE_WATER_PROFILE
-  ? `float hx,hz;
+const normal = `float hx,hz;
   waterWaveDifference(p.xz,eps,hx,hz);
   hx+=rippleOnlyHeight(p.xz-vec2(eps,0.0))-rippleOnlyHeight(p.xz+vec2(eps,0.0));
   hz+=rippleOnlyHeight(p.xz-vec2(0.0,eps))-rippleOnlyHeight(p.xz+vec2(0.0,eps));
-  vec3 n=normalize(vec3(hx,2.0*eps,hz));`
-  : `vec3 n=normalize(vec3(heightAt(p.xz-vec2(eps,0.0))-heightAt(p.xz+vec2(eps,0.0)),2.0*eps,
-                        heightAt(p.xz-vec2(0.0,eps))-heightAt(p.xz+vec2(0.0,eps))));`;
+  vec3 n=normalize(vec3(hx,2.0*eps,hz));`;
 return `
 uniform sampler2D uWaterBackdrop;
 uniform vec2 uWaterSize;
@@ -295,7 +322,7 @@ vec3 throughWater(vec3 fishColor) {
 export function applyFishWater(material, waterUniforms, part='detail', profile=DEFAULT_FISH_WATER_PROFILE, finSide=0) {
   const compile=material.onBeforeCompile;
   const cacheKey=material.customProgramCacheKey();
-  const underwaterVersion=profile===DOCKER_WHALE_WATER_PROFILE?'underwater-docker-consistent-v1':'underwater-consistent-v1';
+  const underwaterVersion=profile===DOCKER_WHALE_WATER_PROFILE?'underwater-docker-consistent-v1':'underwater-consistent-v2';
   const originallyToneMapped=material.toneMapped;
   material.onBeforeCompile=shader=>{
     compile.call(material,shader);
@@ -308,7 +335,7 @@ export function applyFishWater(material, waterUniforms, part='detail', profile=D
     // Fins have a custom shader; other parts use Three's project chunk.
     shader.vertexShader=shader.vertexShader.replace('gl_Position=projectionMatrix*mv;',
       'gl_Position=fishWaterProjection(p);');
-     shader.fragmentShader=surface+(profile===DOCKER_WHALE_WATER_PROFILE?dockerWhaleNormalDifference:'')+opticsFor(profile)+'\n'+shader.fragmentShader;
+     shader.fragmentShader=surface+waterNormalDifferenceGLSL+opticsFor(profile)+'\n'+shader.fragmentShader;
     shader.fragmentShader=shader.fragmentShader.replace('#include <tonemapping_fragment>',
       `gl_FragColor.rgb=throughWater(gl_FragColor.rgb);
       ${originallyToneMapped?'':'vec3 fishBeforeTone=gl_FragColor.rgb;'}

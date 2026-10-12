@@ -11,6 +11,7 @@ import {
   K8S_LEVIATHAN_WATER_PROFILE,
   waterHeightAt,
   waterHeightGLSL,
+  waterNormalHeightDifferenceAt,
 } from './fish-water.js';
 
 test('underwater view weighting keeps the near pectoral clear and lets the far one recede',()=>{
@@ -50,6 +51,28 @@ test('CPU water contact height and shader use the same wave/ripple parameters',(
   assert.ok(waterHeightGLSL.includes('d-age*1.25'));
 });
 
+test('optimized wave normal differences match the original centered height samples',()=>{
+  const cases=[
+    {x:2.4,z:-8.1,time:1.7,epsilon:.035,ripples:[]},
+    {x:-23.75,z:41.2,time:4.6,epsilon:.173,ripples:[
+      {x:-23.1,y:40.7,z:2.9,w:.85},
+      {x:-25.2,y:42.8,z:3.4,w:.42},
+    ]},
+    {x:108.3,z:-76.5,time:9.2,epsilon:.2,ripples:[
+      {x:104,y:-75,z:1,w:1},
+    ]},
+  ];
+  for(const sample of cases){
+    const difference=waterNormalHeightDifferenceAt(sample.x,sample.z,sample.time,sample.epsilon,sample.ripples);
+    const expectedX=waterHeightAt(sample.x-sample.epsilon,sample.z,sample.time,sample.ripples)
+      -waterHeightAt(sample.x+sample.epsilon,sample.z,sample.time,sample.ripples);
+    const expectedZ=waterHeightAt(sample.x,sample.z-sample.epsilon,sample.time,sample.ripples)
+      -waterHeightAt(sample.x,sample.z+sample.epsilon,sample.time,sample.ripples);
+    assert.ok(Math.abs(difference.x-expectedX)<1e-12,'x normal difference drifted: '+difference.x+' vs '+expectedX);
+    assert.ok(Math.abs(difference.z-expectedZ)<1e-12,'z normal difference drifted: '+difference.z+' vs '+expectedZ);
+  }
+});
+
 for (const [species, profile] of [
   ['Go fish, Rust marlin, and JS eel', DEFAULT_FISH_WATER_PROFILE],
   ['Docker whale', DOCKER_WHALE_WATER_PROFILE],
@@ -69,6 +92,12 @@ for (const [species, profile] of [
     assert.match(shader.fragmentShader, /float presentationVisibility=uFishVisibility/);
     assert.match(shader.fragmentShader, /mix\(fishColor,underwater,submerged\)/,
       'the same physical water depth and refraction blend remains active for every phase');
+    assert.match(shader.fragmentShader,/waterWaveDifference\(p\.xz,eps,hx,hz\)/,
+      'each live species uses the shared equivalent wave-normal calculation');
+    assert.doesNotMatch(shader.fragmentShader,/heightAt\(p\.xz-vec2\(eps,0\.0\)/,
+      'fish normals do not repeat full wave-height evaluation at every offset');
+    assert.match(material.customProgramCacheKey(),profile===DOCKER_WHALE_WATER_PROFILE? /underwater-docker-consistent-v1/ : /underwater-consistent-v2/,
+      'changed shader source has a versioned program-cache key');
     assert.doesNotMatch(shader.fragmentShader, /uFishCombat|combatPigmentBlend|fightSubmerged|combatAnatomy|combatDetail/,
       'fight state cannot alter water optics or fish opacity');
   });
