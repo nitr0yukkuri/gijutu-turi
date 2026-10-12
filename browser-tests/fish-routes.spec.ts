@@ -126,7 +126,7 @@ test("/complete shows every fish as a read-only showcase without opening game AP
   await page.getByRole("navigation", { name: "展示内容" }).getByRole("button", { name: "技術ツリー" }).click();
   await expect(page.getByRole("heading", { name: "技術ツリー" })).toBeVisible();
   await expect(page.locator(".tech-tree-node.is-unlocked")).toHaveCount(6);
-  await expect(page.locator(".tech-tree-node-mark")).toHaveText(["✓", "✓", "✓", "✓", "✓", "✓"]);
+  await expect(page.locator(".tech-tree-node-mark")).toHaveCount(0);
 
   await page.getByRole("navigation", { name: "展示内容" }).getByRole("button", { name: "魚図鑑" }).click();
   const desktopWidth = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth }));

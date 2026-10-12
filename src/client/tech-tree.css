@@ -65,8 +65,6 @@
 .tech-tree-fish-fill { fill: currentColor; }
 .tech-tree-fish-detail { fill: none; stroke: #16323e; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .tech-tree-fish-eye { fill: #16323e; }
-.tech-tree-node-mark { position: absolute; top: -5px; right: -7px; display: grid; place-items: center; width: 13px; height: 13px; font: 10px/1 ui-monospace, monospace; color: #8cabb6; }
-.tech-tree-node.is-unlocked .tech-tree-node-mark { color: var(--node-accent); }
 .tech-tree-node-copy { display: grid; justify-items: center; gap: 3px; min-width: 0; }
 .tech-tree-node-copy strong { min-height: 22px; color: #eff5f1; font-size: 16px; font-weight: 500; line-height: 1.35; }
 .tech-tree-node-copy small { min-height: 36px; color: #b1c7ce; font-size: 12px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
