@@ -31,9 +31,6 @@
 .tech-tree-progress span { color: #b0c6cc; font-size: 11px; }
 .tech-tree-progress strong { color: #e4f1ee; font: 400 26px/1.2 ui-monospace, Consolas, monospace; letter-spacing: -.06em; }
 .tech-tree-progress small { color: #8cabb5; font-size: 13px; letter-spacing: 0; }
-.tech-tree-progress-track { display: flex; gap: 4px; margin-top: 9px; }
-.tech-tree-progress-track i { flex: 1; height: 2px; background: #a9ccd426; }
-.tech-tree-progress-track i.is-discovered { background: #9cd3c6; }
 .tech-tree-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; align-items: start; gap: 24px; }
 
 .tech-tree-map { position: relative; isolation: isolate; min-width: 0; height: 456px; overflow: hidden; border: 1px solid var(--atlas-line); border-radius: 4px; background-color: #0d2631; background-image: radial-gradient(#b4d6da1b .7px, transparent .7px); background-size: 24px 24px; }
@@ -121,14 +118,13 @@
 .complete-fish-book-count { color: #a9c5cc; font-size: 11px; white-space: nowrap; }
 .complete-fish-book-count strong { margin-left: 6px; color: #dff1e9; font: 500 14px ui-monospace, Consolas, monospace; }
 .complete-fish-picker { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
-.complete-fish-card { position: relative; display: grid; grid-template-columns: 38px 1fr; grid-template-rows: auto auto auto; align-items: center; column-gap: 8px; min-width: 0; min-height: 92px; padding: 11px 10px; border: 1px solid #b4d8d128; border-radius: 4px; background: #06192366; color: #dce9e7; text-align: left; transition: border-color .18s, background .18s, transform .18s; }
+.complete-fish-card { position: relative; display: grid; grid-template-columns: 38px 1fr; grid-template-rows: auto auto; align-items: center; column-gap: 8px; min-width: 0; min-height: 92px; padding: 11px 10px; border: 1px solid #b4d8d128; border-radius: 4px; background: #06192366; color: #dce9e7; text-align: left; transition: border-color .18s, background .18s, transform .18s; }
 .complete-fish-card:hover { transform: translateY(-2px); border-color: #bde4dc75; background: #bde4dc10; }
 .complete-fish-card.is-selected, .complete-fish-card[aria-pressed="true"] { border-color: #bde4dc99; background: #bde4dc17; box-shadow: inset 0 0 0 1px #bde4dc24; }
-.complete-fish-card-icon { grid-column: 1; grid-row: 1 / 4; display: grid; place-items: center; width: 38px; height: 38px; }
+.complete-fish-card-icon { grid-column: 1; grid-row: 1 / 3; display: grid; place-items: center; width: 38px; height: 38px; }
 .complete-fish-card-icon svg { display: block; width: 36px; height: 28px; overflow: visible; }
 .complete-fish-card-number { color: #8eaeb7; font: 10px ui-monospace, Consolas, monospace; }
 .complete-fish-card strong { overflow: hidden; color: #e5f0ed; font-size: 12px; font-weight: 500; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
-.complete-fish-card-status { color: #a9d8c8; font-size: 9px; letter-spacing: .03em; }
 .complete-fish-detail { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(260px, .85fr); align-items: center; gap: clamp(20px, 4vw, 48px); min-height: 330px; margin-top: 16px; padding: clamp(16px, 3vw, 28px); border: 1px solid #b4d8d128; border-radius: 4px; background: linear-gradient(120deg, #a8d9db0b, #06192345); }
 .complete-fish-visual { position: relative; min-width: 0; min-height: 270px; overflow: hidden; border-radius: 3px; background: radial-gradient(ellipse at 50% 40%, #4082926e 0%, #1e536666 38%, #0b2c3d99 100%); }
 .complete-fish-visual::after { position: absolute; right: 8%; bottom: 21%; left: 8%; height: 1px; background: linear-gradient(90deg, transparent, #c6e5e54d, transparent); content: ""; pointer-events: none; }
@@ -140,9 +136,8 @@
 .complete-fish-description { margin: 10px 0 0; color: #b7cbd0; font-size: 12px; line-height: 1.9; }
 .complete-fish-habitat { display: flex; gap: 12px; margin: 16px 0 0; padding-top: 12px; border-top: 1px solid #c0d9df24; color: #bed2d5; font-size: 11px; line-height: 1.7; }
 .complete-fish-habitat span { flex: none; color: #8eafb8; }
-.complete-fish-record-note { margin: 18px 0 0; padding: 10px 12px; border-left: 2px solid #9ecdbb; background: #bde4dc0b; color: #9fb9be; font-size: 10px; line-height: 1.7; }
 .complete-showcase .tech-tree { padding-top: 24px; }
-.complete-showcase-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: 18px; border-top: 1px solid #c0d9df24; color: #8fabb4; font-size: 10px; line-height: 1.6; }
+.complete-showcase-footer { display: flex; align-items: center; justify-content: flex-start; gap: 14px; padding-top: 18px; border-top: 1px solid #c0d9df24; color: #8fabb4; font-size: 10px; line-height: 1.6; }
 .complete-showcase-footer a { display: inline-flex; align-items: center; min-height: 44px; color: #d7e9e6; font-size: 12px; letter-spacing: .06em; }
 .complete-showcase-footer a:hover { color: #fff; }
 
@@ -170,9 +165,7 @@
   .complete-fish-copy { padding: 0 4px 4px; }
   .complete-fish-tagline { margin-top: 11px; font-size: 13px; }
   .complete-fish-description { font-size: 11px; }
-  .complete-fish-record-note { margin-top: 13px; }
   .complete-showcase .tech-tree { padding-top: 17px; }
-  .complete-showcase-footer { align-items: flex-start; flex-direction: column; gap: 2px; }
 }
 
 @media (min-width: 761px) and (max-width: 1000px) {

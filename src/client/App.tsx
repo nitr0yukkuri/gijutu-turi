@@ -294,7 +294,6 @@ function TechTreeView({ entries, selectedId, onSelect, isOpen, showCatchCounts =
         <div className="tech-tree-intro-actions">
           <div className="tech-tree-progress" aria-live="polite">
             <div><span>発見</span><strong>{discovered}<small> / {speciesEntries.length}</small></strong></div>
-            <div className="tech-tree-progress-track" aria-hidden="true">{speciesEntries.map(entry => <i key={entry.id} className={entry.status === "caught" ? "is-discovered" : undefined} />)}</div>
           </div>
         </div>
       </header>
@@ -459,7 +458,6 @@ function CompleteFishBook({ selectedId, onSelect }: { selectedId: string; onSele
         <span className="complete-fish-card-icon" aria-hidden="true"><FishTechIcon speciesId={entry.id} /></span>
         <span className="complete-fish-card-number">{String(entry.number).padStart(2, "0")}</span>
         <strong>{collectionName(entry)}</strong>
-        <span className="complete-fish-card-status">✓ 発見済み</span>
       </button>)}
     </nav>
     {selected && <article className="complete-fish-detail" aria-live="polite">
@@ -473,7 +471,6 @@ function CompleteFishBook({ selectedId, onSelect }: { selectedId: string; onSele
         {selected.tagline && <p className="complete-fish-tagline">{selected.tagline}</p>}
         <p className="complete-fish-description">{selected.description ?? selectedSpecies?.description ?? "この魚の展示用プロフィールです。"}</p>
         {selected.habitat && <p className="complete-fish-habitat"><span>生息域</span>{selected.habitat}</p>}
-        <p className="complete-fish-record-note">この表示は展示用です。実際の捕獲記録や釣果回数には反映されません。</p>
       </div>
     </article>}
   </section>;
@@ -514,7 +511,6 @@ function CompleteShowcasePage() {
         />}
         <footer className="complete-showcase-footer">
           <a href="/">海へ戻る</a>
-          <span>展示用の表示です。実際の図鑑記録には反映されません。</span>
         </footer>
       </div>
     </main>
