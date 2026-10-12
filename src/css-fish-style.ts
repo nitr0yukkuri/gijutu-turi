@@ -1,8 +1,7 @@
-import type { OceanPhase } from "./ocean-game.js";
-import type { OceanMode } from "./client/types.js";
-import type { FishMotionSnapshot } from "./fish.js";
-
 export type CssFishVisualState = "normal" | "hit" | "escape" | "tired" | "catchable";
+
+/** Keep the live fish's species palette fixed; show action feedback with motion and effects. */
+export const CSS_FISH_LIVE_STATE: CssFishVisualState = "normal";
 
 export type CssFishPalette = {
   body: number;
@@ -12,7 +11,6 @@ export type CssFishPalette = {
   glow: number;
   pattern: number;
 };
-
 export const CSS_FISH_PALETTES: Readonly<Record<CssFishVisualState, CssFishPalette>> = {
   // The reference keeps one friendly fish silhouette and changes its visual
   // state. CSS fish therefore starts in a readable blue, then moves through
@@ -29,13 +27,6 @@ export const CSS_FISH_PALETTES: Readonly<Record<CssFishVisualState, CssFishPalet
 
 export const getCssFishPalette = (state: CssFishVisualState): CssFishPalette => CSS_FISH_PALETTES[state];
 
-/** Preserve warm pigments in water only while the fish is reacting or fighting hard. */
-export const cssFishRedStateStrength = (state: CssFishVisualState): number => {
-  if (state === "escape") return 1;
-  if (state === "hit") return .78;
-  return 0;
-};
-
 // The collection has no fight state, so it uses a slow specimen-only preview
 // cycle to demonstrate CSS fish's defining behavior without pretending that a
 // catch or a server-side mode transition happened.
@@ -47,27 +38,5 @@ export const cssFishPreviewStateAt = (seconds: number): CssFishVisualState => {
   if (phase < 5.25) return "escape";
   if (phase < 6.75) return "tired";
   if (phase < 7.75) return "catchable";
-  return "normal";
-};
-
-export type CssFishVisualInput = {
-  phase: OceanPhase;
-  mode: OceanMode;
-  tension: number;
-  fish?: FishMotionSnapshot | null;
-};
-
-/**
- * Maps authoritative game state to a presentation state. This never changes
- * catch rules or server state; it only selects the CSS fish's appearance.
- */
-export const resolveCssFishVisualState = ({ phase, mode, tension, fish }: CssFishVisualInput): CssFishVisualState => {
-  if (phase === "caught") return "catchable";
-  if (phase === "escaped") return "escape";
-  if (phase === "biting") return "hit";
-  if (phase !== "fighting") return "normal";
-  if (mode === "surge" || mode === "split") return "escape";
-  const effort = fish?.swim?.effort ?? 1;
-  if (mode === "rest" && effort < .34 && tension < .72) return "tired";
   return "normal";
 };
