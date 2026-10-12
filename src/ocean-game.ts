@@ -3,16 +3,15 @@ import { getFishApproachMotionProfile } from './fish-approach-motion.js';
 import { BITE_APPROACH_SECONDS, PRE_BITE_APPROACH_SECONDS, WAIT_APPROACH_FRACTION, easeFishApproach } from './fish-approach.js';
 import { getFishFightProfile, k8sSurfaceLungeProgress } from './fish-behavior.js';
 import { DEFAULT_FISH_SPECIES_ID, nextFishSpeciesId, type FishSpeciesId } from './fish-species.js';
-import { RETRIEVE_DURATION_SECONDS } from './ocean-timing.js';
+import { ESCAPE_ANIMATION_MS, RETRIEVE_DURATION_SECONDS } from './ocean-timing.js';
 import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH, castDistanceForStrength } from './cast-distance.js';
 import { getHookResult, isCriticalHookWindow } from './hook-timing.js';
-import type { AuthoritativeOceanState } from './ocean-contract.js';
+import type { AuthoritativeOceanState, OceanAction } from './ocean-contract.js';
 
 export type { OceanMode, OceanPhase } from './ocean-contract.js';
-export type OceanAction = {action:'cast';strength:number;aim:number} | {action:'hook'|'retrieve'|'reset'};
+export type { OceanAction } from './ocean-contract.js';
 export type FishSelectionMode = 'rotate' | 'fixed';
 export type OceanState = AuthoritativeOceanState & { initialDistance:number; biteRemaining:number };
-export const ESCAPE_ANIMATION_MS=2000;
 const ESCAPE_ANIMATION_SECONDS=ESCAPE_ANIMATION_MS/1000;
 // Give the player a readable reaction window after the float visibly sinks.
 // The fight difficulty starts only after hooking, so this does not change the

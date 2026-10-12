@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { OceanFishingGame } from "./ocean-game.js";
-import { canContinueAfterCatchSave, isOceanMessage, oceanMessageSchema } from "./ocean-contract.js";
+import { canContinueAfterCatchSave, isOceanMessage, oceanCommandSchema, oceanMessageSchema } from "./ocean-contract.js";
 
 const makeMessage = () => ({
   type: "ocean" as const,
@@ -64,4 +64,20 @@ test("catch persistence status is validated while old server messages remain com
   assert.equal(canContinueAfterCatchSave("pending"), false);
   assert.equal(canContinueAfterCatchSave("failed"), false);
   assert.equal(canContinueAfterCatchSave("saved"), true);
+});
+
+test("the shared WebSocket command contract accepts every supported operation and rejects invalid payloads", () => {
+  for (const command of [
+    { action: "cast", strength: 0.5, aim: -0.2 },
+    { action: "hook" },
+    { action: "retrieve" },
+    { action: "reset" },
+    { action: "reel", held: true },
+    { action: "rod-pump" },
+    { action: "retry-catch-save" },
+  ]) assert.deepEqual(oceanCommandSchema.parse(command), command);
+
+  assert.equal(oceanCommandSchema.safeParse({ action: "cast", strength: 2, aim: 0 }).success, false);
+  assert.equal(oceanCommandSchema.safeParse({ action: "reel", held: "yes" }).success, false);
+  assert.equal(oceanCommandSchema.safeParse({ action: "unknown" }).success, false);
 });

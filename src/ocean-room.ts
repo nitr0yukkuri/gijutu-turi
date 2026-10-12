@@ -4,23 +4,17 @@ import type { Hono } from 'hono';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, WebSocket } from 'ws';
-import { z } from 'zod';
 import { bodyLimit } from 'hono/body-limit';
+import { z } from 'zod';
 import { isPlayerId } from './collection-contract.js';
 import { RequestRateLimiter } from './request-rate-limit.js';
 import { OceanFishingGame, type OceanAction, type OceanPhase } from './ocean-game.js';
 import { isFishSpeciesId, randomActiveFishSpeciesId, type FishSpeciesId } from './fish-species.js';
-import { canContinueAfterCatchSave, type OceanMessage } from './ocean-contract.js';
+import { canContinueAfterCatchSave, oceanCommandSchema, type OceanMessage } from './ocean-contract.js';
 import { CatchSaveCoordinator } from './catch-save.js';
 export type { OceanState } from './ocean-game.js';
 
-const actionSchema=z.discriminatedUnion('action',[
-  z.object({action:z.literal('cast'),strength:z.number().finite().min(0).max(1),aim:z.number().finite().min(-1).max(1)}),
-  z.object({action:z.literal('retrieve')}),z.object({action:z.literal('hook')}),
-  z.object({action:z.literal('reset')}),z.object({action:z.literal('reel'),held:z.boolean()}),
-  z.object({action:z.literal('rod-pump')}),
-  z.object({action:z.literal('retry-catch-save')}),
-]);
+const actionSchema=oceanCommandSchema;
 
 const isLoopbackHost=(host:string)=>host==='localhost'||host==='127.0.0.1'||host==='[::1]';
 const isPrivateIPv4=(address:string)=>{
