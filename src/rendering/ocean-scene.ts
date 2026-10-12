@@ -1,7 +1,7 @@
 // @ts-nocheck -- the renderer is an imperative WebGL boundary around the vendored Three.js runtime.
 import * as THREE from '../../vendor/three.module.js';
 import { setDockerWhaleMouthAnchor } from './docker-whale-profile.js';
-import { fishApparentPoint,waterHeightAt,waterHeightGLSL } from './fish-water.js';
+import { fishApparentPoint,waterNormalDifferenceGLSL,waterHeightAt,waterHeightGLSL } from './fish-water.js';
 import { fishFightCues,lineSagForLoad } from './fish-fight-cues.js';
 import { updateFishingLineBuffers } from './fishing-line.js';
 import { dockerWhaleRodKick, rodCenterAt, rodFlexProfileFor, smoothRodLoad } from './rod-flex.js';
@@ -114,6 +114,7 @@ float noise(vec2 p) {
   return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
 }
 ${waterHeightGLSL}
+${waterNormalDifferenceGLSL}
 vec3 sky(vec3 d,float cloudWeight) {
   float elevation=max(d.y,0.0);
   vec3 horizon=vec3(0.36,0.46,0.49);
@@ -141,9 +142,11 @@ void main(){
     for(int i=0;i<4;i++) t=(heightAt((ro+rd*t).xz)-ro.y)/rd.y;
     vec3 p=ro+rd*t;
     float eps=0.035+min(t,180.0)*0.001;
-    float hx=heightAt(p.xz+vec2(eps,0))-heightAt(p.xz-vec2(eps,0));
-    float hz=heightAt(p.xz+vec2(0,eps))-heightAt(p.xz-vec2(0,eps));
-    vec3 n=normalize(vec3(-hx,eps*2.0,-hz));
+    float hx,hz;
+    waterWaveDifference(p.xz,eps,hx,hz);
+    hx+=rippleOnlyHeight(p.xz-vec2(eps,0.0))-rippleOnlyHeight(p.xz+vec2(eps,0.0));
+    hz+=rippleOnlyHeight(p.xz-vec2(0.0,eps))-rippleOnlyHeight(p.xz+vec2(0.0,eps));
+    vec3 n=normalize(vec3(hx,eps*2.0,hz));
     // Keep the calm-sea displacement, but avoid turning its fine facets into
     // long, aliased reflection streaks at the fishing camera's low angle.
     n=normalize(mix(n,vec3(0.0,1.0,0.0),0.52));
@@ -1005,8 +1008,10 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         marlinSurfaceExposed=false;launchSplash(visibleFish.position.x,visibleFish.position.z,1.95);
       }
     }else marlinSurfaceExposed=false;
+    let fightFishMatrixWorldUpdated=false;
     if(state.fishId==='k8s-001'&&state.phase==='fighting'&&activeFightFish?.group.visible&&visibleFish){
       activeFightFish.group.updateMatrixWorld(true);
+      fightFishMatrixWorldUpdated=true;
       for(const probe of k8sContactProbes){
         deformK8sBodyProbe(probe,visibleFish,k8sContactProbeWorld).applyMatrix4(activeFightFish.group.matrixWorld);
         const gap=k8sContactProbeWorld.y-waveHeight(k8sContactProbeWorld.x,k8sContactProbeWorld.z,time);
@@ -1035,7 +1040,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       resetK8sWakeHistory();
     }
     if(state.phase==='fighting'&&activeFightFish?.group.visible){
-      activeFightFish.group.updateMatrixWorld(true);
+      if(!fightFishMatrixWorldUpdated)activeFightFish.group.updateMatrixWorld(true);
       if(state.fishId==='whale-001'){
         mouthSideRotation.copy(activeFightFish.group.quaternion).invert();
         mouthSideDirection.subVectors(camera.position,activeFightFish.group.position).applyQuaternion(mouthSideRotation);
