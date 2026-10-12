@@ -921,7 +921,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if (state.fishId === 'css-001'&&currentCssFish) {
       currentCssFish.setVisualState(cssFishVisualState);
     }
-    const cssFishTrailActive=state.fishId==='css-001'&&state.phase==='fighting'&&Boolean(currentCssFish?.group.visible);
+    const cssFishTrailActive=state.fishId==='css-001'&&state.phase==='fighting'&&Boolean(currentCssFish?.group.visible)
+      &&fishModelStore.cssFishAfterimages.length===cssFishAfterimageDelays.length;
     if(!cssFishTrailActive)resetCssFishAfterimages();
     let caughtEase=0;
     if(activeFightFish?.group.visible){
