@@ -1,5 +1,5 @@
 import type { FishSpeciesId } from "../fish-species.js";
-import type { OceanMode, OceanPhase } from "../client/types.js";
+import type { OceanMode, OceanPhase } from "../ocean-contract.js";
 import { RETRIEVE_DURATION_MS } from "../ocean-timing.js";
 import { retrieveProgressAt } from "./retrieve-presentation.js";
 

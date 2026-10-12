@@ -1,4 +1,4 @@
-import type { OceanMode, OceanPhase } from '../client/types.js';
+import type { OceanMode, OceanPhase } from '../ocean-contract.js';
 import type { FishSpeciesId } from '../fish-species.js';
 import { k8sSurfaceLungeProgress } from '../fish-behavior.js';
 

@@ -16,6 +16,39 @@ export type OceanPhase = typeof OCEAN_PHASES[number];
 export type OceanMode = typeof OCEAN_MODES[number];
 export type OceanEscapeReason = typeof OCEAN_ESCAPE_REASONS[number];
 
+const castCommandSchema = z.object({
+  action: z.literal("cast"),
+  strength: z.number().finite().min(0).max(1),
+  aim: z.number().finite().min(-1).max(1),
+});
+const hookCommandSchema = z.object({ action: z.literal("hook") });
+const retrieveCommandSchema = z.object({ action: z.literal("retrieve") });
+const resetCommandSchema = z.object({ action: z.literal("reset") });
+const reelCommandSchema = z.object({ action: z.literal("reel"), held: z.boolean() });
+const rodPumpCommandSchema = z.object({ action: z.literal("rod-pump") });
+const retryCatchSaveCommandSchema = z.object({ action: z.literal("retry-catch-save") });
+
+/** Commands applied to the authoritative game state. */
+export const oceanGameActionSchema = z.discriminatedUnion("action", [
+  castCommandSchema,
+  hookCommandSchema,
+  retrieveCommandSchema,
+  resetCommandSchema,
+]);
+
+/** Complete client-to-server WebSocket command contract. */
+export const oceanCommandSchema = z.discriminatedUnion("action", [
+  castCommandSchema,
+  hookCommandSchema,
+  retrieveCommandSchema,
+  resetCommandSchema,
+  reelCommandSchema,
+  rodPumpCommandSchema,
+  retryCatchSaveCommandSchema,
+]);
+export type OceanAction = z.infer<typeof oceanGameActionSchema>;
+export type OceanCommand = z.infer<typeof oceanCommandSchema>;
+
 const finite = z.number().finite();
 const unitInterval = finite.min(0).max(1);
 const vectorSchema = z.object({ x: finite, y: finite, z: finite }).strict();
