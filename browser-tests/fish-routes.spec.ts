@@ -113,14 +113,14 @@ test("/complete shows every fish as a read-only showcase without opening game AP
   const fishCards = page.locator(".complete-fish-card");
   await expect(page.getByRole("heading", { name: "魚図鑑", exact: true })).toBeVisible();
   await expect(fishCards).toHaveCount(6);
-  await expect(page.locator(".complete-fish-card-status")).toHaveText(["✓ 発見済み", "✓ 発見済み", "✓ 発見済み", "✓ 発見済み", "✓ 発見済み", "✓ 発見済み"]);
+  await expect(page.locator(".complete-fish-card-status")).toHaveCount(0);
+  await expect(page.locator(".complete-fish-record-note, .complete-showcase-footer span")).toHaveCount(0);
   for (let index = 0; index < 6; index += 1) {
     const card = fishCards.nth(index);
     await card.click();
     const selectedFishName = await card.locator("strong").innerText();
     await expect(page.getByRole("heading", { name: selectedFishName, exact: true })).toBeVisible();
     await expect(page.locator("#collection-model canvas")).toBeVisible();
-    await expect(page.locator(".complete-fish-record-note")).toContainText("展示用");
   }
 
   await page.getByRole("navigation", { name: "展示内容" }).getByRole("button", { name: "技術ツリー" }).click();
