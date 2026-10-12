@@ -116,9 +116,9 @@ const ensureCertificates = (openssl: string, addresses: string[]): string => {
   return runOpenSsl(openssl, ["x509", "-in", caCertificatePath, "-noout", "-fingerprint", "-sha256"]);
 };
 
-const listen = (server: Server, port: number): Promise<void> => new Promise((resolveListen, reject) => {
+const listen = (server: Server, port: number, host: string): Promise<void> => new Promise((resolveListen, reject) => {
   server.once("error", reject);
-  server.listen(port, "0.0.0.0", () => {
+  server.listen(port, host, () => {
     server.off("error", reject);
     resolveListen();
   });
@@ -133,6 +133,7 @@ const addresses = lanAddresses();
 if (addresses.length === 0) {
   throw new Error("スマートフォンから接続できるプライベートIPv4アドレスがありません。PCをWi-FiまたはLANに接続してください。");
 }
+const certificateAddress = addresses[0]!;
 
 const openssl = findOpenSsl();
 const fingerprint = ensureCertificates(openssl, addresses);
@@ -159,7 +160,7 @@ const certificateServer = createServer((request, response) => {
   response.end(request.method === "HEAD" ? undefined : certificate);
 });
 
-await listen(certificateServer, certificatePort);
+await listen(certificateServer, certificatePort, certificateAddress);
 const vitePort = process.env.VITE_PORT ?? "8790";
 const backendPort = process.env.BACKEND_PORT ?? "8792";
 const environment = {
@@ -182,7 +183,7 @@ const devRunner = spawn(process.execPath, ["--import", "tsx", resolve(root, "scr
 console.log("\n[dev:https] HTTPS 開発サーバーを起動しています。");
 console.log(`  PC: https://localhost:${vitePort}/gofish`);
 for (const address of addresses) {
-  console.log(`  CA証明書: http://${address}:${certificatePort}/dev-ca.crt`);
+  if (address === certificateAddress) console.log(`  CA証明書: http://${address}:${certificatePort}/dev-ca.crt`);
   console.log(`  スマホ（同じLAN）: https://${address}:${vitePort}/gofish`);
 }
 console.log(`  専用バックエンド: ${backendPort}（図鑑DBは ${environment.GIJUTU_DB_PATH}）`);
