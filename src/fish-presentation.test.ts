@@ -160,25 +160,21 @@ test('ocean optics cover every anatomical material but do not alter catalog mate
   submerged.dispose();catalog.dispose();
 });
 
-test('hooked Go fish keeps its silhouette while retaining submerged water optics',()=>{
+test('Go fish uses the same body, fin, and water appearance across fishing and combat',()=>{
   const model=createGoFish({waterUniforms:{uWaterBackdrop:{value:null},uTime:{value:0}}});
-  model.update(0,{visibility:.32,combat:true});
+  model.update(0,{visibility:.32});
   assert.equal(model.body.material.transparent,false,'the hooked body is not an alpha-transparent mesh');
   assert.equal(model.body.material.opacity,1,'the hooked body keeps full material opacity');
-  assert.equal(model.waterUniforms.uFishCombat.value,1,'fight state overrides the faint approach visibility');
+  assert.equal('uFishCombat' in model.waterUniforms,false,'water uniforms no longer carry a fight appearance switch');
   const shader={uniforms:{...THREE.ShaderLib.physical.uniforms},vertexShader:THREE.ShaderLib.physical.vertexShader,fragmentShader:THREE.ShaderLib.physical.fragmentShader};
   model.body.material.onBeforeCompile(shader);
-  assert.equal(shader.uniforms.uGoCombat.value,1,'Go body receives the readable fight pigment');
-  assert.equal(shader.uniforms.uFightCombat.value,1,'Go fins receive the fight silhouette override');
-  assert.match(shader.fragmentShader,/mix\(vec3\(\.24,\.43,\.49\), vec3\(\.055,\.18,\.25\), dorsal\)/,'fight body keeps a distinct pale belly and darker back');
-  assert.match(shader.fragmentShader,/float combatPigmentBlend=uFishCombat\*\(uWaterPart<2\.5\?\.38:uWaterPart<3\.5\?\.24:0\.0\)/,
-    'the fight uses a bounded pigment blend for readability');
-  assert.match(shader.fragmentShader,/underwater=mix\(underwater,fishColor,combatPigmentBlend\)/,
-    'reflected water and depth tint still cover the hooked fish');
-  assert.doesNotMatch(shader.fragmentShader,/if\(uFishCombat>\.5&&uWaterPart<3\.5\)return fishColor;/,
-    'combat anatomy does not bypass the water compositor');
-  model.update(1,{visibility:.32,combat:false});
-  assert.equal(model.waterUniforms.uFishCombat.value,0,'approach shadows keep their original reveal treatment');
+  assert.equal('uGoCombat' in shader.uniforms,false,'body uniforms do not include a combat tint');
+  assert.equal('uFightCombat' in shader.uniforms,false,'fin uniforms do not include a combat opacity override');
+  assert.match(shader.fragmentShader,/mix\(vec3\(\.014,\.092,\.155\), vec3\(\.003,\.018,\.062\), dorsal\)/,
+    'the authored Go fish palette remains the only body palette');
+  assert.match(shader.fragmentShader,/mix\(fishColor,underwater,submerged\)/,
+    'the Go fish keeps the same underwater compositor during combat');
+  assert.doesNotMatch(shader.fragmentShader,/uFishCombat|uGoCombat|uK8sCombat|uFightCombat/);
   model.dispose();
 });
 
@@ -231,9 +227,8 @@ test('K8s leviathan uses fused armor, a clean jaw seam, and an asymmetric powerf
   cluster.dispose();go.dispose();
 });
 
-test('CSS fish keeps a readable state palette through the underwater shadow',()=>{
+test('CSS fish keeps its cascade contrast through the underwater shadow',()=>{
   assert.ok(fishWaterCoverage(2.2,35,.5,'body',CSS_FISH_WATER_PROFILE)>fishWaterCoverage(2.2,35,.5));
-  assert.equal(CSS_FISH_WATER_PROFILE.redStateRetention,.76);
   assert.ok(fishVisibilityTarget('waiting',.46,'css-001')>.32);
 });
 
@@ -257,19 +252,15 @@ test('K8s fish keeps a readable single-body approach before its replicas appear 
   assert.equal(fishVisibilityTarget('fighting',1,'k8s-001'),1);
 });
 
-test('CSS fish fight state reaches underwater optics and preserves red during escape',()=>{
+test('live CSS fish uses the fixed palette without a state-dependent underwater tint',()=>{
   const waterUniforms={uWaterBackdrop:{value:null},uTime:{value:0}};
   const model=createGoFish({waterUniforms,visualProfile:'css'});
-  model.setVisualState('escape');
+  model.setVisualState('normal');
   model.update(0,{styleDelta:1});
   const shader={uniforms:{...THREE.ShaderLib.physical.uniforms},vertexShader:THREE.ShaderLib.physical.vertexShader,fragmentShader:THREE.ShaderLib.physical.fragmentShader};
   model.body.material.onBeforeCompile(shader);
-  assert.ok(shader.uniforms.uCssRedState.value>.99,'escape red-state reaches the water shader');
-  assert.match(shader.fragmentShader,/uniform float uCssRedState/);
-  assert.match(shader.fragmentShader,/redExtinction=mix\(\.58/,'red extinction is reduced only for the CSS red state');
-  model.setVisualState('normal');
-  model.update(1,{styleDelta:1});
-  assert.ok(shader.uniforms.uCssRedState.value<.001,'normal state restores ordinary water extinction');
+  assert.equal('uCssRedState' in shader.uniforms,false);
+  assert.doesNotMatch(shader.fragmentShader,/uCssRedState|redExtinction/);
   model.dispose();
 });
 
@@ -386,17 +377,17 @@ test('invalid tether loads never reach fish shaders or accumulate in whale cargo
     const shader={uniforms:{...THREE.ShaderLib.physical.uniforms},vertexShader:THREE.ShaderLib.physical.vertexShader,fragmentShader:THREE.ShaderLib.physical.fragmentShader};
     model.body.material.onBeforeCompile(shader);
     for(const tetherLoad of [NaN,Infinity,-Infinity,.7]){
-      model.update(0,{tetherLoad,combat:true});
+      model.update(0,{tetherLoad});
       assert.equal(shader.uniforms.uTetherLoad.value,Number.isFinite(tetherLoad)?tetherLoad:0,visualProfile);
-      assert.equal(shader.uniforms.uFightCombat.value,1,`${visualProfile} receives the fight-only fin cue`);
+      assert.equal('uFightCombat' in shader.uniforms,false,`${visualProfile} has no fight-only fin cue`);
+      assert.doesNotMatch(shader.fragmentShader,/uFishCombat|uGoCombat|uK8sCombat|uFightCombat|uRustSurge/,
+        `${visualProfile} has no phase-dependent material palette`);
     }
-    model.update(1,{combat:false});
-    assert.equal(shader.uniforms.uFightCombat.value,0,`${visualProfile} returns to the non-combat appearance`);
     model.dispose();
   }
   const whale=createDockerWhale();
   for(const tetherLoad of [NaN,Infinity,-Infinity,.7]){
-    for(let frame=0;frame<10;frame++)whale.update(frame/60,{tetherLoad,combat:true});
+    for(let frame=0;frame<10;frame++)whale.update(frame/60,{tetherLoad});
     whale.group.updateMatrixWorld(true);
     assert.ok(whale.cargoMount.matrixWorld.elements.every(Number.isFinite),'cargo remains visible after invalid and valid loads');
   }

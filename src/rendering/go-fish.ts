@@ -2,7 +2,7 @@
 import * as THREE from '../../vendor/three.module.js';
 import { applyFishWater, CSS_FISH_WATER_PROFILE, K8S_LEVIATHAN_WATER_PROFILE } from './fish-water.js';
 import { JS_EEL_SWIM_VISUAL_PROFILE, K8S_LEVIATHAN_SWIM_VISUAL_PROFILE, RUST_BILLFISH_SWIM_VISUAL_PROFILE, STANDARD_FISH_SWIM_VISUAL_PROFILE } from './fish-swim-visual-profile.js';
-import { cssFishRedStateStrength, getCssFishPalette, type CssFishVisualState } from '../css-fish-style.js';
+import { getCssFishPalette, type CssFishVisualState } from '../css-fish-style.js';
 
 // Original procedural model. See docs/go-fish-design.md for study references.
 // Local axes: nose = -X, dorsal = +Y, left flank = +Z. No browser dependency.
@@ -215,7 +215,7 @@ function animateMaterial(material, uniforms, mode = 'plain', cssStyle = false, c
     shader.vertexShader = deformation + '\nattribute float aFin; varying vec2 vFishUv; varying vec3 vFishLocal;\n' + shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nobjectNormal = swimNormal(position, objectNormal, aFin);');
     shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFishUv = uv; vFishLocal = position; transformed = swimPosition(position, aFin);');
-    shader.fragmentShader = 'uniform float uSwimTime; uniform float uSwimFrequency; uniform float uGlow; uniform float uImmersion; uniform float uGoCombat; uniform float uK8sCombat;' + (cssStyle ? ' uniform vec3 uStyleBody; uniform vec3 uStyleShade; uniform vec3 uStyleAccent; uniform vec3 uStyleEmission; uniform float uStyleGlow; uniform float uStylePattern;' : '') + (rustStyle ? ' uniform float uRustSurge;' : '') + (eelStyle ? ' uniform float uEffort;' : '') + ' float swimPhase() { return uSwimTime * uSwimFrequency; } varying vec2 vFishUv; varying vec3 vFishLocal;\n' + shader.fragmentShader;
+    shader.fragmentShader = 'uniform float uSwimTime; uniform float uSwimFrequency; uniform float uGlow; uniform float uImmersion;' + (cssStyle ? ' uniform vec3 uStyleBody; uniform vec3 uStyleShade; uniform vec3 uStyleAccent; uniform vec3 uStyleEmission; uniform float uStyleGlow; uniform float uStylePattern;' : '') + (eelStyle ? ' uniform float uEffort;' : '') + ' float swimPhase() { return uSwimTime * uSwimFrequency; } varying vec2 vFishUv; varying vec3 vFishLocal;\n' + shader.fragmentShader;
     if (mode === 'body') {
       shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `
         #include <color_fragment>
@@ -247,8 +247,6 @@ function animateMaterial(material, uniforms, mode = 'plain', cssStyle = false, c
         float scaleMask = ${rustStyle || eelStyle ? '0.0' : `smoothstep(${cssStyle ? '.08' : clusterStyle ? '.1' : '.15'}, ${cssStyle ? '.22' : clusterStyle ? '.24' : '.27'}, vFishUv.x) * (1.0 - smoothstep(.88, .99, vFishUv.x))`};
         float dorsal = smoothstep(${eelStyle ? '-.04, .16' : '-.2, .45'}, vFishLocal.y);
         vec3 skin = ${cssStyle ? 'mix(uStyleBody, uStyleShade, dorsal)' : clusterStyle ? 'mix(vec3(.105,.155,.145), vec3(.018,.042,.046), dorsal)' : rustStyle ? 'mix(vec3(.48,.64,.76), vec3(.018,.075,.28), dorsal)' : eelStyle ? 'mix(vec3(.68,.43,.075), vec3(.34,.20,.025), dorsal)' : 'mix(vec3(.014,.092,.155), vec3(.003,.018,.062), dorsal)'};
-        ${clusterStyle ? 'skin = mix(skin, mix(vec3(.44,.56,.52), vec3(.23,.33,.33), dorsal), uK8sCombat);' : ''}
-        ${!cssStyle && !clusterStyle && !rustStyle && !eelStyle ? 'skin = mix(skin, mix(vec3(.24,.43,.49), vec3(.055,.18,.25), dorsal), uGoCombat);' : ''}
         ${eelStyle ? `
         // Keep the ma-anago silhouette and pale underside, but give this
         // JavaScript species its bright golden identity back.
@@ -279,12 +277,6 @@ function animateMaterial(material, uniforms, mode = 'plain', cssStyle = false, c
         float marlinBarStrength = .82 + .12*sin(floor(marlinBandPhase)*2.17 + 1.1);
         float marlinBands = marlinBand * marlinSide * marlinRange * marlinBarStrength;
         skin = mix(skin, vec3(.025,.31,.82), marlinBands*.78);
-        // A short Rust-orange flash rides the existing pigment bars during a
-        // server-authored surge. Its spatial pulse uses the synchronized body
-        // phase, so it never creates a second animation clock or fish copy.
-        float rustAccentWave = .5 + .5 * sin(vFishUv.x*18.0 - swimPhase()*1.15);
-        float rustMoveAccent = clamp(uRustSurge,0.0,1.0) * marlinBands * (.20 + .16*rustAccentWave);
-        skin = mix(skin, vec3(.78,.24,.09), rustMoveAccent);
         ` : ''}
         skin += ${clusterStyle ? 'vec3(.012,.021,.018)' : rustStyle ? 'vec3(.018,.022,.024)' : eelStyle ? 'vec3(.014,.010,.006)' : 'vec3(.003,.012,.028)'} * (1.0-scaleDistance) * scaleMask * ${clusterStyle ? '.3' : rustStyle ? '.7' : eelStyle ? '.32' : '1.0'};
         skin += ${cssStyle ? 'uStyleAccent' : clusterStyle ? 'vec3(.04,.11,.28)' : rustStyle ? 'vec3(.18,.21,.20)' : eelStyle ? 'vec3(.22,.15,.085)' : 'vec3(.01,.055,.105)'} * scaleRim * scaleMask * ${cssStyle ? '.36*uStylePattern' : clusterStyle ? '.1' : rustStyle ? '.16' : eelStyle ? '.10' : '.36'};
@@ -313,7 +305,7 @@ function animateMaterial(material, uniforms, mode = 'plain', cssStyle = false, c
         ? '#include <color_fragment>\nfloat jsBurstPulse=smoothstep(.62,.84,uEffort)*(.58+.42*sin(swimPhase()*1.6-vFishLocal.x*2.3)); diffuseColor.rgb *= uGlow * (.78 + .22 * sin(swimPhase() * .72 - vFishLocal.x * 5.0) + jsBurstPulse*1.25) * (1.0-uImmersion*.78);'
       : '#include <color_fragment>\ndiffuseColor.rgb *= uGlow * (.8 + .2 * sin(swimPhase() * .91 - vFishLocal.x * 7.0)) * (1.0-uImmersion*smoothstep(2.5,4.1,vFishLocal.x)*.94);');
   };
-  material.customProgramCacheKey = () => 'go-fish-v5-' + mode + (cssStyle ? '-css' : clusterStyle ? '-cluster' : rustStyle ? '-rust' : eelStyle ? '-eel' : '');
+  material.customProgramCacheKey = () => 'go-fish-v6-' + mode + (cssStyle ? '-css' : clusterStyle ? '-cluster' : rustStyle ? '-rust' : eelStyle ? '-eel' : '');
   return material;
 }
 
@@ -425,7 +417,7 @@ function finMaterial(uniforms, rays, cssStyle = false, clusterStyle = false, rus
         gl_Position=projectionMatrix*mv;
       }`,
     fragmentShader: `
-      uniform float uGlow; uniform float uRays; uniform float uImmersion; uniform float uGoCombat; uniform float uK8sCombat; uniform float uFightCombat; uniform float uSwimTime; uniform float uSwimFrequency;${cssStyle ? ' uniform vec3 uStyleShade; uniform vec3 uStyleAccent; uniform vec3 uStyleEmission; uniform float uStyleGlow; uniform float uStylePattern;' : ''}${eelStyle ? ' uniform float uEffort;' : ''} varying vec2 vUv; varying vec3 vNormal; varying vec3 vView;
+      uniform float uGlow; uniform float uRays; uniform float uImmersion; uniform float uSwimTime; uniform float uSwimFrequency;${cssStyle ? ' uniform vec3 uStyleShade; uniform vec3 uStyleAccent; uniform vec3 uStyleEmission; uniform float uStyleGlow; uniform float uStylePattern;' : ''}${eelStyle ? ' uniform float uEffort;' : ''} varying vec2 vUv; varying vec3 vNormal; varying vec3 vView;
       float swimPhase(){return uSwimTime*uSwimFrequency;}
       void main() {
         float fold=sin(vUv.x*uRays*6.283 + sin(vUv.y*4.0)*.5);
@@ -441,15 +433,10 @@ function finMaterial(uniforms, rays, cssStyle = false, clusterStyle = false, rus
         color+=${cssStyle ? 'uStyleEmission*uStyleGlow*.48' : clusterStyle ? 'vec3(.003,.009,.008)' : rustStyle ? 'vec3(.006,.035,.10)' : eelStyle ? 'vec3(.045,.025,.002)' : 'vec3(.06,.7,.98)'}*structure*uGlow*(1.0-uImmersion*.9);
         color+=${cssStyle ? 'uStyleAccent*.16' : clusterStyle ? 'vec3(.055,.085,.078)' : rustStyle ? 'vec3(.035,.13,.30)' : eelStyle ? 'vec3(.24,.15,.025)' : 'vec3(.025,.2,.29)'}*fresnel;
         color+=${eelStyle ? 'vec3(1.0,.46,.015)*smoothstep(.62,.84,uEffort)*(.52+.48*sin(swimPhase()*1.6-vUv.x*2.2))*structure*.32*(1.0-uImmersion*.6)' : 'vec3(0.0)'};
-          // Keep the original Go fin visibility from before the fish catalog
-          // expansion. The lower generic alpha made its fins and facial edges
-          // wash out against the water during a fight.
+          // Keep this species' authored fin translucency in every game phase.
           float alpha=clamp(${cssStyle ? '.34' : clusterStyle ? '.56+rays*.12+edge*.18+fresnel*.04' : rustStyle ? '.57' : eelStyle ? '.20' : '.19'}+${cssStyle ? 'rays*.20*mix(.82,1.0,uStylePattern)+edge*.24+fresnel*.06+cssBubbles*.03' : clusterStyle ? '0.0' : rustStyle ? 'rays*.08+edge*.25+fresnel*.05' : eelStyle ? 'rays*.10+edge*.20+fresnel*.05' : 'rays*.30+edge*.30+fresnel*.10'},0.0,${clusterStyle ? '.92' : rustStyle ? '.94' : eelStyle ? '.68' : '.88'});
         alpha=mix(alpha,${clusterStyle ? '.68+.16*(1.0-vUv.y)+rays*.05' : rustStyle ? '.76+.12*(1.0-vUv.y)+rays*.025' : eelStyle ? '.42+.14*(1.0-vUv.y)+rays*.04' : '.48+.18*(1.0-vUv.y)+rays*.08'},uImmersion);
         alpha*=smoothstep(0.0,.035,vUv.x)*(1.0-smoothstep(.97,1.0,vUv.x));
-        // Strengthen the hooked silhouette while retaining slight translucency
-        // so the underwater color and surface texture still show through.
-        alpha=mix(alpha,max(alpha,.82),uFightCombat);
         gl_FragColor=vec4(color,alpha);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -468,8 +455,7 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
   group.userData.rustBillfish = rustStyle;
   group.userData.jsEel = eelStyle;
   const shape = cssStyle ? cssShape : clusterStyle ? clusterShape : rustStyle ? rustShape : eelStyle ? eelShape : goShape;
-  const cssRedStateUniform={value:0};
-  const habitatUniforms=waterUniforms?{...waterUniforms,uFishCenter:{value:group.position},uFishVisibility:{value:1},uFishCombat:{value:0},...(cssStyle?{uCssRedState:cssRedStateUniform}:{})}:null;
+  const habitatUniforms=waterUniforms?{...waterUniforms,uFishCenter:{value:group.position},uFishVisibility:{value:1}}:null;
   const catalog = visualProfile === 'catalog' || clusterStyle;
   const finHeightScale = cssStyle ? .82 : clusterStyle ? .82 : rustStyle ? .9 : eelStyle ? .68 : catalog ? .82 : 1;
   const finDepthScale = cssStyle ? .86 : clusterStyle ? .84 : rustStyle ? .86 : eelStyle ? .68 : catalog ? .72 : 1;
@@ -481,7 +467,7 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
   const streamerScale = catalog ? .58 : .72;
   const initialPalette = getCssFishPalette('normal');
   const uniforms = {
-    uSwimTime: { value: phase }, uSwimFrequency: { value: 3.5 }, uSwimPower: { value: .48 }, uGlow: { value: 1 }, uGoCombat:{value:0}, uK8sCombat:{value:0}, uFightCombat:{value:0},
+    uSwimTime: { value: phase }, uSwimFrequency: { value: 3.5 }, uSwimPower: { value: .48 }, uGlow: { value: 1 },
     uSwimWavelength: { value: 6.6 }, uNaturalSwim: { value: naturalSwim?1:0 }, uTurn:{value:0}, uEffort:{value:0},
     uBodyFlexStart:{value:swimVisualProfile.flexStartX},uBodyFlexLength:{value:swimVisualProfile.flexLength},
     uBodyBendGain:{value:swimVisualProfile.bendGain},uTurnBendGain:{value:swimVisualProfile.turnGain},
@@ -490,8 +476,6 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
     uStyleShade:{value:new THREE.Color(initialPalette.shade)}, uStyleAccent:{value:new THREE.Color(initialPalette.accent)},
     uStyleEmission:{value:new THREE.Color(initialPalette.emission)}, uStyleGlow:{value:initialPalette.glow},
     uStylePattern:{value:initialPalette.pattern},
-    ...(rustStyle?{uRustSurge:{value:0}}:{}),
-    ...(cssStyle?{uCssRedState:cssRedStateUniform}:{}),
   };
   const low = detail === 'low', geometries = new Set(), materials = new Set();
   function add(geometry, material, name, fin = 0) {
@@ -807,11 +791,11 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
   const styleCurrent = {
     body: new THREE.Color(initialPalette.body), shade: new THREE.Color(initialPalette.shade),
     accent: new THREE.Color(initialPalette.accent), emission: new THREE.Color(initialPalette.emission),
-    glow: initialPalette.glow, pattern: initialPalette.pattern, redState: cssFishRedStateStrength('normal'),
+    glow: initialPalette.glow, pattern: initialPalette.pattern,
   };
   const styleTarget = {
     body: styleCurrent.body.clone(), shade: styleCurrent.shade.clone(), accent: styleCurrent.accent.clone(),
-    emission: styleCurrent.emission.clone(), glow: styleCurrent.glow, pattern: styleCurrent.pattern, redState: styleCurrent.redState,
+    emission: styleCurrent.emission.clone(), glow: styleCurrent.glow, pattern: styleCurrent.pattern,
   };
   const setVisualState = (next: CssFishVisualState) => {
     if (!cssStyle) return;
@@ -820,7 +804,6 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
     styleTarget.body.setHex(palette.body); styleTarget.shade.setHex(palette.shade);
     styleTarget.accent.setHex(palette.accent); styleTarget.emission.setHex(palette.emission);
     styleTarget.glow = palette.glow; styleTarget.pattern = palette.pattern;
-    styleTarget.redState = cssFishRedStateStrength(next);
   };
   const updateVisualStyle = (delta: number) => {
     if (!cssStyle) return;
@@ -829,41 +812,26 @@ export function createGoFish({ detail = 'high', phase = 0, waterUniforms, natura
     styleCurrent.accent.lerp(styleTarget.accent, blend); styleCurrent.emission.lerp(styleTarget.emission, blend);
     styleCurrent.glow += (styleTarget.glow - styleCurrent.glow) * blend;
     styleCurrent.pattern += (styleTarget.pattern - styleCurrent.pattern) * blend;
-    styleCurrent.redState += (styleTarget.redState - styleCurrent.redState) * blend;
     uniforms.uStyleBody.value.copy(styleCurrent.body); uniforms.uStyleShade.value.copy(styleCurrent.shade);
     uniforms.uStyleAccent.value.copy(styleCurrent.accent); uniforms.uStyleEmission.value.copy(styleCurrent.emission);
     uniforms.uStyleGlow.value = styleCurrent.glow; uniforms.uStylePattern.value = styleCurrent.pattern;
-    cssRedStateUniform.value = styleCurrent.redState;
     subtle.color.copy(styleCurrent.accent); subtle.emissive.copy(styleCurrent.emission);
   };
   setVisualState(visualState);
   let disposed = false;
-  let rustSurgeCurrent = 0;
   return {
     group, body, fins, waterUniforms:habitatUniforms, setVisualState,
-    update(time, {power=.48, glow=1, bodyPhase, bodyFrequency, bodyWavelength, turn=0, effort=power, tetherLoad=0, surge=0, visibility=1, combat=false, styleDelta=.016}={}) {
+    update(time, {power=.48, glow=1, bodyPhase, bodyFrequency, bodyWavelength, turn=0, effort=power, tetherLoad=0, visibility=1, styleDelta=.016}={}) {
       updateVisualStyle(styleDelta);
-      if(rustStyle){
-        const target=clamp(surge,0,1);
-        const rate=target>rustSurgeCurrent?18:5.5;
-        rustSurgeCurrent+=(target-rustSurgeCurrent)*(1-Math.exp(-Math.max(.001,styleDelta)*rate));
-        uniforms.uRustSurge.value=rustSurgeCurrent;
-      }
       const synced=Number.isFinite(bodyPhase)&&Number.isFinite(bodyFrequency)&&bodyFrequency>0;
       uniforms.uSwimTime.value=synced?bodyPhase/(bodyFrequency*TAU):time+phase;
       uniforms.uSwimFrequency.value=synced?bodyFrequency*TAU:3.5;
       uniforms.uSwimPower.value=clamp(power,0,1);
       uniforms.uTurn.value=clamp(turn,-1,1);
       uniforms.uEffort.value=clamp(effort,0,1);
-      // Combat readability applies to the base Go fish and all live variants.
-      const speciesCombat=combat;
-      uniforms.uGoCombat.value=visualProfile==='ocean'&&speciesCombat?1:0;
-      uniforms.uK8sCombat.value=clusterStyle&&speciesCombat?1:0;
-      uniforms.uFightCombat.value=speciesCombat?1:0;
       uniforms.uTetherLoad.value=waterUniforms&&Number.isFinite(tetherLoad)?clamp(tetherLoad,0,1):0;
       uniforms.uImmersion.value=habitatUniforms?clamp(-group.position.y/.6,0,1):0;
       if(habitatUniforms)habitatUniforms.uFishVisibility.value=clamp(visibility,0,1);
-      if(habitatUniforms)habitatUniforms.uFishCombat.value=speciesCombat?1:0;
       uniforms.uSwimWavelength.value=waterUniforms&&Number.isFinite(bodyWavelength)?TAU/clamp(bodyWavelength,.5,1.5):6.6;
       uniforms.uGlow.value=glow*(.96+.04*Math.sin((synced?bodyPhase:time*3.5+phase)*.49));
     },

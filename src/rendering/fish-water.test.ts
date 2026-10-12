@@ -50,27 +50,26 @@ test('CPU water contact height and shader use the same wave/ripple parameters',(
   assert.ok(waterHeightGLSL.includes('d-age*1.25'));
 });
 
-for (const [speciesGroup, profile] of [
+for (const [species, profile] of [
   ['Go fish, Rust marlin, and JS eel', DEFAULT_FISH_WATER_PROFILE],
   ['Docker whale', DOCKER_WHALE_WATER_PROFILE],
   ['CSS fish', CSS_FISH_WATER_PROFILE],
   ['K8s leviathan', K8S_LEVIATHAN_WATER_PROFILE],
 ] as const) {
-  test(`${speciesGroup} retain underwater optics during combat`,()=>{
-    const material={toneMapped:true,onBeforeCompile(_shader:any){},customProgramCacheKey:()=> `live-fish-${speciesGroup}`};
-    applyFishWater(material,{},'body',profile);
-    const shader={uniforms:{},vertexShader:'',fragmentShader:'#include <tonemapping_fragment>'};
+  test(`${species} keep one water appearance through fishing and combat`, () => {
+    const material = {
+      toneMapped: true,
+      onBeforeCompile(_shader: any) {},
+      customProgramCacheKey: () => `fish-${species}`,
+    };
+    applyFishWater(material, { uFishVisibility: { value: 1 } }, 'body', profile);
+    const shader = { uniforms: {}, vertexShader: '', fragmentShader: '#include <tonemapping_fragment>' };
     material.onBeforeCompile(shader);
 
-    assert.match(shader.fragmentShader,/float presentationVisibility=mix\(uFishVisibility,1\.0,uFishCombat\)/,
-      'hooked fish keep their full silhouette visibility');
-    assert.match(shader.fragmentShader,/float combatPigmentBlend=uFishCombat\*\(uWaterPart<2\.5\?\.38:uWaterPart<3\.5\?\.24:0\.0\)/,
-      'combat readability is a bounded blend with the authored fish pigment');
-    assert.match(shader.fragmentShader,/underwater=mix\(underwater,fishColor,combatPigmentBlend\)/,
-      'water reflection and depth tint remain in the combat output');
-    assert.equal((shader.fragmentShader.match(/combatPigmentBlend/g)??[]).length,2,
-      'the new shader local is declared once and used once');
-    assert.doesNotMatch(shader.fragmentShader,/if\(uFishCombat>\.5&&uWaterPart<3\.5\)return fishColor/,
-      'combat anatomy must not bypass the water compositor');
+    assert.match(shader.fragmentShader, /float presentationVisibility=uFishVisibility/);
+    assert.match(shader.fragmentShader, /mix\(fishColor,underwater,submerged\)/,
+      'the same physical water depth and refraction blend remains active for every phase');
+    assert.doesNotMatch(shader.fragmentShader, /uFishCombat|combatPigmentBlend|fightSubmerged|combatAnatomy|combatDetail/,
+      'fight state cannot alter water optics or fish opacity');
   });
 }

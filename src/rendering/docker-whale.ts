@@ -160,7 +160,7 @@ function cargoPulseMaterial(material,mode,uniforms) {
 
 export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   const low=detail==='low',group=new THREE.Group();group.name='Dockerクジラ';
-  const habitatUniforms=waterUniforms?{...waterUniforms,uFishCenter:{value:group.position},uFishVisibility:{value:1},uFishCombat:{value:0}}:null;
+  const habitatUniforms=waterUniforms?{...waterUniforms,uFishCenter:{value:group.position},uFishVisibility:{value:1}}:null;
   const uniforms={
     uWhalePhase:{value:phase},uWhaleFrequency:{value:.78},uWhaleWavelength:{value:.94},
     uWhaleAmplitude:{value:.1},uWhaleEffort:{value:.38},uWhaleTurn:{value:0},
@@ -328,7 +328,7 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
   let disposed=false,cargoYaw=0,cargoRoll=0,cargoSide=0,cargoLift=.12,cargoLag=0,cargoPulse=0,cargoGlowOn=0,cargoMomentActive=false;
   return {
     group,body,flippers,flukes,cargoMount,containerCount:containers.length,waterUniforms:habitatUniforms,
-    update(time,{power=.45,glow=1,visibility=1,combat=false,bodyPhase,bodyFrequency,bodyWavelength,effort=.38,turn=0,amplitude,tetherLoad=0,cargoMoment=false,styleDelta=1/60}={}){
+    update(time,{power=.45,glow=1,visibility=1,bodyPhase,bodyFrequency,bodyWavelength,effort=.38,turn=0,amplitude,tetherLoad=0,cargoMoment=false,styleDelta=1/60}={}){
       const synced=Number.isFinite(bodyPhase)&&Number.isFinite(bodyFrequency)&&bodyFrequency>0;
       uniforms.uWhalePhase.value=synced?bodyPhase:time+phase;
       uniforms.uWhaleFrequency.value=synced?bodyFrequency:.78;
@@ -338,7 +338,6 @@ export function createDockerWhale({detail='high',phase=0,waterUniforms}={}) {
       uniforms.uWhaleTurn.value=clamp(turn,-1,1);
       uniforms.uPower.value=clamp(power,0,1);uniforms.uGlow.value=clamp(glow,0,3);
       if(habitatUniforms)habitatUniforms.uFishVisibility.value=clamp(visibility,0,1);
-      if(habitatUniforms)habitatUniforms.uFishCombat.value=combat?1:0;
       const dt=Number.isFinite(styleDelta)?clamp(styleDelta,0,.1):1/60;
       const load=Number.isFinite(tetherLoad)?clamp(tetherLoad,0,1):0,heavyTurn=clamp(turn,-1,1);
       if(cargoMoment&&!cargoMomentActive)cargoPulse=1;

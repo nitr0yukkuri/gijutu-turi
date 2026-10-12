@@ -245,16 +245,15 @@ test('Rust avoids the scratch-like gill tube and keeps mouth/keel lines subdued'
   }
 });
 
-test('hooked Go fish fins stay readable without becoming fully opaque', () => {
+test('Go fish fins keep the same opacity through fishing and combat', () => {
   const model = createGoFish({ detail: 'low', visualProfile: 'ocean' });
   try {
     const dorsal = model.group.children.find(child => child.name === 'dorsal-sail') as MeshWithPositions | undefined;
     assert.ok(dorsal);
     assert.equal(dorsal.material.type, 'ShaderMaterial');
     assert.equal(dorsal.material.transparent, true);
-    assert.equal(dorsal.material.uniforms?.uFightCombat?.value, 0);
-    assert.match(dorsal.material.fragmentShader ?? '', /alpha=mix\(alpha,max\(alpha,\.82\),uFightCombat\)/,
-      'combat keeps the fin silhouette legible without making it fully opaque');
+    assert.equal('uFightCombat' in (dorsal.material.uniforms ?? {}), false);
+    assert.doesNotMatch(dorsal.material.fragmentShader ?? '', /uFightCombat/);
   } finally {
     model.dispose();
   }
@@ -289,7 +288,7 @@ test('Rust marlin skin renders blue flank bars over a dark-back, silver-belly ba
   }
 });
 
-test('Rust orange move accent is limited to a smoothed server surge', () => {
+test('Rust marlin keeps its authored blue and silver palette through every fight mode', () => {
   const model = createGoFish({ detail: 'low', visualProfile: 'rust' });
   try {
     const body = model.group.children.find(mesh => mesh.name === 'sculpted-body') as
@@ -302,38 +301,10 @@ test('Rust orange move accent is limited to a smoothed server surge', () => {
       fragmentShader: '#include <color_fragment>\n#include <emissivemap_fragment>\n#include <normal_fragment_maps>',
     };
     body.material.onBeforeCompile(shader);
-    assert.match(shader.fragmentShader, /uniform float uRustSurge;/);
-    assert.match(shader.fragmentShader, /rustMoveAccent = clamp\(uRustSurge,0\.0,1\.0\) \* marlinBands/);
-    assert.match(shader.fragmentShader, /vec3\(\.78,\.24,\.09\)/, 'the temporary accent should be warm Rust orange, not a permanent body recolor');
-
-    const accent = shader.uniforms.uRustSurge as { value: number };
-    assert.equal(accent.value, 0, 'the marlin should remain naturally blue and silver outside a surge');
-    model.update(0, { surge: 1, styleDelta: .1 });
-    const peak = accent.value;
-    assert.ok(peak > .75 && peak < 1, `surge appearance should ease in instead of popping (${peak})`);
-    model.update(.1, { surge: 0, styleDelta: .1 });
-    assert.ok(accent.value > 0 && accent.value < peak, 'the orange accent should trail off smoothly after the server surge');
-  } finally {
-    model.dispose();
-  }
-});
-
-test('Rust surge accent does not add its shader state to Go fish', () => {
-  const model = createGoFish({ detail: 'low', visualProfile: 'ocean' });
-  try {
-    const body = model.group.children.find(mesh => mesh.name === 'sculpted-body') as
-      | { material: { onBeforeCompile: (shader: any) => void } }
-      | undefined;
-    assert.ok(body);
-    const shader = {
-      uniforms: {},
-      vertexShader: '#include <beginnormal_vertex>\n#include <begin_vertex>',
-      fragmentShader: '#include <color_fragment>\n#include <emissivemap_fragment>\n#include <normal_fragment_maps>',
-    };
-    body.material.onBeforeCompile(shader);
-    model.update(0, { surge: 1, styleDelta: .1 });
-    assert.doesNotMatch(shader.fragmentShader, /uRustSurge/);
+    assert.doesNotMatch(shader.fragmentShader, /uRustSurge|rustAccentWave|rustMoveAccent/);
     assert.equal('uRustSurge' in shader.uniforms, false);
+    assert.match(shader.fragmentShader, /vec3\(\.025,\.31,\.82\)/,
+      'the Rust identity remains its fixed blue flank bars');
   } finally {
     model.dispose();
   }
