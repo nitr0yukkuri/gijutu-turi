@@ -272,8 +272,6 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const rodTangent=new THREE.Vector3(),rodView=new THREE.Vector3(),rodNormal=new THREE.Vector3(),rodBinormal=new THREE.Vector3();
   const rodGuideDown=new THREE.Vector3(),rodGuideSide=new THREE.Vector3(),rodGuideTangent=new THREE.Vector3(),rodGuidePoint=new THREE.Vector3(),rodLineAnchor=new THREE.Vector3(),reelLineExit=new THREE.Vector3(),rodGuideMatrix=new THREE.Matrix4();
   const rodFishTarget=new THREE.Vector3(),rodLineDirection=new THREE.Vector3();
-  const rodScreenDown=new THREE.Vector3(),rodScreenRight=new THREE.Vector3();
-  const dockerFightBend={load:0,gain:.6,screenDown:rodScreenDown,screenRight:rodScreenRight};
   const lineProjectionCenter=new THREE.Vector3(),lineProjectionEye=new THREE.Vector3(),lineProjectionPoint=new THREE.Vector3();
   const mouthSideDirection=new THREE.Vector3(),mouthSideRotation=new THREE.Quaternion();
   let dockerHookSide=1;
@@ -810,12 +808,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if(rod.visible){
       const positions=rodGeometry.attributes.position.array,sheenPositions=rodSheenGeometry.attributes.position.array;
       const blankLoad=THREE.MathUtils.clamp(fling*.62+rodBendLoad*1.35+charge*.12+Math.abs(rodStrokeImpulse)*.8+Math.abs(dockerSurgeImpulse)*.28,0,1.65);
-      rodSheen.material.opacity=dockerRodFight ? .34 : .13;
-      if(dockerRodFight){
-        rodScreenDown.setFromMatrixColumn(camera.matrixWorld,1).negate();
-        rodScreenRight.setFromMatrixColumn(camera.matrixWorld,0);
-        dockerFightBend.load=rodBendLoad;
-      }
+      rodSheen.material.opacity=.13;
       for(let i=0;i<rodPointCount;i++){
         const p=i/(rodPointCount-1);
         // One centerline drives the blank, guides, reel seat and line entry.
