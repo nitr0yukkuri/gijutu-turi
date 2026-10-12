@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import react from "@vitejs/plugin-react";
 import { createPrecacheManifest } from "./src/precache-manifest.js";
@@ -8,6 +8,12 @@ const backendPort = process.env.BACKEND_PORT ?? (process.env.PORT === "8788" ? "
 const backendHttp = `http://127.0.0.1:${backendPort}`;
 const backendWs = `ws://127.0.0.1:${backendPort}`;
 const publicOrigin = (process.env.VITE_PUBLIC_ORIGIN ?? "").trim().replace(/\/+$/, "");
+const localHttps = process.env.VITE_HTTPS === "1"
+  ? {
+      key: readFileSync(resolve(process.env.VITE_TLS_KEY ?? ".local-certs/phone-https/server.key")),
+      cert: readFileSync(resolve(process.env.VITE_TLS_CERT ?? ".local-certs/phone-https/server.crt")),
+    }
+  : undefined;
 
 export default defineConfig({
   plugins: [
@@ -71,6 +77,7 @@ export default defineConfig({
     host: "0.0.0.0",
     port: Number(process.env.VITE_PORT ?? 8788),
     strictPort: true,
+    ...(localHttps ? { https: localHttps } : {}),
     proxy: {
       "/api": { target: backendHttp, changeOrigin: true },
       "/health": { target: backendHttp, changeOrigin: true },

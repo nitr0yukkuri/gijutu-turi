@@ -1,6 +1,7 @@
 node_modules/
 .npm-cache/
 .npm-cache-deploy/
+.local-certs/
 dist/
 .previewlogs/
 .env
