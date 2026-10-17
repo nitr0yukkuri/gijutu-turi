@@ -15,6 +15,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=8080
+ENV COLLECTION_BACKEND=sqlite
 ENV GIJUTU_DB_PATH=/tmp/gijutu-turi.sqlite
 
 COPY package.json package-lock.json ./
@@ -28,3 +29,4 @@ COPY --from=build /app/manifest.webmanifest ./manifest.webmanifest
 EXPOSE 8080
 
 CMD ["node", "dist/index.js"]
+
