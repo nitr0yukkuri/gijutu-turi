@@ -14,6 +14,22 @@ export function resolveCollectionBackend(environment: Environment = process.env)
   };
   const hasD1Setting = Object.values(d1).some(Boolean);
   const databaseUrl = read(environment, "DATABASE_URL");
+  const selectedBackend = read(environment, "COLLECTION_BACKEND").toLowerCase();
+
+  if (selectedBackend) {
+    if (selectedBackend === "sqlite") return "sqlite";
+    if (selectedBackend === "d1") {
+      if (!d1.accountId || !d1.databaseId || !d1.apiToken) throw new Error("incomplete_d1_configuration");
+      if (databaseUrl) throw new Error("multiple_collection_backends_configured");
+      return "d1";
+    }
+    if (selectedBackend === "postgres") {
+      if (!databaseUrl) throw new Error("incomplete_postgres_configuration");
+      if (hasD1Setting) throw new Error("multiple_collection_backends_configured");
+      return "postgres";
+    }
+    throw new Error("invalid_collection_backend");
+  }
 
   if (hasD1Setting) {
     if (!d1.accountId || !d1.databaseId || !d1.apiToken) throw new Error("incomplete_d1_configuration");
@@ -47,3 +63,4 @@ export async function createCollectionRepository(environment: Environment = proc
     }
   }
 }
+
