@@ -59,6 +59,7 @@ export class OceanRoom {
   private readonly commands: QueuedCommand[] = [];
   private tickTimer?: ReturnType<typeof setTimeout>;
   private lastStoredAt = 0;
+  private catchWritePromise?: Promise<void>;
 
   constructor(private readonly state: DurableObjectState, private readonly env: CloudflareEnv) {}
 
@@ -138,20 +139,29 @@ export class OceanRoom {
   private async writeCatch(): Promise<void> {
     const room = this.room;
     const event = room?.catchEvent;
-    if (!room || !event || room.catchSaveStatus === "pending" || room.catchSaveStatus === "saved") return;
-    room.catchSaveStatus = "pending";
-    this.broadcast();
-    await this.persist(true);
+    if (!room || !event || room.catchSaveStatus === "saved") return;
+    if (this.catchWritePromise) return this.catchWritePromise;
+
+    this.catchWritePromise = (async () => {
+      room.catchSaveStatus = "pending";
+      this.broadcast();
+      await this.persist(true);
+      try {
+        await recordCatch(this.env.DB, room.playerId, event.fishId, event.eventKey);
+        room.catchSaveStatus = "saved";
+      } catch (error) {
+        console.error("Unable to record fish catch", error instanceof Error ? error.message : "unknown_error");
+        room.catchSaveStatus = "failed";
+      }
+      await this.persist(true);
+      this.broadcast();
+      if (room.catchSaveStatus === "saved") this.scheduleTick(0);
+    })();
     try {
-      await recordCatch(this.env.DB, room.playerId, event.fishId, event.eventKey);
-      room.catchSaveStatus = "saved";
-    } catch (error) {
-      console.error("Unable to record fish catch", error instanceof Error ? error.message : "unknown_error");
-      room.catchSaveStatus = "failed";
+      await this.catchWritePromise;
+    } finally {
+      this.catchWritePromise = undefined;
     }
-    await this.persist(true);
-    this.broadcast();
-    if (room.catchSaveStatus === "saved") this.scheduleTick(0);
   }
 
   private async tick(): Promise<void> {
@@ -227,6 +237,9 @@ export class OceanRoom {
     if ((role !== "display" && role !== "controller") || !originAllowed || this.clients().length >= 8
       || role === "controller" && this.roleCount("controller") >= 1) return new Response("Forbidden", { status: 403 });
     await this.state.storage.deleteAlarm();
+    if (room.catchSaveStatus === "pending" && room.catchEvent) {
+      this.state.waitUntil(this.writeCatch());
+    }
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1] as DurableSocket;
@@ -312,6 +325,13 @@ export class OceanRoom {
     if (this.clients().length > 0) return;
     const room = await this.getRoom();
     if (!room) return;
+    if (room.catchEvent && room.catchSaveStatus !== "saved") {
+      try { await this.writeCatch(); } catch { /* retry on the next alarm */ }
+      if (room.catchSaveStatus !== "saved") {
+        await this.state.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
+        return;
+      }
+    }
     await this.state.storage.delete(ROOM_STORAGE_KEY);
     const { deleteOceanRoom } = await import("./d1-store.js");
     await deleteOceanRoom(this.env.DB, room.id);
