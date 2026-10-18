@@ -18,7 +18,11 @@ Wranglerは既定でローカルD1を使います。本番D1へ接続する設�
 
 ## デプロイ
 
-Cloudflare APIトークンをGitHub Actionsの `CLOUDFLARE_API_TOKEN` シークレットに登録すると、`main` への関連ファイルの変更または手動実行でデプロイできます。トークンはCloudflare Workers編集に必要な最小権限へ絞り、リポジトリへ書き込まないでください。
+CloudflareにWorker `gijutu-turi` がまだない場合は、先にDashboardから同名のWorkerを一度作成します。Worker単位のEditor権限は既存Workerの更新・デプロイ用で、新規Worker作成はできません。[Workersの権限](https://developers.cloudflare.com/workers/authorization/workers/)
+
+GitHub Actions用のAPIトークンは、アカウントを対象にしつつ、Workers EditorをこのWorkerだけに割り当てます。D1 bindingを使うWorkerのデプロイには、別途D1権限は不要です。同じCloudflareアカウントのD1データベースへトークンで直接アクセスさせる構成にはしていません。[Bindingsに必要な権限](https://developers.cloudflare.com/workers/authorization/workers/#bindings)
+
+トークン値はGitHubリポジトリ設定のActions secretsへ `CLOUDFLARE_API_TOKEN` として保存します。コードやチャットには貼りません。登録すると、`main` への関連ファイル変更または手動実行でデプロイできます。
 
 ```powershell
 npm run deploy:cloudflare
