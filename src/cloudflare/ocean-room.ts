@@ -327,7 +327,7 @@ export class OceanRoom {
     if (!room) return;
     if (room.catchEvent && room.catchSaveStatus !== "saved") {
       try { await this.writeCatch(); } catch { /* retry on the next alarm */ }
-      if (room.catchSaveStatus !== "saved") {
+      if (!canContinueAfterCatchSave(room.catchSaveStatus)) {
         await this.state.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
         return;
       }
