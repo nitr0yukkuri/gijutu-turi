@@ -32,4 +32,12 @@ WorkerのURLは `gijutu-turi.<workers.devのサブドメイン>.workers.dev` に
 
 ## 費用の見方
 
-Workers、Durable Objects、D1の実額はCloudflareアカウントのプランと利用量で変わります。特に釣り中は20Hz更新のためDurable Objectが稼働し、接続中ずっと無償枠に収まるとは限りません。Cloud Runの停止でGCP側の実行費は止められますが、Cloudflare料金がゼロになるとは限りません。デプロイ前にCloudflareのプラン・請求画面を確認し、実請求と無料枠・見積りを分けて判断してください。
+アカウントのプランと実利用量を確認してから切り替えます。2026-10-18時点の公開料金表では、Workers Freeに1日あたり10万Workerリクエスト、Durable Objectsは10万リクエストと13,000 GB-s、D1は500万行読み取り・10万行書き込み・合計5 GBの枠があります。Workers Paidはアカウントあたり月額最低5 USDで、枠を超えた利用に従量料金が発生します。これは公開枠であり、このアカウントのプランや実額は未確認です。
+
+このゲームの20Hz判定はDurable Object内で行い、毎tick D1には問い合わせません。ゲーム状態の保存は通常2秒間隔で、状態変更時に追加保存します。Durable Objectの保存量・行読み書き、実行時間とWebSocket入力数は利用量に数えられます。一方、Durable Objectsから送るWebSocketメッセージは課金対象外で、受信メッセージは20対1でリクエスト換算されます。D1はセッション、図鑑、捕獲時に利用します。Worker Logsはリクエストの10%を採取し、Workers Logsの料金体系は2026年12月1日に変更予定です。
+
+Cloud Runを停止してもCloudflareが必ず無料になるわけではありません。切替前後にCloudflareダッシュボードで実プラン・Billable Usage・請求を確認してください。公開料金と実請求を混同せず、アカウントの利用実績なしに金額見積もりは出しません。
+
+- [Workers・Durable Objects料金](https://developers.cloudflare.com/workers/platform/pricing/)
+- [D1料金](https://developers.cloudflare.com/d1/platform/pricing/)
+- [Workers Logs料金](https://developers.cloudflare.com/workers/observability/logs/workers-logs/)
