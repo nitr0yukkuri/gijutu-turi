@@ -1,68 +1,9 @@
-import { FISH_SPECIES, isFishSpeciesId, type FishSpeciesId } from "../fish-species.js";
+import { isFishSpeciesId, type FishSpeciesId } from "../fish-species.js";
 import { isPlayerId, type CollectionEntry, type CollectionSnapshot } from "../collection-contract.js";
 import type { D1Database, D1PreparedStatement } from "./types.js";
 
-let catalogReady: Promise<void> | undefined;
-
-const schema = [
-  `CREATE TABLE IF NOT EXISTS fish_species (
-    id TEXT PRIMARY KEY, number INTEGER NOT NULL UNIQUE, name TEXT, classification TEXT,
-    tagline TEXT, description TEXT, habitat TEXT, rarity TEXT, model_key TEXT,
-    catalog_status TEXT NOT NULL CHECK (catalog_status IN ('active', 'preview'))
-  )`,
-  `CREATE TABLE IF NOT EXISTS player_collections (
-    player_id TEXT NOT NULL, fish_id TEXT NOT NULL REFERENCES fish_species(id),
-    catches INTEGER NOT NULL DEFAULT 0, first_caught_at TEXT NOT NULL, last_caught_at TEXT NOT NULL,
-    PRIMARY KEY (player_id, fish_id)
-  )`,
-  `CREATE TABLE IF NOT EXISTS collection_catch_events (
-    event_key TEXT PRIMARY KEY, player_id TEXT NOT NULL, fish_id TEXT NOT NULL REFERENCES fish_species(id),
-    caught_at TEXT NOT NULL
-  )`,
-  `CREATE TABLE IF NOT EXISTS player_sessions (
-    player_id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL
-  )`,
-  `CREATE TABLE IF NOT EXISTS ocean_rooms (
-    room_id TEXT PRIMARY KEY, player_id TEXT NOT NULL, fish_id TEXT, created_at TEXT NOT NULL
-  )`,
-];
-
 const bind = (db: D1Database, sql: string, values: Array<string | number | boolean | null> = []): D1PreparedStatement =>
   db.prepare(sql).bind(...values);
-
-export async function ensureCatalog(db: D1Database): Promise<void> {
-  if (!catalogReady) {
-    catalogReady = (async () => {
-      const statements: D1PreparedStatement[] = schema.map(sql => db.prepare(sql));
-      for (const entry of FISH_SPECIES) {
-        statements.push(bind(db, `UPDATE fish_species
-          SET number = (SELECT CASE WHEN COALESCE(MIN(number), 0) > 0 THEN -1 ELSE MIN(number) - 1 END FROM fish_species)
-          WHERE id LIKE 'unknown-%' AND number = ? AND catalog_status = 'preview'
-            AND (EXISTS (SELECT 1 FROM player_collections WHERE fish_id = fish_species.id)
-              OR EXISTS (SELECT 1 FROM collection_catch_events WHERE fish_id = fish_species.id))`, [entry.number]));
-        statements.push(bind(db, `DELETE FROM fish_species
-          WHERE id LIKE 'unknown-%' AND number = ? AND catalog_status = 'preview'
-            AND NOT EXISTS (SELECT 1 FROM player_collections WHERE fish_id = fish_species.id)
-            AND NOT EXISTS (SELECT 1 FROM collection_catch_events WHERE fish_id = fish_species.id)`, [entry.number]));
-        statements.push(bind(db, `INSERT INTO fish_species
-          (id, number, name, classification, tagline, description, habitat, rarity, model_key, catalog_status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET number=excluded.number, name=excluded.name,
-            classification=excluded.classification, tagline=excluded.tagline, description=excluded.description,
-            habitat=excluded.habitat, rarity=excluded.rarity, model_key=excluded.model_key,
-            catalog_status=excluded.catalog_status`, [
-          entry.id, entry.number, entry.name, entry.classification, entry.tagline, entry.description,
-          entry.habitat, entry.rarity, entry.modelKey, entry.catalogStatus,
-        ]));
-      }
-      await db.batch(statements);
-    })().catch(error => {
-      catalogReady = undefined;
-      throw error;
-    });
-  }
-  await catalogReady;
-}
 
 type CatalogRow = {
   id: string; number: number; name: string | null; classification: string | null;
@@ -72,7 +13,6 @@ type CatalogRow = {
 };
 
 export async function getCollection(db: D1Database, playerId: string): Promise<CollectionSnapshot> {
-  await ensureCatalog(db);
   if (!isPlayerId(playerId)) throw new Error("invalid_player_id");
   const result = await bind(db, `SELECT species.id, species.number, species.name, species.classification,
       species.tagline, species.description, species.habitat, species.rarity, species.model_key,
@@ -93,7 +33,6 @@ export async function getCollection(db: D1Database, playerId: string): Promise<C
 }
 
 export async function registerPlayerSession(db: D1Database, playerId: string, tokenHash: string): Promise<boolean> {
-  await ensureCatalog(db);
   if (!isPlayerId(playerId) || !/^[a-f0-9]{64}$/.test(tokenHash)) throw new Error("invalid_player_session");
   await bind(db, "INSERT OR IGNORE INTO player_sessions (player_id, token_hash, created_at) VALUES (?, ?, ?)",
     [playerId, tokenHash, new Date().toISOString()]).run();
@@ -102,14 +41,12 @@ export async function registerPlayerSession(db: D1Database, playerId: string, to
 }
 
 export async function getPlayerIdForSession(db: D1Database, tokenHash: string): Promise<string | undefined> {
-  await ensureCatalog(db);
   if (!/^[a-f0-9]{64}$/.test(tokenHash)) return undefined;
   const row = await bind(db, "SELECT player_id FROM player_sessions WHERE token_hash = ?", [tokenHash]).first<{ player_id: string }>();
   return row?.player_id;
 }
 
 export async function recordCatch(db: D1Database, playerId: string, fishId: string, eventKey: string): Promise<void> {
-  await ensureCatalog(db);
   if (!isPlayerId(playerId) || !isFishSpeciesId(fishId) || !/^[-a-zA-Z0-9_:]{3,160}$/.test(eventKey)) {
     throw new Error("invalid_catch");
   }
@@ -129,8 +66,21 @@ export async function recordCatch(db: D1Database, playerId: string, fishId: stri
 }
 
 export async function ping(db: D1Database): Promise<void> {
-  await ensureCatalog(db);
-  await db.prepare("SELECT 1 AS ready").first();
+  const tables = await db.prepare(`SELECT
+    EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'fish_species') AS fish_species,
+    EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'player_collections') AS player_collections,
+    EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'collection_catch_events') AS collection_catch_events,
+    EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'player_sessions') AS player_sessions,
+    EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ocean_rooms') AS ocean_rooms`).first<{
+      fish_species: number;
+      player_collections: number;
+      collection_catch_events: number;
+      player_sessions: number;
+      ocean_rooms: number;
+    }>();
+  if (!tables || Object.values(tables).some(value => Number(value) !== 1)) {
+    throw new Error("d1_schema_not_ready");
+  }
 }
 
 export async function reserveOceanRoom(
@@ -139,7 +89,6 @@ export async function reserveOceanRoom(
   playerId: string,
   fishId?: FishSpeciesId,
 ): Promise<boolean> {
-  await ensureCatalog(db);
   const createdAt = new Date().toISOString();
   const results = await db.batch([
     bind(db, `INSERT INTO ocean_rooms (room_id, player_id, fish_id, created_at)
@@ -153,3 +102,4 @@ export async function reserveOceanRoom(
 export async function deleteOceanRoom(db: D1Database, roomId: string): Promise<void> {
   await bind(db, "DELETE FROM ocean_rooms WHERE room_id = ?", [roomId]).run();
 }
+

@@ -15,7 +15,8 @@
     {
       "binding": "DB",
       "database_name": "gijutu-turi-collections",
-      "database_id": "5083cf81-3dc4-41eb-aedd-210921a351f5"
+      "database_id": "5083cf81-3dc4-41eb-aedd-210921a351f5",
+      "migrations_dir": "migrations"
     }
   ],
   "durable_objects": {
@@ -28,3 +29,4 @@
   ],
   "observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }
+

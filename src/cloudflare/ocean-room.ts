@@ -130,6 +130,10 @@ export class OceanRoom {
   private scheduleTick(delay = 50): void {
     if (this.tickTimer !== undefined) return;
     if (!this.clients().length) return;
+    // A controller can stay connected after the display disconnects. Without
+    // a display there is no consumer for simulation snapshots, so let the DO
+    // hibernate instead of keeping a 20Hz loop alive.
+    if (this.roleCount("display") === 0) return;
     this.tickTimer = setTimeout(() => {
       this.tickTimer = undefined;
       this.state.waitUntil(this.tick());
@@ -167,12 +171,12 @@ export class OceanRoom {
   private async tick(): Promise<void> {
     const room = await this.getRoom();
     const game = this.game;
-    if (!room || !game || !this.clients().length) return;
+    if (!room || !game || this.roleCount("display") === 0) return;
     const now = Date.now();
     const previous = game.state.phase;
     const saveLocked = game.state.phase === "caught" && !canContinueAfterCatchSave(room.catchSaveStatus);
 
-    if (this.roleCount("display") > 0 && !saveLocked) {
+    if (!saveLocked) {
       const queued = this.commands.splice(0);
       for (const command of queued) {
         if (!this.clients().includes(command.socket)) continue;
@@ -203,7 +207,7 @@ export class OceanRoom {
     room.game = game.serialize();
     const forceSave = previous !== phase;
     await this.persist(forceSave);
-    if (isActive(room) || this.commands.length > 0) this.scheduleTick(50);
+    if (this.roleCount("display") > 0 && (isActive(room) || this.commands.length > 0)) this.scheduleTick(50);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -315,7 +319,7 @@ export class OceanRoom {
       this.broadcast();
       if (this.clients().length === 0 && room) {
         await this.state.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
-      } else if (room && isActive(room)) {
+      } else if (room && this.roleCount("display") > 0 && isActive(room)) {
         this.scheduleTick(50);
       }
     })());
@@ -339,3 +343,4 @@ export class OceanRoom {
     this.game = undefined;
   }
 }
+

@@ -20,9 +20,9 @@ Wranglerは既定でローカルD1を使います。本番D1へ接続する設�
 
 CloudflareにWorker `gijutu-turi` がまだない場合は、先にDashboardから同名のWorkerを一度作成します。Worker単位のEditor権限は既存Workerの更新・デプロイ用で、新規Worker作成はできません。[Workersの権限](https://developers.cloudflare.com/workers/authorization/workers/)
 
-GitHub Actions用のAPIトークンは、アカウントを対象にしつつ、Workers EditorをこのWorkerだけに割り当てます。D1 bindingを使うWorkerのデプロイには、別途D1権限は不要です。同じCloudflareアカウントのD1データベースへトークンで直接アクセスさせる構成にはしていません。[Bindingsに必要な権限](https://developers.cloudflare.com/workers/authorization/workers/#bindings)
+GitHub Actions用のAPIトークンは、アカウントを対象にしつつ、Workers EditorをこのWorkerだけに割り当てます。デプロイ時にD1マイグレーションを適用するため、対象アカウントのD1 Edit権限も付けます。Workerの実行時bindingはCloudflareが管理し、アプリからD1管理APIへ直接アクセスしません。[Workersの権限](https://developers.cloudflare.com/workers/authorization/workers/)
 
-トークン値はGitHubリポジトリ設定のActions secretsへ `CLOUDFLARE_API_TOKEN` として保存します。コードやチャットには貼りません。登録すると、`main` への関連ファイル変更または手動実行でデプロイできます。
+トークン値はGitHubリポジトリ設定のActions secretsへ `CLOUDFLARE_API_TOKEN` として保存します。コードやチャットには貼りません。登録すると、`main` への関連ファイル変更または手動実行でデプロイできます。ワークフローは型検査・自動テスト・ビルド後に、D1マイグレーション、Workerデプロイ、`/health`・`/ready`・画面の本番疎通確認を順番に行います。
 
 ```powershell
 npm run deploy:cloudflare
@@ -41,3 +41,4 @@ Cloud Runを停止してもCloudflareが必ず無料になるわけではあり�
 - [Workers・Durable Objects料金](https://developers.cloudflare.com/workers/platform/pricing/)
 - [D1料金](https://developers.cloudflare.com/d1/platform/pricing/)
 - [Workers Logs料金](https://developers.cloudflare.com/workers/observability/logs/workers-logs/)
+

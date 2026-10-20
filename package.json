@@ -19,8 +19,8 @@
     "test:ocean": "node --import tsx scripts/verify-ocean.ts",
     "test:fish": "node --import tsx scripts/verify-go-fish.ts",
     "test:whale": "node --import tsx scripts/verify-docker-whale.ts",
-    "dev:cloudflare": "npm run build && wrangler dev",
-    "deploy:cloudflare": "npm run typecheck && npm run build && wrangler deploy"
+    "dev:cloudflare": "npm run build && wrangler d1 migrations apply gijutu-turi-collections --local && wrangler dev",
+    "deploy:cloudflare": "npm run typecheck && npm test && npm run build && wrangler d1 migrations apply gijutu-turi-collections --remote && wrangler deploy"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",
@@ -48,3 +48,4 @@
     "wrangler": "^4.151.1"
   }
 }
+
