@@ -12,6 +12,27 @@ export type { OceanMode, OceanPhase } from './ocean-contract.js';
 export type { OceanAction } from './ocean-contract.js';
 export type FishSelectionMode = 'rotate' | 'fixed';
 export type OceanState = AuthoritativeOceanState & { initialDistance:number; biteRemaining:number };
+export type OceanFishingGameSnapshot = {
+  state: OceanState;
+  locomotion: ReturnType<FishLocomotion['serialize']>;
+  age: number;
+  waitDuration: number;
+  overload: number;
+  slack: number;
+  finalBurst: number;
+  fishDepth: number;
+  approachStart: Vec3;
+  approachEnd: Vec3;
+  approachDirection: Vec3;
+  steeringPhase: number;
+  lateralVelocity: number;
+  swimYaw: number;
+  swimEffort: number;
+  lineVelocity: number;
+  escapeAge: number;
+  escapeDirection: Vec3;
+  fishSelectionMode: FishSelectionMode;
+};
 const ESCAPE_ANIMATION_SECONDS=ESCAPE_ANIMATION_MS/1000;
 // Give the player a readable reaction window after the float visibly sinks.
 // The fight difficulty starts only after hooking, so this does not change the
@@ -54,6 +75,51 @@ export class OceanFishingGame {
     private readonly fishSelectionMode:FishSelectionMode='rotate',
   ){
     this.state=fresh(this.locomotion.snapshot(),startingFishId);
+  }
+  serialize(): OceanFishingGameSnapshot {
+    return {
+      state: structuredClone(this.state),
+      locomotion: this.locomotion.serialize(),
+      age: this.age,
+      waitDuration: this.waitDuration,
+      overload: this.overload,
+      slack: this.slack,
+      finalBurst: this.finalBurst,
+      fishDepth: this.fishDepth,
+      approachStart: { ...this.approachStart },
+      approachEnd: { ...this.approachEnd },
+      approachDirection: { ...this.approachDirection },
+      steeringPhase: this.steeringPhase,
+      lateralVelocity: this.lateralVelocity,
+      swimYaw: this.swimYaw,
+      swimEffort: this.swimEffort,
+      lineVelocity: this.lineVelocity,
+      escapeAge: this.escapeAge,
+      escapeDirection: { ...this.escapeDirection },
+      fishSelectionMode: this.fishSelectionMode,
+    };
+  }
+  static restore(snapshot: OceanFishingGameSnapshot): OceanFishingGame {
+    const game = new OceanFishingGame(Math.random, snapshot.state.fishId, snapshot.fishSelectionMode);
+    game.state = structuredClone(snapshot.state);
+    game.locomotion = FishLocomotion.restore(snapshot.locomotion);
+    game.age = snapshot.age;
+    game.waitDuration = snapshot.waitDuration;
+    game.overload = snapshot.overload;
+    game.slack = snapshot.slack;
+    game.finalBurst = snapshot.finalBurst;
+    game.fishDepth = snapshot.fishDepth;
+    game.approachStart = { ...snapshot.approachStart };
+    game.approachEnd = { ...snapshot.approachEnd };
+    game.approachDirection = { ...snapshot.approachDirection };
+    game.steeringPhase = snapshot.steeringPhase;
+    game.lateralVelocity = snapshot.lateralVelocity;
+    game.swimYaw = snapshot.swimYaw;
+    game.swimEffort = snapshot.swimEffort;
+    game.lineVelocity = snapshot.lineVelocity;
+    game.escapeAge = snapshot.escapeAge;
+    game.escapeDirection = { ...snapshot.escapeDirection };
+    return game;
   }
   action(input:OceanAction, now:number):boolean {
     const s=this.state;

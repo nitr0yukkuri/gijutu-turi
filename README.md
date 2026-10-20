@@ -235,6 +235,8 @@ npm run test:whale
 - ルームは最大128個、1ルーム最大8接続で、スマートフォンの操作担当は1台です。無人のルームは30分後に回収します。QR/ルームURLを知っている人はその海へ接続できるため、公開場所へ不用意に共有しないでください。
 - Service Workerは静的ファイルをキャッシュしますが、ゲーム進行や捕獲記録にはオンラインのバックエンド接続が必要です。
 
+Cloudflare Workersへの移行構成と公開手順は[Cloudflare Workersガイド](./docs/cloudflare-workers.md)を参照してください。
+
 デプロイ方法やCloud Runの料金・WebSocket・SQLiteの詳しい制約は[低コスト構成ガイド](./docs/cloud-run-cheap.md)を参照してください。アーキテクチャの責務分担とデータフローは[技術構成メモ](./docs/technical-architecture.md)、魚の造形方針は[Go魚の設計メモ](./docs/go-fish-design.md)と[Dockerクジラの設計メモ](./docs/docker-whale-design.md)にまとめています。
 
 ## 主なファイル

@@ -37,6 +37,9 @@ jobs:
       - name: 本番ビルド
         run: npm run build
 
+      - name: Cloudflare Worker dry run
+        run: npx wrangler deploy --dry-run
+
       - name: ブラウザー検査用のChromiumを準備
         run: npx playwright install --with-deps chromium
 
@@ -76,3 +79,4 @@ jobs:
           if [ -f "$RUNNER_TEMP/gijutu-turi-server.pid" ]; then
             kill "$(cat "$RUNNER_TEMP/gijutu-turi-server.pid")" || true
           fi
+

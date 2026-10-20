@@ -118,6 +118,51 @@ export class FishLocomotion {
     this.heading = normalise(velocity);
   }
 
+  /** Plain serializable state used when an authoritative room is resumed. */
+  serialize(): {
+    position: Vec3;
+    velocity: Vec3;
+    heading: Vec3;
+    gait: FishGait;
+    wavePhase: number;
+    waveAmplitude: number;
+    waveFrequency: number;
+    waveWavelength: number;
+    stamina: number;
+    cStartRemaining: number;
+    swim?: FishMotionSnapshot['swim'];
+  } {
+    return {
+      position: { ...this.position },
+      velocity: { ...this.velocity },
+      heading: { ...this.heading },
+      gait: this.gait,
+      wavePhase: this.wavePhase,
+      waveAmplitude: this.waveAmplitude,
+      waveFrequency: this.waveFrequency,
+      waveWavelength: this.waveWavelength,
+      stamina: this.stamina,
+      cStartRemaining: this.cStartRemaining,
+      ...(this.swim ? { swim: { ...this.swim, velocity: { ...this.swim.velocity } } } : {}),
+    };
+  }
+
+  static restore(snapshot: ReturnType<FishLocomotion['serialize']>): FishLocomotion {
+    const locomotion = new FishLocomotion(snapshot.position, snapshot.velocity);
+    locomotion.heading = { ...snapshot.heading };
+    locomotion.gait = snapshot.gait;
+    locomotion.wavePhase = snapshot.wavePhase;
+    locomotion.waveAmplitude = snapshot.waveAmplitude;
+    locomotion.waveFrequency = snapshot.waveFrequency;
+    locomotion.waveWavelength = snapshot.waveWavelength;
+    locomotion.stamina = snapshot.stamina;
+    locomotion.cStartRemaining = snapshot.cStartRemaining;
+    locomotion.swim = snapshot.swim
+      ? { ...snapshot.swim, velocity: { ...snapshot.swim.velocity } }
+      : undefined;
+    return locomotion;
+  }
+
   update(deltaSeconds: number, intent: SwimIntent, externalForce: Vec3 = { x: 0, y: 0, z: 0 }): void {
     const delta = clamp(deltaSeconds, 0, 0.1);
     const activeGait = this.cStartRemaining > 0 ? "hooked_burst" : intent.gait;
