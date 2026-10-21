@@ -70,7 +70,7 @@ jobs:
         run: npm run test:browser
 
       - name: Dockerイメージをビルド
-        run: docker build --tag gijutu-turi:ci .
+        run: docker build --pull --tag gijutu-turi:ci .
 
       - name: 海釣り用サーバーを停止
         if: ${{ always() }}
