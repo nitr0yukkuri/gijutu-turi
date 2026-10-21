@@ -1,4 +1,5 @@
-FROM node:22.23.4-bookworm-slim AS build
+FROM node:22-bookworm-slim AS build
+RUN node -e 'const [major, minor, patch] = process.versions.node.split(".").map(Number); if (major !== 22 || minor < 23 || (minor === 23 && patch < 4)) throw new Error("Node.js 22.23.4+ is required");'
 
 WORKDIR /app
 
@@ -8,7 +9,8 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:22.23.4-bookworm-slim AS runtime
+FROM node:22-bookworm-slim AS runtime
+RUN node -e 'const [major, minor, patch] = process.versions.node.split(".").map(Number); if (major !== 22 || minor < 23 || (minor === 23 && patch < 4)) throw new Error("Node.js 22.23.4+ is required");'
 
 WORKDIR /app
 
