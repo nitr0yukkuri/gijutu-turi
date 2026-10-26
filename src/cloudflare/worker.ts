@@ -163,14 +163,32 @@ async function route(request: Request, env: CloudflareEnv): Promise<Response> {
   return env.ASSETS.fetch(request);
 }
 
+function logRequestAnalytics(request: Request, response: Response): void {
+  try {
+    const country = (request as Request & { cf?: { country?: string } }).cf?.country;
+    console.log({
+      event: "request_analytics",
+      method: request.method,
+      path: new URL(request.url).pathname.slice(0, 512),
+      status: response.status,
+      country: country || "unknown",
+      userAgent: request.headers.get("user-agent")?.slice(0, 256) || "unknown",
+    });
+  } catch {
+    // Analytics must never change the response sent to the visitor.
+  }
+}
 export default {
   async fetch(request: Request, env: CloudflareEnv): Promise<Response> {
+    let response: Response;
     try {
-      return applyCors(request, await route(request, env), env);
+      response = applyCors(request, await route(request, env), env);
     } catch (error) {
       console.error("Cloudflare request failed", error instanceof Error ? error.message : "unknown_error");
-      return applyCors(request, json({ error: "internal_error" }, 500), env);
+      response = applyCors(request, json({ error: "internal_error" }, 500), env);
     }
+    logRequestAnalytics(request, response);
+    return response;
   },
 };
 
