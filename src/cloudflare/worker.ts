@@ -167,12 +167,12 @@ function logRequestAnalytics(request: Request, response: Response): void {
   try {
     const country = (request as Request & { cf?: { country?: string } }).cf?.country;
     console.log({
-      event: "request_analytics",
+      record_type: "http_request",
       method: request.method,
       path: new URL(request.url).pathname.slice(0, 512),
       status: response.status,
       country: country || "unknown",
-      userAgent: request.headers.get("user-agent")?.slice(0, 256) || "unknown",
+      user_agent: request.headers.get("user-agent")?.slice(0, 256) || "unknown",
     });
   } catch {
     // Analytics must never change the response sent to the visitor.
