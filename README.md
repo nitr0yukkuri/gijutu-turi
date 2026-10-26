@@ -1,5 +1,7 @@
 # 技術釣り — GIJUTU TURI
 
+[日本語](README.md) | [English](README.en.md)
+
 ![技術釣りのロゴ](./assets/gijutu-turi-logo.png)
 
 **技術の違いを、魚の引きとして体験するWeb釣りゲームです。**
