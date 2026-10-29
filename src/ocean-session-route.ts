@@ -5,12 +5,13 @@ import { z } from "zod";
 import type { CollectionRepository } from "./collection-contract.js";
 import { isPlayerId } from "./collection-contract.js";
 import { isFishSpeciesId } from "./fish-species.js";
+import type { Waterway } from "./waterway.js";
 import { accessHost } from "./ocean-host.js";
 import { createPlayerSessionToken, hashPlayerSessionToken, readPlayerSessionToken } from "./player-session.js";
 import { RequestRateLimiter } from "./request-rate-limit.js";
 
 const sessionBodySchema = z.object({ playerId: z.string().refine(isPlayerId).optional() }).strict();
-const oceanSessionBodySchema = z.object({ fishId: z.string().optional() }).strict();
+const oceanSessionBodySchema = z.object({ fishId: z.string().optional(), waterway: z.enum(["sea", "river"]).optional() }).strict();
 const windowMs = 10 * 60_000;
 
 const sourceFor = (request: Request): string =>
@@ -23,7 +24,7 @@ const rateLimited = (c: { header(name: string, value: string): void; json(value:
 
 export function registerOceanSessionRoutes(
   app: Hono,
-  options: { rooms: { createRoom(playerId: string, fishId?: string): string | undefined }; repository: Pick<CollectionRepository, "registerPlayerSession" | "getPlayerIdForSession" | "getCollection"> },
+  options: { rooms: { createRoom(playerId: string, fishId?: string, waterway?: Waterway): string | undefined }; repository: Pick<CollectionRepository, "registerPlayerSession" | "getPlayerIdForSession" | "getCollection"> },
 ): void {
   const playerSessionLimiter = new RequestRateLimiter();
   const roomAttemptLimiter = new RequestRateLimiter();
@@ -96,7 +97,7 @@ export function registerOceanSessionRoutes(
       return rateLimited(c, retryAfter);
     }
 
-    const id = options.rooms.createRoom(playerId, parsed.data.fishId);
+    const id = options.rooms.createRoom(playerId, parsed.data.fishId, parsed.data.waterway ?? "sea");
     if (!id) return c.json({ error: "rooms_full" }, 503);
     c.header("Cache-Control", "no-store");
     return c.json({ id, host: accessHost(c.req.url) }, 201);
