@@ -46,6 +46,17 @@
 .tech-tree-branch--asynchronous { grid-area: 1 / 2; }
 .tech-tree-branch--interface { grid-area: 2 / 2; }
 .tech-tree-branch--runtime { grid-area: 2 / 1; }
+.tech-tree-map--river, .tech-tree-map--all { height: 650px; }
+.tech-tree-map--river .tech-tree-branches, .tech-tree-map--all .tech-tree-branches { grid-template-rows: repeat(3, minmax(0, 1fr)); row-gap: 28px; }
+.tech-tree-branch--river-concurrency { grid-area: 1 / 1; }
+.tech-tree-branch--river-systems { grid-area: 1 / 2; }
+.tech-tree-branch--river-interface { grid-area: 2 / 1; }
+.tech-tree-branch--river-runtime { grid-area: 2 / 2; }
+.tech-tree-branch--river-data { grid-area: 3 / 1 / 4 / 3; }
+.tech-tree-branch--river-concurrency .tech-tree-nodes, .tech-tree-branch--river-systems .tech-tree-nodes,
+.tech-tree-branch--river-interface .tech-tree-nodes, .tech-tree-branch--river-runtime .tech-tree-nodes,
+.tech-tree-branch--river-data .tech-tree-nodes { gap: 8px; }
+
 .tech-tree-branch--logic, .tech-tree-branch--asynchronous { flex-direction: column-reverse; justify-content: flex-end; }
 .tech-tree-branch-heading { display: flex; align-items: center; gap: 8px; padding: 2px 6px; background: #0d2631; }
 .tech-tree-branch-heading h4 { margin: 0; color: #b6cbd0; font-size: 11px; font-weight: 400; letter-spacing: .02em; line-height: 1.5; }
@@ -172,6 +183,7 @@
   .tech-tree-layout { grid-template-columns: minmax(0, 1fr) 250px; gap: 18px; }
   .tech-tree-inspector { padding-left: 18px; }
   .tech-tree-map { height: 472px; }
+  .tech-tree-map--river, .tech-tree-map--all { height: 650px; }
   .tech-tree-branches { inset-inline: 12px; column-gap: 9%; }
   .tech-tree-nodes { gap: 9px; }
   .tech-tree-node { padding-inline: 4px; }
@@ -198,7 +210,7 @@
   .tech-tree-progress strong { font-size: 24px; }
   .tech-tree-progress span { font-size: 10px; }
   .tech-tree-layout { display: block; }
-  .tech-tree-map { height: auto; padding: 18px 16px 12px; }
+  .tech-tree-map, .tech-tree-map--river, .tech-tree-map--all { height: auto; padding: 18px 16px 12px; }
   .tech-tree-root { position: relative; top: auto; left: auto; transform: none; margin: 0 0 21px 10px; }
   .tech-tree-paths .tech-tree-root-link { display: none; }
   .tech-tree-branches { position: relative; inset: auto; display: flex; flex-direction: column; gap: 25px; padding: 0 0 0 23px; }
@@ -221,6 +233,7 @@
   .tech-tree { padding-top: 20px; }
   .tech-tree-intro { margin-bottom: 16px; }
   .tech-tree-map { height: 432px; }
+  .tech-tree-map--river, .tech-tree-map--all { height: 540px; }
   .tech-tree-branches { row-gap: 40px; }
   .tech-tree-specimen { height: 122px; }
 }

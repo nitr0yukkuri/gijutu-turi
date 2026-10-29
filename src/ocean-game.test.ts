@@ -538,3 +538,13 @@ test('fish approaches the lure only shortly before the bite and keeps its pose w
   step();
   assert.ok(Math.hypot(game.state.fish.position.x-beforeHook.x,game.state.fish.position.z-beforeHook.z)<.5,'the fight begins from the approach pose');
 });
+
+test('a restored game keeps its river and current river species',()=>{
+  const game=new OceanFishingGame(()=>.5,'river-yamame','rotate','river');
+  const restored=OceanFishingGame.restore(game.serialize());
+  const mismatchedRoute=new OceanFishingGame(()=>0,'fish-001','rotate','river');
+
+  assert.equal(restored.state.fishId,'river-yamame');
+  assert.equal(restored.serialize().waterway,'river');
+  assert.equal(mismatchedRoute.state.fishId,'river-ayu','a stale sea route cannot seed a sea fish into a river room');
+});

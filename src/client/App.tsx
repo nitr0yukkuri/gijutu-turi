@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { toDataURL } from "qrcode";
-import { getFishSpecies, isFishSpeciesId, type FishSilhouetteKey } from "../fish-species.js";
+import { getFishSpecies, getWaterwayForFish, isFishSpeciesId, type FishSilhouetteKey } from "../fish-species.js";
 import { FISH_ESCAPE_HINTS } from "./escape-hints.js";
 import { canContinueAfterCatchSave } from "../ocean-contract.js";
 import { k8sLungeForSnapshot } from "../rendering/k8s-fight-presentation.js";
@@ -9,12 +9,14 @@ import { resolveFishingRoute } from "./fishing-route.js";
 import { COMPLETE_SHOWCASE_COLLECTION, isCompleteShowcasePath } from "./complete-showcase.js";
 import { TECH_TREE_BRANCHES, TECH_TREE_FISH_LINKS, TECH_TREE_NODE_DETAILS } from "./tech-tree.js";
 import { useOceanRuntime } from "./useOceanRuntime.js";
+import { resolveWaterway, WATERWAY_QUERY_PARAM, type Waterway } from "../waterway.js";
 import { ReelControl } from "./ReelControl.js";
 import { TensionGauge } from "./TensionGauge.js";
 import type { Collection, CollectionEntry, OceanPhase } from "./types.js";
 import "./tech-tree.css";
 import "./responsive.css";
 import "./tension-gauge.css";
+import "./waterway.css";
 
 
 const phaseLabels: Record<OceanPhase, string> = {
@@ -173,14 +175,15 @@ function FishTechIcon({ speciesId }: { speciesId: string }) {
   );
 }
 
-function TechTreeView({ entries, selectedId, onSelect, isOpen, showCatchCounts = true }: {
+function TechTreeView({ entries, selectedId, onSelect, isOpen, showCatchCounts = true, waterway }: {
   entries: CollectionEntry[];
   selectedId: string;
   onSelect: (id: string) => void;
   isOpen: boolean;
   showCatchCounts?: boolean;
+  waterway?: Waterway;
 }) {
-  const speciesEntries = entries.filter(entry => isFishSpeciesId(entry.id) && entry.catalogStatus === "active");
+  const speciesEntries = entries.filter(entry => isFishSpeciesId(entry.id) && entry.catalogStatus === "active" && (!waterway || getWaterwayForFish(entry.id) === waterway));
   const discovered = speciesEntries.filter(entry => entry.status === "caught").length;
   const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 760px)").matches);
   const [detailExpanded, setDetailExpanded] = useState(false);
@@ -196,8 +199,9 @@ function TechTreeView({ entries, selectedId, onSelect, isOpen, showCatchCounts =
   const selectedDetails = selected && isFishSpeciesId(selected.id) ? TECH_TREE_NODE_DETAILS[selected.id] : undefined;
   const selectedCaught = selected?.status === "caught";
   const selectedSpeciesId = selected && isFishSpeciesId(selected.id) ? selected.id : undefined;
+  const visibleBranches = waterway ? TECH_TREE_BRANCHES.filter(branch => branch.id.startsWith(waterway === "river" ? "river-" : "") && (waterway === "river" || !branch.id.startsWith("river-"))) : TECH_TREE_BRANCHES;
   const selectedBranch = selectedSpeciesId
-    ? TECH_TREE_BRANCHES.find(branch => branch.speciesIds.includes(selectedSpeciesId))
+    ? visibleBranches.find(branch => branch.speciesIds.includes(selectedSpeciesId))
     : undefined;
   const mapRef = useRef<HTMLDivElement>(null);
   const [paths, setPaths] = useState<{ width: number; height: number; byId: Record<string, string> }>({ width: 1, height: 1, byId: {} });
@@ -300,7 +304,7 @@ function TechTreeView({ entries, selectedId, onSelect, isOpen, showCatchCounts =
 
       {speciesEntries.length === 0 ? <p className="tech-tree-empty" role="status">技術ツリーを読み込めませんでした。魚図鑑に戻ってください。</p> : <>
         <div className="tech-tree-layout">
-          <div ref={mapRef} className="tech-tree-map" aria-label="技術分野と魚のつながり">
+          <div ref={mapRef} className={`tech-tree-map tech-tree-map--${waterway ?? "all"}`} aria-label="技術分野と魚のつながり">
             <svg className="tech-tree-paths" viewBox={`0 0 ${paths.width} ${paths.height}`} preserveAspectRatio="none" aria-hidden="true">
               {speciesEntries.map(entry => <path key={entry.id} className={`tech-tree-root-link${selected?.id === entry.id ? " is-active" : ""}`} d={paths.byId[entry.id] ?? ""} />)}
               {TECH_TREE_FISH_LINKS.map(link => <path
@@ -311,7 +315,7 @@ function TechTreeView({ entries, selectedId, onSelect, isOpen, showCatchCounts =
             </svg>
             <div className="tech-tree-root" aria-hidden="true" />
             <div className="tech-tree-branches">
-              {TECH_TREE_BRANCHES.map(branch => {
+              {visibleBranches.map(branch => {
                 const branchEntries = branch.speciesIds
                   .map(id => speciesEntries.find(entry => entry.id === id))
                   .filter((entry): entry is CollectionEntry => Boolean(entry));
@@ -363,7 +367,7 @@ function TechTreeView({ entries, selectedId, onSelect, isOpen, showCatchCounts =
 }
 
 export function CollectionDialog({
-  dialogRef, collection, selectedId, isOpen, onSelect, onClose, onClosed,
+  dialogRef, collection, selectedId, isOpen, onSelect, onClose, onClosed, waterway,
 }: {
   dialogRef: RefObject<HTMLDialogElement | null>;
   collection: Collection;
@@ -372,10 +376,17 @@ export function CollectionDialog({
   onSelect: (id: string) => void;
   onClose: () => void;
   onClosed: () => void;
+  waterway?: Waterway;
 }) {
   const [activeView, setActiveView] = useState<"fish" | "tech">("fish");
   const entries = collection.entries ?? [];
-  const selected = entries.find(entry => entry.id === selectedId) ?? entries[0];
+  const visibleEntries = waterway
+    ? entries.filter(entry => isFishSpeciesId(entry.id) && getWaterwayForFish(entry.id) === waterway)
+    : entries;
+  const activeEntries = visibleEntries.filter(entry => isFishSpeciesId(entry.id) && entry.catalogStatus === "active");
+  const activeTotal = waterway ? activeEntries.length : collection.activeTotal;
+  const registered = waterway ? activeEntries.filter(entry => entry.status === "caught").length : collection.registered;
+  const selected = visibleEntries.find(entry => entry.id === selectedId) ?? visibleEntries[0];
   const caught = selected?.status === "caught";
   const preview = selected?.status === "preview";
   const selectedSpecies = selected && isFishSpeciesId(selected.id) ? getFishSpecies(selected.id) : undefined;
@@ -389,7 +400,7 @@ export function CollectionDialog({
         <header className="collection-header">
           {activeView === "fish" && <div className="collection-heading">
             <h2 id="collection-title">魚図鑑</h2>
-            {collection.activeTotal > 0 && <span id="collection-count" className="collection-count">発見済み {collection.registered} / {collection.activeTotal}</span>}
+            {activeTotal > 0 && <span id="collection-count" className="collection-count">発見済み {registered} / {activeTotal}</span>}
           </div>}
           <nav className="collection-views" aria-label="釣果の表示">
             <button type="button" aria-pressed={activeView === "fish"} onClick={() => setActiveView("fish")}>魚図鑑</button>
@@ -398,9 +409,9 @@ export function CollectionDialog({
           <button className="collection-close" aria-label="図鑑を閉じる" title="海へ戻る" onClick={onClose}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2 14 14M14 2 2 14" /></svg></button>
         </header>
         {activeView === "fish" ? <>
-          {entries.length > 1 && (
+          {visibleEntries.length > 1 && (
             <nav className="collection-picker" aria-label="魚を選ぶ">
-              {entries.map(entry => (
+              {visibleEntries.map(entry => (
                 <button key={entry.id} type="button" aria-current={entry.id === selected?.id ? "true" : undefined} onClick={() => onSelect(entry.id)}>
                   <span aria-hidden="true">{String(entry.number).padStart(2, "0")}</span>
                   {entry.status === "caught" ? collectionName(entry) : entry.status === "preview" ? "調査予定" : "？？？"}
@@ -429,7 +440,7 @@ export function CollectionDialog({
               </>}
             </div>
           </section>
-        </> : <TechTreeView entries={entries} selectedId={selectedId} onSelect={onSelect} isOpen={isOpen} />}
+        </> : <TechTreeView entries={entries} selectedId={selectedId} onSelect={onSelect} isOpen={isOpen} waterway={waterway} />}
       </div>
     </dialog>
   );
@@ -528,13 +539,14 @@ function FishingApp() {
   const controllerId = params.get("controller");
   const isPhone = Boolean(controllerId);
   const fishingRoute = resolveFishingRoute(window.location.pathname, params.get("fish"));
+  const [waterway, setWaterway] = useState<Waterway>(() => resolveWaterway(params.get(WATERWAY_QUERY_PARAM)));
   const oceanMountRef = useRef<HTMLDivElement>(null);
   const helpDialogRef = useRef<HTMLDialogElement>(null);
   const connectDialogRef = useRef<HTMLDialogElement>(null);
   const collectionDialogRef = useRef<HTMLDialogElement>(null);
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
-  const runtime = useOceanRuntime({ isPhone, controllerId, initialFishId: fishingRoute.initialFishId, routePath: fishingRoute.path, oceanMountRef, collectionOpen });
+  const runtime = useOceanRuntime({ isPhone, controllerId, initialFishId: fishingRoute.initialFishId, waterway, routePath: fishingRoute.path, oceanMountRef, collectionOpen });
   const { state, presentationState, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle, soundEnabled, collection, selectedCollectionId, controllerUrl, controllerHost, controllerUrlError, sensorStatus, sensorButtonLabel, sensorsOn } = runtime;
   const { activate, retryCatchSave, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, startReel, stopReel, performPhonePull, toggleSensor, toggleSound, showToast } = runtime.actions;
   const fighting = state.phase === "fighting";
@@ -543,7 +555,8 @@ function FishingApp() {
   const fightButtonLabel = biting ? "合わせる" : reelHeld ? "巻いています" : "巻く";
   const fightButtonHint = biting ? (state.criticalWindow ? "今押すと、ナイスフッキング！" : "ウキが沈んだら押す") : reelHeld ? "離して止める" : "押して巻く";
   const resultActionLabel = online ? "もう一度、投げる" : "再接続中…";
-  const resultConnectionHint = online ? "" : "海との接続が戻ると、もう一度投げられます。";
+  const waterwayName = waterway === "river" ? "川" : "海";
+  const resultConnectionHint = online ? "" : `${waterwayName}との接続が戻ると、もう一度投げられます。`;
   const catchSaveMessage = catchSaveStatus === "pending"
     ? "図鑑に記録中です…"
     : catchSaveStatus === "failed"
@@ -577,7 +590,27 @@ function FishingApp() {
   const phoneCastLabel = state.phase === "idle" ? "タッチで投げる" : fighting ? (reelHeld ? "巻いている — 離すと緩む" : "押して巻く / 離して緩める") : phaseLabels[state.phase];
   const isLocalDevelopment = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
 
-  useEffect(() => { document.title = isPhone ? "釣り竿 — 技術釣り" : fishingRoute.title; }, [fishingRoute.title, isPhone]);
+  const qrControllerUrl = useMemo(() => {
+    if (!controllerUrl) return "";
+    const url = new URL(controllerUrl);
+    if (waterway === "river") url.searchParams.set(WATERWAY_QUERY_PARAM, "river");
+    else url.searchParams.delete(WATERWAY_QUERY_PARAM);
+    return url.href;
+  }, [controllerUrl, waterway]);
+  const pageTitle = isPhone
+    ? `釣り竿 — ${waterwayName} — 技術釣り`
+    : waterway === "river"
+      ? "技術釣り — 川の魚"
+      : fishingRoute.title;
+  const selectWaterway = (next: Waterway) => {
+    setWaterway(next);
+    const url = new URL(window.location.href);
+    if (next === "river") url.searchParams.set(WATERWAY_QUERY_PARAM, "river");
+    else url.searchParams.delete(WATERWAY_QUERY_PARAM);
+    window.history.replaceState(window.history.state, "", url.href);
+  };
+
+  useEffect(() => { document.title = pageTitle; }, [pageTitle]);
   useEffect(() => { document.body.dataset.phase = state.phase; }, [state.phase]);
   useEffect(() => { document.body.classList.toggle("is-charging", chargeProgress > 0); }, [chargeProgress]);
   useEffect(() => {
@@ -595,22 +628,26 @@ function FishingApp() {
   const closeDialog = (dialog: RefObject<HTMLDialogElement | null>) => { if (dialog.current?.open) dialog.current.close(); };
   useEffect(() => {
     let active = true;
-    if (!controllerUrl) { setQrDataUrl(""); return () => { active = false; }; }
-    void toDataURL(controllerUrl, {
+    if (!qrControllerUrl) { setQrDataUrl(""); return () => { active = false; }; }
+    void toDataURL(qrControllerUrl, {
       errorCorrectionLevel: "M",
       margin: 2,
       width: 220,
       color: { dark: "#102f3c", light: "#f2fbf8" },
     }).then(dataUrl => { if (active) setQrDataUrl(dataUrl); }).catch(() => { if (active) setQrDataUrl(""); });
     return () => { active = false; };
-  }, [controllerUrl]);
+  }, [qrControllerUrl]);
 
   return (
     <>
-      <main id="sea" aria-label="技術釣りの海" hidden={isPhone}>
-        <div id="ocean" ref={oceanMountRef} role="img" aria-label="空の光が映る、穏やかな夕暮れの海" />
+      <main id="sea" aria-label={`技術釣りの${waterwayName}`} hidden={isPhone}>
+        <div id="ocean" ref={oceanMountRef} data-waterway={waterway} role="img" aria-label={waterway === "river" ? "緑の川岸に挟まれ、ゆっくり流れる川" : "空の光が映る、穏やかな夕暮れの海"} />
         <div className="edge-shade" aria-hidden="true" />
         <header className="masthead">
+          <nav className="waterway-switch" aria-label="釣り場を選択">
+            <button type="button" aria-pressed={waterway === "sea"} onClick={() => selectWaterway("sea")}>海</button>
+            <button type="button" aria-pressed={waterway === "river"} onClick={() => selectWaterway("river")}>川</button>
+          </nav>
           <div className="top-actions">
             <button id="sound-toggle" className="quiet-button" aria-pressed={soundEnabled} aria-label={soundEnabled ? "音をオフにする" : "音をオンにする"} onClick={() => void toggleSound().catch(() => showToast("この環境では音を再生できません。"))}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h4l5-4v12l-5-4H4z" /><path id="sound-wave" d={soundEnabled ? "M17 8q5 4 0 8m3-11q7 7 0 14" : "m17 9 5 6m0-6-5 6"} /></svg></button>
           </div>
@@ -650,7 +687,7 @@ function FishingApp() {
         <p id="render-notice" className="render-notice" role="status" hidden={!renderFailed}>3D表示を開始できませんでした。WebGLに対応したブラウザで開き直してください。</p>
       </main>
       <section id="phone" className="phone" hidden={!isPhone} aria-label="釣り竿コントローラー" data-fight={String(fighting || biting)} data-sensors={String(sensorsOn)}>
-        <a className="phone-brand" href="./">技術釣り</a><div id="phone-connection" className="phone-connection" data-connected={String(online && displayConnected)} aria-live="polite"><i aria-hidden="true" /><span>{!online ? "海に接続しています…" : displayConnected ? "PC画面と接続済み" : "PC画面を待っています"}</span></div>
+        <a className="phone-brand" href="./">技術釣り</a><div id="phone-connection" className="phone-connection" data-connected={String(online && displayConnected)} aria-live="polite"><i aria-hidden="true" /><span>{!online ? `${waterwayName}に接続しています…` : displayConnected ? "PC画面と接続済み" : "PC画面を待っています"}</span></div>
         <div className="phone-instruction"><p id="phone-kicker">スマホ操作</p><h1 id="phone-title">{phoneTitles[state.phase]}</h1><p id="phone-hint">{phoneHint}</p>{hookFeedback && <p className="hook-critical-status" role="status">ナイスフッキング！</p>}</div>
         <div key={rodStrokeRevision} className={`rod-symbol${fighting ? " is-fighting" : ""}${state.fishId === "k8s-001" && fighting ? " is-k8s-fighting" : ""}${k8sLunge > .01 ? " is-k8s-lunge" : ""}`} style={k8sRodStyle} aria-hidden="true"><svg viewBox="0 0 160 230"><path d="M48 220 93 32 Q101 14 113 18" /><path className="rod-thread" d="M113 18q22 112-12 164" /><circle cx="101" cy="185" r="4" /><path d="m85 51 15 4m-19 11 16 4m-30 53 16 4" /></svg></div>
         {fighting && <div id="phone-tension" className="phone-tension">
@@ -678,7 +715,7 @@ function FishingApp() {
         <div className={`pairing-qr${qrDataUrl ? "" : " is-loading"}`} aria-live="polite">{qrDataUrl ? <img id="controller-qr" src={qrDataUrl} alt="スマホ接続用QRコード" /> : controllerUrlError || "QRコードを準備中…"}</div>
         {isLocalDevelopment && <p id="pairing-note" className="fine-print">{controllerHost ? <>接続先: <code>{controllerHost}{window.location.port ? `:${window.location.port}` : ""}</code>。PCとスマホを同じWi-Fiに接続してください。<br /></> : null}ローカルでモーションを使うには、PCでもHTTPS画面を開いてください（<code>npm run dev:https</code> → <code>https://localhost:8790</code>）。ログのSHA-256と一致を確認して開発証明書を信頼し、モーションを許可します。</p>}
       </dialog>
-      <CollectionDialog dialogRef={collectionDialogRef} collection={collection} selectedId={selectedCollectionId} isOpen={collectionOpen} onSelect={runtime.setSelectedCollectionId} onClose={() => closeDialog(collectionDialogRef)} onClosed={() => setCollectionOpen(false)} />
+      <CollectionDialog dialogRef={collectionDialogRef} collection={collection} selectedId={selectedCollectionId} isOpen={collectionOpen} onSelect={runtime.setSelectedCollectionId} onClose={() => closeDialog(collectionDialogRef)} onClosed={() => setCollectionOpen(false)} waterway={waterway} />
       <div id="toast" className={`toast${toast ? " visible" : ""}`} role="status">{toast}</div>
       <noscript><p className="render-notice">この海を動かすにはJavaScriptを有効にしてください。</p></noscript>
     </>

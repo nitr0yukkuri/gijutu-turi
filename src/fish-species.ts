@@ -1,7 +1,11 @@
+import { RIVER_FISH_DESIGNS, type RiverFishModelKey } from "./river-fish-designs.js";
+import type { Waterway } from "./waterway.js";
+
 // `whale-001` is retained as the stable ID from the earlier preview catalog.
 // Reusing it lets existing SQLite files upgrade without losing references.
-export type FishSpeciesId = "fish-001" | "whale-001" | "css-001" | "k8s-001" | "rust-001" | "js-001";
-export type FishSilhouetteKey = "go-school" | "docker-whale" | "css-fish" | "cluster-leviathan" | "rust-striped-marlin" | "js-eel";
+export type OceanFishSpeciesId = "fish-001" | "whale-001" | "css-001" | "k8s-001" | "rust-001" | "js-001";
+export type FishSpeciesId = OceanFishSpeciesId | RiverFishModelKey;
+export type FishSilhouetteKey = "go-school" | "docker-whale" | "css-fish" | "cluster-leviathan" | "rust-striped-marlin" | "js-eel" | RiverFishModelKey;
 
 export type FishSpeciesDefinition = {
   id: FishSpeciesId;
@@ -12,13 +16,14 @@ export type FishSpeciesDefinition = {
   description: string;
   habitat: string;
   rarity: string;
-  modelKey: "go-fish" | "docker-whale" | "css-fish" | "cluster-leviathan" | "rust-swordfish" | "js-eel";
+  modelKey: "go-fish" | "docker-whale" | "css-fish" | "cluster-leviathan" | "rust-swordfish" | "js-eel" | RiverFishModelKey;
   silhouetteKey: FishSilhouetteKey;
   unknownTitle: string;
   unknownHint: string;
   traits: readonly string[];
   observation: string;
   catalogStatus: "active" | "preview";
+  waterway?: Waterway;
   /** Keep experimental species out of the ordinary encounter rotation. */
   randomEncounter?: boolean;
 };
@@ -26,7 +31,7 @@ export type FishSpeciesDefinition = {
 // The registry is the single source of truth shared by the game, collection
 // database and client fallback. Adding a species must not require a second
 // hard-coded switch in each layer.
-export const FISH_SPECIES: readonly FishSpeciesDefinition[] = [
+const OCEAN_FISH_SPECIES: readonly FishSpeciesDefinition[] = [
   {
     id: "fish-001",
     number: 1,
@@ -134,11 +139,38 @@ export const FISH_SPECIES: readonly FishSpeciesDefinition[] = [
   },
 ];
 
+const RIVER_FISH_SPECIES: readonly FishSpeciesDefinition[] = RIVER_FISH_DESIGNS.map(design => ({
+  id: design.id,
+  number: design.number + 6,
+  name: design.name,
+  classification: `RIVER ${design.technology.toUpperCase()}`,
+  tagline: design.tagline,
+  description: `${design.appearance} ${design.technologyConcept} ${design.gameBehavior}`,
+  habitat: design.habitat,
+  rarity: design.rarity,
+  modelKey: design.modelKey,
+  silhouetteKey: design.modelKey,
+  unknownTitle: `${design.fish}の魚影`,
+  unknownHint: design.appearance,
+  traits: [design.naturalBehavior, design.gameBehavior],
+  observation: design.appearance,
+  catalogStatus: "active",
+  waterway: "river",
+}));
+
+export const FISH_SPECIES: readonly FishSpeciesDefinition[] = [...OCEAN_FISH_SPECIES, ...RIVER_FISH_SPECIES];
+
+export const getWaterwayForFish = (id: FishSpeciesId): Waterway =>
+  FISH_SPECIES.find(species => species.id === id)?.waterway ?? "sea";
+
+export const isFishSpeciesInWaterway = (id: FishSpeciesId, waterway: Waterway): boolean =>
+  getWaterwayForFish(id) === waterway;
+
 export const DEFAULT_FISH_SPECIES_ID: FishSpeciesId = "fish-001";
 
 /** Select one catchable species for the unqualified `/` route. */
-export const randomActiveFishSpeciesId = (random: () => number = Math.random): FishSpeciesId => {
-  const active = FISH_SPECIES.filter(species => species.catalogStatus === "active" && species.randomEncounter !== false);
+export const randomActiveFishSpeciesId = (random: () => number = Math.random, waterway: Waterway = "sea"): FishSpeciesId => {
+  const active = FISH_SPECIES.filter(species => species.catalogStatus === "active" && species.randomEncounter !== false && (species.waterway ?? "sea") === waterway);
   const sample = Math.max(0, Math.min(1 - Number.EPSILON, random()));
   return active[Math.floor(sample * active.length)]?.id ?? DEFAULT_FISH_SPECIES_ID;
 };
@@ -152,7 +184,14 @@ export const getFishSpecies = (id: FishSpeciesId): FishSpeciesDefinition =>
 // The first encounter stays deterministic for demos. After a successful catch
 // the next cast rotates to the other active species; an escape retries the same
 // species so failure does not unexpectedly change the lesson.
-export const nextFishSpeciesId = (current: FishSpeciesId, catches: number): FishSpeciesId =>
-  catches > 0
-    ? ({ "fish-001": "whale-001", "whale-001": "rust-001", "rust-001": "js-001", "js-001": "fish-001", "css-001": "fish-001", "k8s-001": "fish-001" } as const)[current]
-    : current;
+export const nextFishSpeciesId = (current: FishSpeciesId, catches: number, waterway: Waterway = "sea"): FishSpeciesId => {
+  const active = FISH_SPECIES.filter(species => species.catalogStatus === "active" && species.randomEncounter !== false && (species.waterway ?? "sea") === waterway);
+  if (!active.length) return DEFAULT_FISH_SPECIES_ID;
+  if (!active.some(species => species.id === current)) return active[0]!.id;
+  if (catches <= 0) return current;
+  if (waterway === "river") {
+    const index = active.findIndex(species => species.id === current);
+    return active[(index + 1) % active.length]!.id;
+  }
+  return ({ "fish-001": "whale-001", "whale-001": "rust-001", "rust-001": "js-001", "js-001": "fish-001", "css-001": "fish-001", "k8s-001": "fish-001" } as const)[current as OceanFishSpeciesId] ?? active[0]!.id;
+};

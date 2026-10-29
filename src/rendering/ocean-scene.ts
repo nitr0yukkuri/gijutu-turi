@@ -21,7 +21,12 @@ import { K8S_SURFACE_BODY_PROBES, k8sSurfaceWakeStrength, updateK8sSurfaceExposu
 import { OceanPresentationTimeline } from '../ocean-presentation-timeline.js';
 import { copyFishMotion as copyFish, interpolateFishPresentationState } from './fish-presentation-state.js';
 import { createOceanFishModels } from './ocean-fish-models.js';
+import { createRiverEnvironment } from './river-environment.js';
+import { riverChannelGLSL } from './river-channel.js';
+import { RIVER_BANK_VIEW, riverBankViewGLSL } from './river-bank-view.js';
+import { riverOpticsGLSL } from './river-water.js';
 import type { FishSurfaceImpactCue } from '../fish-surface-impact.js';
+import type { Waterway } from '../waterway.js';
 
 // Keep the escape result on screen while the camera returns to the normal view.
 const ESCAPE_FADE_MS = 420;
@@ -106,6 +111,11 @@ uniform mat4 uCamera;
 uniform mat4 uProjectionInverse;
 uniform vec4 uRipples[6];
 uniform vec2 uResolution;
+uniform float uRiver;
+uniform sampler2D uRiverReflection;
+uniform mat4 uRiverReflectionMatrix;
+uniform sampler2D uRiverNormal;
+uniform sampler2D uRiverBed;
 
 float hash(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
 float noise(vec2 p) {
@@ -115,6 +125,15 @@ float noise(vec2 p) {
 ${waterHeightGLSL}
 ${waterNormalDifferenceGLSL}
 vec3 sky(vec3 d,float cloudWeight) {
+  if(uRiver>0.5) {
+    float elevation=max(d.y,0.0);
+    vec3 day=mix(vec3(0.48,0.7,0.76),vec3(0.12,0.4,0.64),pow(clamp(elevation*1.7,0.0,1.0),0.55));
+    vec2 cloudPoint=d.xz/(max(d.y,0.025)+0.26);
+    float clouds=noise(cloudPoint*vec2(2.1,3.6)+vec2(uTime*0.002,0.0));
+    float cloudMask=smoothstep(0.52,0.77,clouds)*smoothstep(0.025,0.2,elevation);
+    day=mix(day,vec3(0.76,0.83,0.81),cloudMask*0.38*cloudWeight);
+    return day;
+  }
   float elevation=max(d.y,0.0);
   vec3 horizon=vec3(0.36,0.46,0.49);
   vec3 zenith=vec3(0.04,0.09,0.16);
@@ -127,8 +146,12 @@ vec3 sky(vec3 d,float cloudWeight) {
   vec2 cp=d.xz/(max(d.y,0.02)+0.16);
   float cloud=noise(cp*vec2(1.6,8.0)+vec2(uTime*0.002,0.0));
   cloud=clamp((cloud-0.5)*1.8,0.0,0.3)*smoothstep(0.0,0.16,elevation);
-  return c+vec3(0.045,0.05,0.05)*cloud*cloudWeight;
+  c+=vec3(0.045,0.05,0.05)*cloud*cloudWeight;
+  return c;
 }
+${riverChannelGLSL}
+${riverBankViewGLSL}
+${riverOpticsGLSL}
 void main(){
   vec4 local=uProjectionInverse*vec4(vUv*2.0-1.0,1.0,1.0);
   vec3 rd=normalize((uCamera*vec4(normalize(local.xyz/local.w),0.0)).xyz);
@@ -136,10 +159,21 @@ void main(){
   // Sea rays replace the initial sky color below. Only shade the direct sky
   // for pixels that actually look above the horizon.
   vec3 color;
-  if(rd.y < -0.0004) {
+  if(rd.y < mix(-0.0004,-0.002,uRiver)) {
     float t=-ro.y/rd.y;
     for(int i=0;i<4;i++) t=(heightAt((ro+rd*t).xz)-ro.y)/rd.y;
     vec3 p=ro+rd*t;
+    float riverLateral=0.0;
+    float riverDepthRatio=0.0;
+    float riverWidth=13.5;
+    float riverCenter=0.0;
+    if(uRiver>0.5) {
+      vec2 riverPoint=riverChannelPoint(p.xz);
+      riverCenter=riverCenterline(riverPoint.y);
+      riverLateral=riverPoint.x-riverCenter;
+      riverWidth=riverHalfWidth(riverPoint.y);
+      riverDepthRatio=clamp(abs(riverLateral)/riverWidth,0.0,1.0);
+    }
     float eps=0.035+min(t,180.0)*0.001;
     float hx,hz;
     waterWaveDifference(p.xz,eps,hx,hz);
@@ -148,22 +182,37 @@ void main(){
     vec3 n=normalize(vec3(hx,eps*2.0,hz));
     // Keep the calm-sea displacement, but avoid turning its fine facets into
     // long, aliased reflection streaks at the fishing camera's low angle.
-    n=normalize(mix(n,vec3(0.0,1.0,0.0),0.52));
-    float fine=(noise(p.xz*4.5+uTime*0.07)-0.5)*0.035;
+    n=normalize(mix(n,vec3(0.0,1.0,0.0),mix(0.52,0.9,uRiver)));
+    float shoreRoughness=mix(1.0,1.0-smoothstep(0.62,1.0,riverDepthRatio)*0.82,uRiver);
+    float fine=(noise(p.xz*4.5+uTime*0.07)-0.5)*0.035*mix(1.0,0.0,uRiver)*shoreRoughness;
     n=normalize(n+vec3(fine,0.0,fine*0.8));
     n=normalize(mix(n,vec3(0.0,1.0,0.0),smoothstep(90.0,450.0,t)));
+    if(uRiver>0.5) {
+      n=riverSurfaceNormal(n,p,riverLateral,riverDepthRatio,t);
+    }
     vec3 reflected=reflect(rd,n);
-    float fresnel=0.035+0.965*pow(1.0-max(dot(-rd,n),0.0),4.5);
-    vec3 water=vec3(0.014,0.071,0.094)+vec3(0.012,0.03,0.032)*(n.y*0.5+0.5);
+    float fresnel=mix(0.035,0.02,uRiver)+mix(0.965,0.98,uRiver)*pow(1.0-max(dot(-rd,n),0.0),mix(4.5,5.0,uRiver));
+    vec3 oceanWater=vec3(0.014,0.071,0.094)+vec3(0.012,0.03,0.032)*(n.y*0.5+0.5);
+    vec3 water=oceanWater;
+    if(uRiver>0.5)water=riverTransmittedColor(p,rd,n,riverDepthRatio);
     // The sky's stretched cloud bands look like repeated stripes when mirrored
     // into the shallow-angle sea. Keep the clouds in the sky, but soften their
     // reflected detail and overall mirror contrast on the water.
-    color=mix(water,sky(reflected,0.12),fresnel*0.72);
-    vec3 sun=normalize(vec3(-0.42,0.065,-1.0));
+    vec3 reflectedColor=sky(reflected,0.12);
+    if(uRiver>0.5) {
+      vec4 reflectionPoint=uRiverReflectionMatrix*vec4(p.x,0.0,p.z,1.0);
+      vec2 reflectionUv=reflectionPoint.xy/reflectionPoint.w+n.xz*vec2(0.045,0.024);
+      float reflectionValid=step(0.0,reflectionUv.x)*step(reflectionUv.x,1.0)*step(0.0,reflectionUv.y)*step(reflectionUv.y,1.0);
+      vec2 reflectedUv=clamp(reflectionUv,0.004,0.996);
+      vec3 landscapeReflection=(texture2D(uRiverReflection,reflectedUv+vec2(0.0008,0.0005)).rgb+texture2D(uRiverReflection,reflectedUv-vec2(0.0008,0.0005)).rgb+texture2D(uRiverReflection,reflectedUv+vec2(0.0008,-0.0005)).rgb+texture2D(uRiverReflection,reflectedUv+vec2(-0.0008,0.0005)).rgb)*0.25;
+      reflectedColor=mix(reflectedColor,landscapeReflection,reflectionValid);
+    }
+    color=mix(water,reflectedColor,fresnel*mix(0.72,0.94,uRiver));
+    vec3 sun=normalize(mix(vec3(-0.42,0.065,-1.0),vec3(-0.45,0.68,-0.4),uRiver));
     float glint=pow(max(dot(reflected,sun),0.0),260.0);
-    color+=vec3(0.82,0.67,0.44)*glint*0.66;
+    color+=vec3(0.82,0.67,0.44)*glint*mix(0.66,0.58,uRiver);
     float broad=pow(max(dot(reflected,sun),0.0),18.0);
-    color+=vec3(0.017,0.023,0.023)*broad;
+    color+=vec3(0.017,0.023,0.023)*broad*mix(1.0,0.32,uRiver);
     for(int i=0;i<6;i++) {
       float age=uTime-uRipples[i].z;
       if(age>0.0 && age<6.0) {
@@ -172,7 +221,7 @@ void main(){
         color+=vec3(0.3,0.48,0.48)*ring*exp(-age*0.9)*uRipples[i].w;
       }
     }
-    float haze=1.0-exp(-t*0.006);
+    float haze=1.0-exp(-t*mix(0.006,0.0026,uRiver));
     color=mix(color,sky(vec3(rd.x,0.0,rd.z),0.12),haze*0.97);
   } else {
     color=sky(rd,1.0);
@@ -190,13 +239,16 @@ export type OceanSceneOptions = {
   onRenderError?: () => void;
   onSurfaceImpact?: (impact: FishSurfaceImpactCue) => void;
   presentationTimeline?: OceanPresentationTimeline;
+  waterway?: Waterway;
 };
 
-export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurfaceImpact=()=>{}, presentationTimeline:sharedTimeline }: OceanSceneOptions = {}) {
+export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurfaceImpact=()=>{}, presentationTimeline:sharedTimeline, waterway='sea' }: OceanSceneOptions = {}) {
   let sceneDisposed=false;
+  let selectedWaterway=waterway;
   const presentationTimeline=sharedTimeline??new OceanPresentationTimeline(OCEAN_RENDER_DELAY_MS);
   const ownsPresentationTimeline=!sharedTimeline;
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let riverEnvironment=waterway==='river'?createRiverEnvironment({reducedMotion:reduced}):null;
   const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.25));
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
@@ -207,14 +259,16 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
 
   const camera=new THREE.PerspectiveCamera(46,1,0.1,2400);
   let portraitBlend=0;
+  let riverCameraBlend=waterway==='river'?1:0;
   const scene=new THREE.Scene();
   const backgroundScene=new THREE.Scene();
   const screenCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
   const ripples=Array.from({length:6},()=>new THREE.Vector4(0,0,-100,0));
-  const uniforms={uTime:{value:0},uCamera:{value:camera.matrixWorld},uProjectionInverse:{value:camera.projectionMatrixInverse},uRipples:{value:ripples},uResolution:{value:new THREE.Vector2()}};
+  const emptyRiverReflection=new THREE.DataTexture(new Uint8Array([80,120,95,255]),1,1);emptyRiverReflection.needsUpdate=true;
+  const uniforms={uTime:{value:0},uCamera:{value:camera.matrixWorld},uProjectionInverse:{value:camera.projectionMatrixInverse},uRipples:{value:ripples},uResolution:{value:new THREE.Vector2()},uRiver:{value:waterway==='river'?1:0},uRiverReflection:{value:riverEnvironment?.reflectionTexture??emptyRiverReflection},uRiverReflectionMatrix:{value:riverEnvironment?.reflectionMatrix??new THREE.Matrix4()},uRiverNormal:{value:riverEnvironment?.waterNormalTexture??emptyRiverReflection},uRiverBed:{value:riverEnvironment?.bedTexture??emptyRiverReflection}};
   const material=new THREE.ShaderMaterial({uniforms,depthTest:false,depthWrite:false,vertexShader:'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',fragmentShader:waterShader});
   const waterQuad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),material);backgroundScene.add(waterQuad);
-  const waterBackdrop=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,depthBuffer:false});
+  const waterBackdrop=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,depthBuffer:waterway==='river'});
   const waterBackdropScale=.75;
   const waterUniforms={...uniforms,uWaterBackdrop:{value:waterBackdrop.texture},uWaterSize:{value:new THREE.Vector2()}};
   const waterCopy=new THREE.ShaderMaterial({
@@ -697,18 +751,23 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     }else whaleCameraDesiredOffset.set(0,0,0);
     whaleCameraOffset.lerp(whaleCameraDesiredOffset,1-Math.exp(-dt*(whaleView?2.25:7)));
     const normalCameraX=Math.sin(time*.13)*.016;
-    const normalCameraY=3.35-cameraProgress*.18+drift-portraitBlend*1.6-surfaceLunge*.42;
-    const normalCameraZ=7-cameraProgress*.6-surfaceLunge*1.15;
+    riverCameraBlend=THREE.MathUtils.lerp(riverCameraBlend,selectedWaterway==='river'?1:0,1-Math.exp(-dt*4));
+    // A river angler stays at standing height on the bank, including portrait
+    // views and large-fish attacks. Sea camera motion keeps its existing path.
+    const seaCameraBlend=1-riverCameraBlend;
+    const normalCameraY=THREE.MathUtils.lerp(3.35,RIVER_BANK_VIEW.eyeY,riverCameraBlend)
+      -(cameraProgress*.18+portraitBlend*1.6+surfaceLunge*.42)*seaCameraBlend+drift;
+    const normalCameraZ=7-(cameraProgress*.6+surfaceLunge*1.15)*seaCameraBlend;
     const breachCameraX=visibleFish?visibleFish.position.x:normalCameraX;
     const breachCameraY=visibleFish?visibleFish.position.y+3.4:normalCameraY;
     const breachCameraZ=visibleFish?visibleFish.position.z+11.5:normalCameraZ;
-    const breachCameraBlend=surfaceLunge*.92;
+    const breachCameraBlend=surfaceLunge*.92*seaCameraBlend;
     camera.position.set(
       THREE.MathUtils.lerp(normalCameraX,breachCameraX,breachCameraBlend),
       THREE.MathUtils.lerp(normalCameraY,breachCameraY,breachCameraBlend),
       THREE.MathUtils.lerp(normalCameraZ,breachCameraZ,breachCameraBlend),
     );
-    camera.position.add(whaleCameraOffset);
+    camera.position.addScaledVector(whaleCameraOffset,seaCameraBlend);
     const normalFocusBlend=state.phase==='fighting'&&(state.fishId==='whale-001'||state.fishId==='k8s-001'||state.fishId==='rust-001'||state.fishId==='js-001')?.62:state.phase==='fighting'?.48:.28;
     const focusBlend=THREE.MathUtils.lerp(normalFocusBlend,1,surfaceLunge);
     const fishFocusX=followsFish?THREE.MathUtils.lerp(state.aim*.18,visibleFish.position.x,focusBlend):state.aim*.18;
@@ -716,7 +775,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     const escapeReturn=state.phase==='escaped'?escapeFadeProgress:0;
     const focusX=THREE.MathUtils.lerp(fishFocusX,state.aim*.18,escapeReturn);
     const focusZ=THREE.MathUtils.lerp(fishFocusZ,-35,escapeReturn);
-    const normalFocusY=-3.8-cameraProgress*.8;
+    const normalFocusY=THREE.MathUtils.lerp(-3.8,-1.2,riverCameraBlend)-cameraProgress*(.8-riverCameraBlend*.3);
     const breachFocusY=visibleFish?visibleFish.position.y+.65:normalFocusY;
     cameraLookDesired.set(focusX,THREE.MathUtils.lerp(normalFocusY,breachFocusY,surfaceLunge),focusZ);
     cameraLookTarget.lerp(cameraLookDesired,1-Math.exp(-dt*(whaleView||leviathanView?3.35+surfaceLunge*3:7)));
@@ -919,6 +978,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if(currentRustFish)currentRustFish.group.visible=activeFightFish===currentRustFish&&fishShowing&&Boolean(visibleFish);
     if(currentJsEel)currentJsEel.group.visible=activeFightFish===currentJsEel&&fishShowing&&Boolean(visibleFish);
     if(fishModelStore.clusterFish)fishModelStore.clusterFish.group.visible=activeFightFish===fishModelStore.clusterFish&&fishShowing&&Boolean(visibleFish);
+    if(state.fishId.startsWith('river-')&&activeFightFish)activeFightFish.group.visible=fishShowing&&Boolean(visibleFish);
     const cssFishVisualState=CSS_FISH_LIVE_STATE;
     if (state.fishId === 'css-001'&&currentCssFish) {
       currentCssFish.setVisualState(cssFishVisualState);
@@ -1245,11 +1305,15 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       for(let i=0;i<36;i++){const v=dropSpeeds[i];drops[i*3]=sprayOrigin.x+v.x*age*sprayImpulse;drops[i*3+1]=sprayOrigin.y+Math.max(0,v.y*sprayImpulse*age-2.9*age*age);drops[i*3+2]=sprayOrigin.z+v.z*age*sprayImpulse;}
       dropletGeo.attributes.position.needsUpdate=true;spray.material.size=.045+Math.max(0,sprayPower-1)*.012;spray.material.opacity=Math.max(0,1-age/sprayLife);
     }
+    const riverVisible=selectedWaterway==='river'&&riverEnvironment;
+    if(riverVisible){riverEnvironment.update(time);riverEnvironment.renderReflection(renderer,camera);}
     if(fishShowing){
       renderer.setRenderTarget(waterBackdrop);renderer.clear();renderer.render(backgroundScene,screenCamera);
+      if(riverVisible)renderer.render(riverEnvironment.scene,camera);
       renderer.setRenderTarget(null);waterQuad.material=waterCopy;
     }
     renderer.clear();renderer.render(backgroundScene,screenCamera);waterQuad.material=material;
+    if(riverVisible)renderer.render(riverEnvironment.scene,camera);
     // Idle and post-escape frames contain no visible 3D objects. Avoid a
     // second scene traversal and depth clear while keeping the same pixels.
     // renderer.clear() above already cleared the default framebuffer depth;
@@ -1258,6 +1322,18 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if(active||fishShowing||charge>0)renderer.render(scene,camera);
     if(!mount.dataset.ready)mount.dataset.ready='true';
   };
+  const setWaterway=(value:Waterway)=>{
+    selectedWaterway=value;uniforms.uRiver.value=value==='river'?1:0;
+    if(value==='river'&&!waterBackdrop.depthBuffer){waterBackdrop.depthBuffer=true;waterBackdrop.dispose();}
+    if(value==='river'&&!riverEnvironment){
+      riverEnvironment=createRiverEnvironment({reducedMotion:reduced});
+      uniforms.uRiverReflection.value=riverEnvironment.reflectionTexture;
+      uniforms.uRiverReflectionMatrix.value=riverEnvironment.reflectionMatrix;
+      uniforms.uRiverNormal.value=riverEnvironment.waterNormalTexture;
+      uniforms.uRiverBed.value=riverEnvironment.bedTexture;
+    }
+  };
+
   frame=requestAnimationFrame(render);
-    return {setState,setCharge,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){sceneDisposed=true;cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fishModelStore.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
+    return {setState,setCharge,setWaterway,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){sceneDisposed=true;riverEnvironment?.dispose();emptyRiverReflection.dispose();cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fishModelStore.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
 }

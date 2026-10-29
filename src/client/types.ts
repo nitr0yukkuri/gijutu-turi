@@ -1,4 +1,5 @@
 import type { OceanClientState } from "../ocean-contract.js";
+import type { Waterway } from "../waterway.js";
 export type OceanState = OceanClientState;
 export type { OceanMessage, OceanMode, OceanPhase } from "../ocean-contract.js";
 export type { CatchSaveStatus } from "../ocean-contract.js";
@@ -30,6 +31,7 @@ export type Collection = {
 
 export type OceanSceneController = {
   setState: (state: OceanState, serverNow?: number) => void;
+  setWaterway: (waterway: Waterway) => void;
   rodStroke?: () => void;
   setCharge: (amount: number, aim?: number) => void;
   aimScreen: (aim?: number, strength?: number) => { x: number; y: number };

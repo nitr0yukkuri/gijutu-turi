@@ -1,5 +1,5 @@
 import { OceanFishingGame, type OceanAction, type OceanPhase, type OceanFishingGameSnapshot } from "../ocean-game.js";
-import { isFishSpeciesId, randomActiveFishSpeciesId, type FishSpeciesId } from "../fish-species.js";
+import { getWaterwayForFish, isFishSpeciesId, randomActiveFishSpeciesId, type FishSpeciesId } from "../fish-species.js";
 import { canContinueAfterCatchSave, oceanCommandSchema, type OceanMessage, type CatchSaveStatus } from "../ocean-contract.js";
 import { recordCatch } from "./d1-store.js";
 import type { CloudflareEnv, DurableObjectState, DurableSocket } from "./types.js";
@@ -213,13 +213,16 @@ export class OceanRoom {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/create" && request.method === "POST") {
-      const input = await request.json().catch(() => null) as Partial<{ roomId: string; playerId: string; fishId: string }> | null;
+      const input = await request.json().catch(() => null) as Partial<{ roomId: string; playerId: string; fishId: string; waterway: "sea" | "river" }> | null;
       if (!input || typeof input.roomId !== "string" || !/^sea_[a-f0-9]{32}$/.test(input.roomId)
         || typeof input.playerId !== "string" || !/^player_[a-z0-9-]{12,80}$/.test(input.playerId)
-        || input.fishId !== undefined && !isFishSpeciesId(input.fishId)) return new Response("Bad Request", { status: 400 });
+        || input.fishId !== undefined && !isFishSpeciesId(input.fishId)
+        || input.waterway !== undefined && input.waterway !== "sea" && input.waterway !== "river") return new Response("Bad Request", { status: 400 });
       if (await this.getRoom()) return new Response("Conflict", { status: 409 });
-      const fishId = input.fishId as FishSpeciesId | undefined;
-      this.game = new OceanFishingGame(Math.random, fishId ?? randomActiveFishSpeciesId(), fishId ? "fixed" : "rotate");
+      const waterway = input.waterway ?? "sea";
+      const requestedFishId = input.fishId as FishSpeciesId | undefined;
+      const fishId = requestedFishId && getWaterwayForFish(requestedFishId) === waterway ? requestedFishId : randomActiveFishSpeciesId(Math.random, waterway);
+      this.game = new OceanFishingGame(Math.random, fishId, requestedFishId && fishId === requestedFishId ? "fixed" : "rotate", waterway);
       this.room = {
         id: input.roomId,
         playerId: input.playerId,
