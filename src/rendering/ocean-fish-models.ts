@@ -158,7 +158,7 @@ export function createOceanFishModels(scene, waterUniforms, createFishOrientatio
     return clusterEchoesPromise;
   };
 
-  const fightModelFor=fishId=>fishId==='k8s-001'?clusterFish:fishId.startsWith('river-')?riverFightModels.peek(fishId):fightModels.peek(fishId==='whale-001'||fishId==='css-001'||fishId==='rust-001'||fishId==='js-001'?fishId:'fish-001');
+  const fightModelFor=fishId=>fishId==='k8s-001'?clusterFish:typeof fishId==='string'&&fishId.startsWith('river-')?riverFightModels.peek(fishId):fightModels.peek(fishId==='whale-001'||fishId==='css-001'||fishId==='rust-001'||fishId==='js-001'?fishId:'fish-001');
   const scheduleOptionalModelPreparation=fishId=>{
     if(optionalModelPreparation.has(fishId))return;
     const createNext=fishId==='fish-001'?createNextSchoolFish:fishId==='k8s-001'?createNextClusterEcho:fishId==='css-001'?createNextCssFishAfterimage:null;
@@ -179,7 +179,7 @@ export function createOceanFishModels(scene, waterUniforms, createFishOrientatio
     if(existing)return existing;
     const request=(async()=>{
       if(fishId==='k8s-001')await ensureClusterFish();
-      else if(fishId.startsWith('river-'))await riverFightModels.load(fishId);
+      else if(typeof fishId==='string'&&fishId.startsWith('river-'))await riverFightModels.load(fishId);
       else await fightModels.load(fishId==='whale-001'||fishId==='css-001'||fishId==='rust-001'||fishId==='js-001'?fishId:'fish-001');
       scheduleOptionalModelPreparation(fishId);
     })();

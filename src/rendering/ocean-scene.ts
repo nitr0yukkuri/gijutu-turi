@@ -978,7 +978,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if(currentRustFish)currentRustFish.group.visible=activeFightFish===currentRustFish&&fishShowing&&Boolean(visibleFish);
     if(currentJsEel)currentJsEel.group.visible=activeFightFish===currentJsEel&&fishShowing&&Boolean(visibleFish);
     if(fishModelStore.clusterFish)fishModelStore.clusterFish.group.visible=activeFightFish===fishModelStore.clusterFish&&fishShowing&&Boolean(visibleFish);
-    if(state.fishId.startsWith('river-')&&activeFightFish)activeFightFish.group.visible=fishShowing&&Boolean(visibleFish);
+    if(state.fishId?.startsWith('river-')&&activeFightFish)activeFightFish.group.visible=fishShowing&&Boolean(visibleFish);
     const cssFishVisualState=CSS_FISH_LIVE_STATE;
     if (state.fishId === 'css-001'&&currentCssFish) {
       currentCssFish.setVisualState(cssFishVisualState);
