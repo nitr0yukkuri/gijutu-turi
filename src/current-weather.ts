@@ -15,6 +15,7 @@ const weatherPoints: Record<Waterway, { latitude: number; longitude: number }> =
   sea: { latitude: 35.48, longitude: 139.8 },
   river: { latitude: 36.15, longitude: 139.39 },
 };
+const thunderstormCodes = new Set([95, 96, 97, 99]);
 
 function json(value: unknown, status: number, headers: HeadersInit = {}): Response {
   return new Response(JSON.stringify(value), {
@@ -25,6 +26,35 @@ function json(value: unknown, status: number, headers: HeadersInit = {}): Respon
 
 function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+async function fetchThunderstormCode(waterway: Waterway, fetcher: WeatherFetcher): Promise<number | null> {
+  const point = weatherPoints[waterway];
+  const query = new URLSearchParams({
+    latitude: String(point.latitude),
+    longitude: String(point.longitude),
+    current: "weather_code",
+    timezone: "Asia/Tokyo",
+    forecast_days: "1",
+    cell_selection: waterway === "sea" ? "sea" : "land",
+  });
+
+  try {
+    const response = await fetcher("https://api.open-meteo.com/v1/gfs?" + query.toString(), {
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (!response.ok) return null;
+    const payload: unknown = await response.json();
+    if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return null;
+    const current = (payload as Record<string, unknown>).current;
+    if (typeof current !== "object" || current === null || Array.isArray(current)) return null;
+    const weatherCode = (current as Record<string, unknown>).weather_code;
+    return finiteNumber(weatherCode) && Number.isInteger(weatherCode) && thunderstormCodes.has(weatherCode)
+      ? weatherCode
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchWeather(waterway: Waterway, fetcher: WeatherFetcher): Promise<CurrentWeather> {
@@ -38,9 +68,12 @@ async function fetchWeather(waterway: Waterway, fetcher: WeatherFetcher): Promis
     forecast_days: "1",
     cell_selection: waterway === "sea" ? "sea" : "land",
   });
-  const response = await fetcher("https://api.open-meteo.com/v1/jma?" + query.toString(), {
-    signal: AbortSignal.timeout(5_000),
-  });
+  const [response, thunderstormCode] = await Promise.all([
+    fetcher("https://api.open-meteo.com/v1/jma?" + query.toString(), {
+      signal: AbortSignal.timeout(5_000),
+    }),
+    fetchThunderstormCode(waterway, fetcher),
+  ]);
   if (!response.ok) throw new Error("weather_upstream_unavailable");
   const payload: unknown = await response.json();
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) throw new Error("weather_payload_invalid");
@@ -64,6 +97,7 @@ async function fetchWeather(waterway: Waterway, fetcher: WeatherFetcher): Promis
     waterway,
     location: WEATHER_REFERENCE_AREAS[waterway],
     temperatureC,
+    thunderstormCode,
     weatherCode,
     isDay: isDay === 1,
     precipitationMm: Math.max(0, precipitationMm),

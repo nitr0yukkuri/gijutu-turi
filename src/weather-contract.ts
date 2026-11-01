@@ -5,6 +5,8 @@ export type CurrentWeather = {
   location: string;
   temperatureC: number;
   weatherCode: number;
+  /** Thunderstorm code from Open-Meteo's GFS model; JMA does not derive these codes. */
+  thunderstormCode?: number | null;
   isDay: boolean;
   precipitationMm: number;
   cloudCoverPercent: number;
@@ -27,17 +29,17 @@ export const WEATHER_REFERENCE_AREAS: Record<Waterway, string> = {
   river: "荒川（熊谷付近）",
 };
 
-const rainCodes = new Set([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99]);
+const rainCodes = new Set([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 97, 99]);
 const snowIntensityByCode: Record<number, number> = {
   71: 0.28, 73: 0.56, 75: 0.88, 77: 0.22, 85: 0.38, 86: 0.78,
 };
-const thunderstormIntensityByCode: Record<number, number> = { 95: 0.68, 96: 0.84, 99: 1 };
+const thunderstormIntensityByCode: Record<number, number> = { 95: 0.68, 96: 0.84, 97: 0.92, 99: 1 };
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
 export function weatherVisualStateFor(weather: CurrentWeather | null): WeatherVisualState {
   if (!weather) return { cloudCover: 0, rainIntensity: 0, snowfallIntensity: 0, windStrength: 0, thunderstormIntensity: 0, nightIntensity: 0 };
   const snowfallIntensity = snowIntensityByCode[weather.weatherCode] ?? 0;
-  const thunderstormIntensity = thunderstormIntensityByCode[weather.weatherCode] ?? 0;
+  const thunderstormIntensity = thunderstormIntensityByCode[weather.thunderstormCode ?? -1] ?? 0;
   const cloudCover = Math.max(
     clamp01(weather.cloudCoverPercent / 100),
     snowfallIntensity > 0 ? 0.66 : 0,
@@ -60,6 +62,8 @@ export function isCurrentWeather(value: unknown): value is CurrentWeather {
     && typeof record.location === "string"
     && typeof record.temperatureC === "number" && Number.isFinite(record.temperatureC)
     && typeof record.weatherCode === "number" && Number.isInteger(record.weatherCode)
+    && (record.thunderstormCode === undefined || record.thunderstormCode === null
+      || typeof record.thunderstormCode === "number" && Number.isInteger(record.thunderstormCode))
     && typeof record.isDay === "boolean"
     && typeof record.precipitationMm === "number" && Number.isFinite(record.precipitationMm)
     && typeof record.cloudCoverPercent === "number" && Number.isFinite(record.cloudCoverPercent)

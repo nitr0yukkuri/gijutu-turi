@@ -713,7 +713,7 @@ function FishingApp() {
             <li><span>3</span><div><div className="instruction-heading"><strong>巻く・竿を引く</strong></div><p>魚が走っている間は巻かずに待ちます。落ち着いたら「巻く」を押し、糸の張りが赤くなったらいったん離します。スマホの画面を自分に向け、遠くから手前へ一度引くと短く巻き取れます。連続して巻くときはリールを押すか回します。</p></div></li>
           </ol>
           <p className="fine-print">スマホを使う場合は「スマホを接続」からQRコードを読み取り、スマホ画面の指示に従ってください。</p>
-          <p className="fine-print">天気の背景演出には<a href="https://open-meteo.com/en/docs/jma-api" target="_blank" rel="noreferrer">Open-Meteoの気象庁モデル</a>を使用しています（<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>）。</p>
+          <p className="fine-print">天気の背景演出には<a href="https://open-meteo.com/en/docs/jma-api" target="_blank" rel="noreferrer">Open-Meteoの気象庁モデル</a>と<a href="https://open-meteo.com/en/docs/gfs-api" target="_blank" rel="noreferrer">GFSモデル</a>を使用しています（<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>）。</p>
         </div>
       </dialog>
       <dialog ref={connectDialogRef} id="connect-dialog" aria-label="スマホを接続" aria-describedby="pairing-description" onClick={event => dialogClick(event.currentTarget, event)}>
