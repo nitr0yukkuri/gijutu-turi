@@ -129,22 +129,13 @@ float noise(vec2 p) {
   vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
   return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
 }
-float cloudFbm(vec2 p) {
-  float value=0.0;
-  float amplitude=0.5;
-  for(int i=0;i<4;i++) {
-    value+=noise(p)*amplitude;
-    p=p*2.03+vec2(17.1,9.2);
-    amplitude*=0.5;
-  }
-  return value/0.9375;
-}
 float cloudField(vec2 p) {
+  // Clear skies are the common fallback state. Skip cloud noise entirely then.
+  if(uWeatherCloud<=0.005) return 0.5;
   vec2 drift=vec2(uTime*0.0022,-uTime*0.0007);
-  vec2 warp=vec2(cloudFbm(p*0.38+drift),cloudFbm(p*0.38+drift+vec2(8.3,2.7)))-0.5;
-  float broad=cloudFbm(p*0.78+warp*0.7+drift);
-  float detail=cloudFbm(p*2.15+warp*1.1+drift*1.7+vec2(3.4,7.2));
-  return broad*0.78+detail*0.22;
+  float broad=noise(p*0.62+drift);
+  float detail=noise(p*1.55+drift*1.7+vec2(3.4,7.2));
+  return broad*0.72+detail*0.28;
 }
 float cloudCoverageMask(float field,float elevation) {
   float coverage=clamp(uWeatherCloud,0.0,1.0);
@@ -324,7 +315,7 @@ void main(){
   }
   color*=mix(vec3(1.0),vec3(0.78,0.84,0.88),uWeatherRain*0.32);
   color=mix(color,color*vec3(0.88,0.94,1.04)+vec3(0.018,0.025,0.036),uWeatherSnow*0.5);
-  float stormCycle=floor(uTime/3.0);
+  if(uWeatherStorm>0.001) {\n    float stormCycle=floor(uTime/3.0);
   float stormPhase=mod(uTime,3.0);
   float strikeChance=step(0.38,hash(vec2(stormCycle,37.1)));
   float firstFlash=exp(-pow((stormPhase-0.72)/0.09,2.0));
@@ -381,7 +372,7 @@ void main(){
     float reflectionBreakup=0.28+noise(vec2(vUv.x*56.0,vUv.y*10.0+uTime*0.22))*0.72;
     float waterReflection=exp(-pow((vUv.x-flashX)/0.055,2.0)-pow((vUv.y-0.54)/0.19,2.0))*reflectionBreakup;
     color+=vec3(0.16,0.25,0.4)*waterReflection*lightning*(1.0-skyAmount)*0.7;
-  }
+  }\n  }
   float vignette=1.0-smoothstep(0.3,0.95,length((vUv-0.5)*vec2(0.75,1.0)))*0.18;
   color*=vignette;
   color+=(hash(gl_FragCoord.xy)-0.5)*0.0018;
