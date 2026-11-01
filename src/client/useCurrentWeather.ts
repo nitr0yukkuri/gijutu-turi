@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Waterway } from "../waterway.js";
-import { isCurrentWeather, type CurrentWeather } from "../weather-contract.js";
+import { CURRENT_WEATHER_STALE_LIMIT_MS, isCurrentWeather, isCurrentWeatherFresh, type CurrentWeather } from "../weather-contract.js";
 import { backendUrl } from "./backend-url.js";
 
 export type WeatherLoadStatus = "loading" | "ready" | "unavailable" | "disabled";
@@ -39,10 +39,13 @@ export function useCurrentWeather(waterway: Waterway, enabled: boolean): {
         if (active) setState({ weather: payload, status: "ready" });
       } catch {
         hasFailed = true;
-        if (active) setState(current => ({
-          weather: current.weather?.waterway === waterway ? current.weather : null,
-          status: "unavailable",
-        }));
+        if (active) setState(current => {
+          const previous = current.weather?.waterway === waterway ? current.weather : null;
+          return {
+            weather: isCurrentWeatherFresh(previous) ? previous : null,
+            status: "unavailable",
+          };
+        });
       }
     };
 
@@ -62,6 +65,24 @@ export function useCurrentWeather(waterway: Waterway, enabled: boolean): {
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [enabled, waterway]);
+
+  useEffect(() => {
+    const weather = state.weather;
+    if (!weather || weather.waterway !== waterway) return;
+
+    const expiresIn = Date.parse(weather.fetchedAt) + CURRENT_WEATHER_STALE_LIMIT_MS - Date.now();
+    const expireWeather = () => setState(current => {
+      if (current.weather !== weather || isCurrentWeatherFresh(current.weather)) return current;
+      return { weather: null, status: "unavailable" };
+    });
+    if (expiresIn <= 0) {
+      expireWeather();
+      return;
+    }
+
+    const timer = window.setTimeout(expireWeather, expiresIn);
+    return () => window.clearTimeout(timer);
+  }, [state.weather, waterway]);
 
   return state;
 }

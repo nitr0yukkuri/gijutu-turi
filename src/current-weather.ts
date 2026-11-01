@@ -1,11 +1,10 @@
 import { RequestRateLimiter } from "./request-rate-limit.js";
-import { WEATHER_REFERENCE_AREAS, type CurrentWeather } from "./weather-contract.js";
+import { CURRENT_WEATHER_STALE_LIMIT_MS, WEATHER_REFERENCE_AREAS, type CurrentWeather } from "./weather-contract.js";
 import type { Waterway } from "./waterway.js";
 
 export type WeatherFetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 const cacheTtlMs = 30 * 60_000;
-const staleLimitMs = 6 * 60 * 60_000;
 const weatherCache = new Map<Waterway, { value: CurrentWeather; expiresAt: number }>();
 const weatherRequests = new Map<Waterway, Promise<CurrentWeather>>();
 const requestLimiter = new RequestRateLimiter();
@@ -119,7 +118,7 @@ export async function getCurrentWeather(waterway: Waterway, fetcher: WeatherFetc
     weatherCache.set(waterway, { value, expiresAt: Date.now() + cacheTtlMs });
     return value;
   }).catch(error => {
-    if (cached && Date.now() - Date.parse(cached.value.fetchedAt) < staleLimitMs) {
+    if (cached && Date.now() - Date.parse(cached.value.fetchedAt) < CURRENT_WEATHER_STALE_LIMIT_MS) {
       weatherCache.set(waterway, { value: cached.value, expiresAt: Date.now() + 5 * 60_000 });
       return cached.value;
     }

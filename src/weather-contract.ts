@@ -15,6 +15,14 @@ export type CurrentWeather = {
   fetchedAt: string;
 };
 
+export const CURRENT_WEATHER_STALE_LIMIT_MS = 6 * 60 * 60_000;
+
+export function isCurrentWeatherFresh(weather: CurrentWeather | null, now = Date.now()): boolean {
+  if (!weather) return false;
+  const fetchedAt = Date.parse(weather.fetchedAt);
+  return Number.isFinite(fetchedAt) && now - fetchedAt < CURRENT_WEATHER_STALE_LIMIT_MS;
+}
+
 export type WeatherVisualState = {
   cloudCover: number;
   rainIntensity: number;
