@@ -40,7 +40,7 @@ The game centers on a sea and fish rendered with Three.js, while controls appear
 
 The sea and river use fixed reference locations: Tokyo Bay and the Arakawa near Kumagaya. Temperature, precipitation, clouds, wind, and day/night come from the Japan Meteorological Agency (JMA) model through Open-Meteo. Thunderstorm codes come from Open-Meteo’s GFS model, which includes atmospheric-instability inputs that JMA does not provide. The app never requests the player’s location. Both feeds are model-based current estimates, not local observations or direct lightning measurements.
 
-The server applies small gameplay assistance for night fishing with the JS Conger Eel and Docker Catfish, rain, snow, thunderstorm codes, and moderate sea wind. It slightly shortens the wait for a bite and reduces fish pressure and retreat speed; the combined coefficient is capped at 10%. This is game tuning, not a direct increase to catch probability or a real-world fishing forecast. Wave height and swell are not retrieved, so sea wind is only a rough proxy for surface conditions. Fishing remains playable in a neutral state when weather is unavailable. The UI attributes both Open-Meteo model APIs under CC BY 4.0. The current public demo has not yet received this weather update.
+The server applies small gameplay assistance for night fishing with the JS Conger Eel and Docker Catfish, rain, snow, thunderstorm codes, and moderate sea wind. It slightly shortens the wait for a bite and reduces fish pressure and retreat speed; the combined coefficient is capped at 10%. This is game tuning, not a direct increase to catch probability or a real-world fishing forecast. Wave height and swell are not retrieved, so sea wind is only a rough proxy for surface conditions. Fishing remains playable in a neutral state when weather is unavailable. The UI attributes both Open-Meteo model APIs under CC BY 4.0. The free API is for non-commercial use, limited to 10,000 calls per day, and has no uptime guarantee. If weather is unavailable, fishing falls back to neutral behavior. The current public demo has not yet received this weather update.
 
 
 ## Fish and technology
@@ -63,7 +63,7 @@ The regular route `/` randomly selects from the active species other than K8s (G
 | UI | React 19, TypeScript, Vite | Sea scene, controls, smartphone controller, and encyclopedia |
 | 3D | Three.js, WebGL, GLSL | Render the sea, fish, rod, line, ripples, and trails |
 | Audio | Web Audio API | Generate ambient and effect sounds in the browser |
-| Weather | Open-Meteo JMA model | Retrieve reference-area weather and apply it to scenery and gameplay assist |
+| Weather | Open-Meteo JMA and GFS models | Retrieve reference-area weather and apply it to scenery and gameplay assist |
 | Server | Cloudflare Workers (public demo); Node.js 22.12+ and Hono (local / alternate) | Workers serves the HTTP API and static app; Durable Objects manage fishing rooms |
 | Real-time communication | WebSocket, Durable Objects (Workers) / `ws` (Node.js) | Synchronize game state and controls between PC and smartphone |
 | Input validation | Zod | Validate data received through the API and WebSocket |
