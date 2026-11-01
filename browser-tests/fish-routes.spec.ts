@@ -4,17 +4,30 @@ const routes = ["/", "/gofish", "/dockerwhale", "/cssfish", "/k8sfish", "/rustfi
 
 for (const route of routes) {
   test(`${route} renders its WebGL scene without browser errors`, async ({ page }) => {
+    if (route === "/") test.setTimeout(60_000);
     if (route === "/") {
-      // Keep the browser request unqualified, but make the test server choose
-      // a fixed species. This exercises the default route without relying on
-      // random server selection or pre-creating a separate room.
+      // Prepare a deterministic Docker room before the browser starts rendering.
+      // Return the same authenticated player/room to the unqualified root route.
+      const baseURL = test.info().project.use.baseURL;
+      if (typeof baseURL !== "string") throw new Error("Playwright baseURL is required for the root route test");
+
+      const playerResponse = await page.request.post(new URL("/api/player-sessions", baseURL).toString(), { data: {} });
+      expect(playerResponse.status()).toBe(201);
+      const playerSession = await playerResponse.json() as { playerId: string; token: string };
+      const sessionResponse = await page.request.post(new URL("/api/ocean-sessions", baseURL).toString(), {
+        headers: { Authorization: `Bearer ${playerSession.token}` },
+        data: { fishId: "whale-001" },
+      });
+      expect(sessionResponse.status()).toBe(201);
+      const session = await sessionResponse.json() as { id: string; host?: string };
+
+      await page.route("**/api/player-sessions", async route => {
+        await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(playerSession) });
+      });
       await page.route("**/api/ocean-sessions", async route => {
         const payload = route.request().postDataJSON() as Record<string, unknown>;
         expect(payload.fishId).toBeUndefined();
-        const response = await route.fetch({
-          postData: JSON.stringify({ ...payload, fishId: "whale-001" }),
-        });
-        await route.fulfill({ response });
+        await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(session) });
       });
     }
 
