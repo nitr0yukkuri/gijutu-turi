@@ -8,11 +8,11 @@
 
 PCに広がる海へキャストし、スマートフォンを釣り竿のコントローラーとしてつないで遊べます。Go、Docker、CSS、Kubernetes、Rust、JavaScriptの考え方を、それぞれ異なる魚の動きや見た目に置き換えています。
 
-[公開デモ](https://gijutu-turi-e7ranic5ja-an.a.run.app/) · [まずはデモ](#まずはデモ) · [魚と技術の対応を見る](#魚と技術の対応) · [仕組みを見る](#アーキテクチャ) · [ローカルで遊ぶ](#はじめる)
+[公開デモ](https://gijutu-turi.nitr0yukkuri.workers.dev/) · [まずはデモ](#まずはデモ) · [魚と技術の対応を見る](#魚と技術の対応) · [仕組みを見る](#アーキテクチャ) · [ローカルで遊ぶ](#はじめる)
 
 ## まずはデモ
 
-1. PCで[Go魚の固定ルート](https://gijutu-turi-e7ranic5ja-an.a.run.app/gofish)を開きます。魚種固定URLを使うため、通常ルートのランダム抽選に左右されません。
+1. PCで[Go魚の固定ルート](https://gijutu-turi.nitr0yukkuri.workers.dev/gofish)を開きます。魚種固定URLを使うため、通常ルートのランダム抽選に左右されません。
 2. PC画面のQRコードをスマートフォンで読み取り、同じ釣り場へ接続します。モーションセンサーを使わない場合も、スマートフォンの画面操作で遊べます。PCだけでも操作できます。
 3. キャストし、ウキが沈んだら合わせます。Go魚が群れに分かれて複数方向から引く様子を見ながら、巻く・待つを切り替えます。
 4. 釣り上げたら図鑑を開き、魚の動きと並行処理の対応を確認します。
@@ -56,21 +56,22 @@ PCに広がる海へキャストし、スマートフォンを釣り竿のコン
 | UI | React 19、TypeScript、Vite | 海画面・操作画面・スマートフォンコントローラー・図鑑 |
 | 3D | Three.js、WebGL、GLSL | 海面、魚、竿、糸、波紋、航跡の描画 |
 | 音 | Web Audio API | 環境音と効果音をブラウザー内で生成 |
-| サーバー | Node.js 22.12以降、Hono | HTTP API、静的ファイル配信、ゲームルーム管理 |
-| リアルタイム通信 | WebSocket（`ws`） | PC画面とスマートフォン間の状態・操作同期 |
+| サーバー | Cloudflare Workers（公開デモ）、Node.js 22.12以降 + Hono（ローカル・代替構成） | WorkersがHTTP APIと静的画面を配信し、Durable Objectsが釣りルームを管理 |
+| リアルタイム通信 | WebSocket、Durable Objects（Workers） / `ws`（Node.js） | PC画面とスマートフォン間の状態・操作同期 |
 | 入力検証 | Zod | APIとWebSocketから届くデータの検証 |
 | ゲーム状態 | `OceanFishingGame` | 魚の動き、張力、距離、捕獲・逃走をサーバー側で判定 |
 | 図鑑 | ローカル: SQLite（`node:sqlite`） / 本番: Cloudflare D1またはPostgreSQL必須 | 魚種マスタ、プレイヤー別捕獲数、捕獲イベントを保存 |
-| 配信 | Docker、Cloud RunまたはVercel構成 | Docker/Cloud Runはアプリ一体型、Vercelは静的フロントエンド用 |
+| 配信 | Cloudflare Workers + Durable Objects + D1（公開デモ） | Workersがアプリ、Durable Objectsが釣りルーム、D1が図鑑を担当 |
 
 ## アーキテクチャ
 
+公開デモの実行構成です。Node.js + Honoはローカル開発とCloud Run代替構成で使います。
+
 ```text
 PCブラウザー（React + Three.js） ── WebSocket ──┐
-                                                 ├─ Node.js + Hono サーバー
-スマートフォン（Reactコントローラー） ─ WebSocket ┘  ├─ Ocean Rooms（接続・入力・配信）
-                                                    ├─ OceanFishingGame（20Hzのゲーム判定）
-                                                    └─ 捕獲イベント ──► SQLite / D1 / PostgreSQL
+                                                 ├─ Cloudflare Worker（画面・API・WebSocket入口）
+スマートフォン（Reactコントローラー） ─ WebSocket ┘  ├─ Durable Objects: OceanRoom（釣りルーム・20Hz判定）
+                                                    └─ D1（セッション・図鑑・釣果）
 ```
 
 - **サーバーがゲーム状態の正**です。アタリ、魚の位置・抵抗、距離、捕獲・逃走はサーバー側で決めます。
@@ -230,16 +231,16 @@ npm run test:whale
 ## 配信とデータの注意点
 
 - `npm run build` はクライアントを `dist/client`、Node.jsサーバーを `dist` に出力します。本番相当のローカル起動は `npm start` です。
-- Docker/Cloud RunではNodeサーバーが画面・API・WebSocketをまとめて配信します。Cloud Runでの公開URLにはポート番号を付けません。
+- Docker/Cloud Runの代替構成ではNodeサーバーが画面・API・WebSocketをまとめて配信します。Cloud Runの公開URLにはポート番号を付けません。
 - Vercel構成は静的フロントエンド用です。WebSocket/APIサーバーは別途用意し、Vercelの `VITE_BACKEND_URL` とバックエンドの `FRONTEND_ORIGIN` を設定します。
 - ルーム状態はNodeプロセスのメモリ上にあります。Cloud Runの再起動やインスタンス切替で接続中のルームは失われます。
 - 本番ではCloudflare D1またはPostgreSQLを必須とし、未設定なら起動しません。`/ready` は選択中の `collectionBackend` とDB疎通を返します。[Cloudflare D1永続化ガイド](./docs/cloudflare-d1-persistence.md)と[Cloud SQL/PostgreSQLガイド](./docs/cloud-sql-persistence.md)を参照してください。D1設定と `DATABASE_URL`（PostgreSQL）は同時に使えません。Cloud SQLインスタンスの作成や接続設定は別途必要で、利用料金が発生します。
 - ルームは最大128個、1ルーム最大8接続で、スマートフォンの操作担当は1台です。無人のルームは30分後に回収します。QR/ルームURLを知っている人はその海へ接続できるため、公開場所へ不用意に共有しないでください。
 - Service Workerは静的ファイルをキャッシュしますが、ゲーム進行や捕獲記録にはオンラインのバックエンド接続が必要です。
 
-Cloudflare Workersへの移行構成と公開手順は[Cloudflare Workersガイド](./docs/cloudflare-workers.md)を参照してください。
+Cloudflare Workersの構成とデプロイ手順は[Cloudflare Workersガイド](./docs/cloudflare-workers.md)を参照してください。
 
-デプロイ方法やCloud Runの料金・WebSocket・SQLiteの詳しい制約は[低コスト構成ガイド](./docs/cloud-run-cheap.md)を参照してください。アーキテクチャの責務分担とデータフローは[技術構成メモ](./docs/technical-architecture.md)、魚の造形方針は[Go魚の設計メモ](./docs/go-fish-design.md)と[Dockerクジラの設計メモ](./docs/docker-whale-design.md)にまとめています。
+Cloud Runを代替構成として使う場合の料金・WebSocket・SQLiteの詳しい制約は[低コスト構成ガイド](./docs/cloud-run-cheap.md)を参照してください。アーキテクチャの責務分担とデータフローは[技術構成メモ](./docs/technical-architecture.md)、魚の造形方針は[Go魚の設計メモ](./docs/go-fish-design.md)と[Dockerクジラの設計メモ](./docs/docker-whale-design.md)にまとめています。
 
 ## 主なファイル
 

@@ -8,11 +8,11 @@
 
 Cast into the sea on a PC, then connect a smartphone as a fishing-rod controller. The concepts behind Go, Docker, CSS, Kubernetes, Rust, and JavaScript are represented through distinct fish movement and appearance.
 
-[Public demo](https://gijutu-turi-e7ranic5ja-an.a.run.app/) · [Start with the demo](#start-with-the-demo) · [Fish and technology](#fish-and-technology) · [Architecture](#architecture) · [Run locally](#getting-started)
+[Public demo](https://gijutu-turi.nitr0yukkuri.workers.dev/) · [Start with the demo](#start-with-the-demo) · [Fish and technology](#fish-and-technology) · [Architecture](#architecture) · [Run locally](#getting-started)
 
 ## Start with the demo
 
-1. On a PC, open the [fixed Go Fish route](https://gijutu-turi-e7ranic5ja-an.a.run.app/gofish). The species-fixed URL avoids the random selection on the regular route.
+1. On a PC, open the [fixed Go Fish route](https://gijutu-turi.nitr0yukkuri.workers.dev/gofish). The species-fixed URL avoids the random selection on the regular route.
 2. Scan the QR code on the PC with a smartphone to connect to the same fishing spot. If motion sensors are unavailable, use the phone screen controls. You can also play with the PC alone.
 3. Cast and set the hook when the float sinks. Watch the Go Fish split into a school and pull from several directions as you alternate between reeling and waiting.
 4. After catching it, open the encyclopedia to see how the fish’s behavior relates to parallel processing.
@@ -56,21 +56,22 @@ The regular route `/` randomly selects from the active species other than K8s (G
 | UI | React 19, TypeScript, Vite | Sea scene, controls, smartphone controller, and encyclopedia |
 | 3D | Three.js, WebGL, GLSL | Render the sea, fish, rod, line, ripples, and trails |
 | Audio | Web Audio API | Generate ambient and effect sounds in the browser |
-| Server | Node.js 22.12+, Hono | HTTP API, static files, and game-room management |
-| Real-time communication | WebSocket (`ws`) | Synchronize game state and controls between PC and smartphone |
+| Server | Cloudflare Workers (public demo); Node.js 22.12+ and Hono (local / alternate) | Workers serves the HTTP API and static app; Durable Objects manage fishing rooms |
+| Real-time communication | WebSocket, Durable Objects (Workers) / `ws` (Node.js) | Synchronize game state and controls between PC and smartphone |
 | Input validation | Zod | Validate data received through the API and WebSocket |
 | Game state | `OceanFishingGame` | Server-side decisions for fish movement, tension, distance, catch, and escape |
 | Encyclopedia | Local: SQLite (`node:sqlite`) / Production: Cloudflare D1 or PostgreSQL required | Store species data, per-player catch counts, and catch events |
-| Delivery | Docker, Cloud Run or Vercel configuration | Docker / Cloud Run combine the app; Vercel is for the static frontend |
+| Delivery | Cloudflare Workers + Durable Objects + D1 (public demo) | Workers serves the app, Durable Objects manage rooms, and D1 stores the encyclopedia |
 
 ## Architecture
 
+This diagram shows the public demo. Node.js + Hono remains available for local development and the alternate Cloud Run configuration.
+
 ```text
 PC browser (React + Three.js) ── WebSocket ──┐
-                                              ├─ Node.js + Hono server
-Smartphone (React controller) ─── WebSocket ──┘  ├─ Ocean Rooms (connections, input, delivery)
-                                                 ├─ OceanFishingGame (20 Hz game decisions)
-                                                 └─ Catch event ──► SQLite / D1 / PostgreSQL
+                                              ├─ Cloudflare Worker (app, API, WebSocket entry)
+Smartphone (React controller) ─── WebSocket ──┘  ├─ Durable Objects: OceanRoom (fishing room, 20 Hz game decisions)
+                                                 └─ D1 (sessions, encyclopedia, catches)
 ```
 
 - **The server is authoritative for game state.** It decides when a fish is hooked, fish position and resistance, distance, and whether the fish is caught or escapes.
@@ -230,16 +231,16 @@ npm run test:whale
 ## Deployment and data notes
 
 - `npm run build` outputs the client to `dist/client` and the Node.js server to `dist`. For a production-like local start, use `npm start`.
-- With Docker / Cloud Run, the Node server serves the UI, API, and WebSocket together. Do not include a port number in the public Cloud Run URL.
+- In the alternate Docker / Cloud Run configuration, the Node server serves the UI, API, and WebSocket together. Do not include a port number in the public Cloud Run URL.
 - The Vercel configuration is for the static frontend. Set up the WebSocket / API server separately, and configure Vercel’s `VITE_BACKEND_URL` and the backend’s `FRONTEND_ORIGIN`.
 - Room state is held in Node process memory. A Cloud Run restart or instance switch loses connected rooms.
 - Production requires Cloudflare D1 or PostgreSQL; the app does not start if neither is configured. `/ready` returns the selected `collectionBackend` and database connectivity. See the [Cloudflare D1 persistence guide](./docs/cloudflare-d1-persistence.md) and [Cloud SQL / PostgreSQL guide](./docs/cloud-sql-persistence.md). D1 and PostgreSQL `DATABASE_URL` cannot be used together. Creating a Cloud SQL instance and configuring its connection are separate steps and incur costs.
 - There can be up to 128 rooms and 8 connections per room, with one smartphone controller per room. Unattended rooms are removed after 30 minutes. Anyone with a QR code / room URL can connect to the sea, so do not share it carelessly in a public place.
 - The Service Worker caches static files, but gameplay and catch records require an online backend connection.
 
-See the [Cloudflare Workers guide](./docs/cloudflare-workers.md) for the Cloudflare Workers deployment architecture and steps.
+See the [Cloudflare Workers guide](./docs/cloudflare-workers.md) for the production deployment architecture and steps.
 
-For deployment, Cloud Run costs, WebSocket, and SQLite limitations, see the [low-cost configuration guide](./docs/cloud-run-cheap.md). Responsibilities and data flow are described in the [technical architecture notes](./docs/technical-architecture.md), while fish design is covered in the [Go Fish design notes](./docs/go-fish-design.md) and [Docker Whale design notes](./docs/docker-whale-design.md).
+For Cloud Run as an alternate deployment, its costs, WebSocket, and SQLite limitations are covered in the [low-cost configuration guide](./docs/cloud-run-cheap.md). Responsibilities and data flow are described in the [technical architecture notes](./docs/technical-architecture.md), while fish design is covered in the [Go Fish design notes](./docs/go-fish-design.md) and [Docker Whale design notes](./docs/docker-whale-design.md).
 
 ## Main files
 
