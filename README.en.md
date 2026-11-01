@@ -36,6 +36,12 @@ Fish behavior is a representation for communicating technical concepts; this is 
 
 The game centers on a sea and fish rendered with Three.js, while controls appear only when needed. It can be played on a PC alone. Connect a smartphone by QR code to make it a fishing controller: shake to cast, rotate to reel, or use on-screen controls.
 
+### Weather-reactive fishing spots
+
+Weather from fixed reference locations changes the sky and water presentation for day or night, clouds, rain, snow, and wind. A lightning visual is also implemented, but the JMA model currently used does not produce thunderstorm weather codes, so triggering lightning from actual weather is not supported yet. Data comes from the Japan Meteorological Agency (JMA) model through Open-Meteo. The sea uses Tokyo Bay as a reference area; the river uses the Arakawa near Kumagaya. The app does not request the player’s location. This is model-based current weather, not an on-site observation or a catch forecast.
+
+The server applies a small gameplay adjustment under selected conditions: night eases progress for the JS Conger Eel and Docker Catfish, while rain and moderate sea wind provide additional assistance under their respective conditions. The assist coefficient is capped at 10%. The game is designed to disable assistance for thunderstorm codes, but the current JMA model does not produce those codes, so this condition cannot be triggered by its live data. Snow affects scenery only. The game does not retrieve wave height or swell period, so sea wind is only a rough proxy for surface conditions. Fishing remains playable in a neutral state when weather is unavailable. The UI attributes the data to the Open-Meteo JMA API under CC BY 4.0.
+
 ## Fish and technology
 
 | Fish | Concept represented | Behavior in the game |
@@ -56,6 +62,7 @@ The regular route `/` randomly selects from the active species other than K8s (G
 | UI | React 19, TypeScript, Vite | Sea scene, controls, smartphone controller, and encyclopedia |
 | 3D | Three.js, WebGL, GLSL | Render the sea, fish, rod, line, ripples, and trails |
 | Audio | Web Audio API | Generate ambient and effect sounds in the browser |
+| Weather | Open-Meteo JMA model | Retrieve reference-area weather and apply it to scenery and gameplay assist |
 | Server | Cloudflare Workers (public demo); Node.js 22.12+ and Hono (local / alternate) | Workers serves the HTTP API and static app; Durable Objects manage fishing rooms |
 | Real-time communication | WebSocket, Durable Objects (Workers) / `ws` (Node.js) | Synchronize game state and controls between PC and smartphone |
 | Input validation | Zod | Validate data received through the API and WebSocket |

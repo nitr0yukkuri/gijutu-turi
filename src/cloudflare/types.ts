@@ -1,4 +1,5 @@
 import type { FishSpeciesId } from "../fish-species.js";
+import type { CurrentWeather } from "../weather-contract.js";
 
 export interface D1Result<T = Record<string, unknown>> {
   success: boolean;
@@ -59,4 +60,4 @@ export interface CloudflareEnv {
   FRONTEND_ORIGIN?: string;
 }
 
-export type OceanRoomCreatePayload = { roomId: string; playerId: string; fishId?: FishSpeciesId; waterway?: "sea" | "river" };
+export type OceanRoomCreatePayload = { roomId: string; playerId: string; fishId?: FishSpeciesId; waterway?: "sea" | "river"; weather?: CurrentWeather };

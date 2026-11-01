@@ -148,13 +148,31 @@ function rockGeometry(seed){
   geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geo.computeVertexNormals();return geo;
 }
 
-export function createRiverEnvironment({reducedMotion=false}={}){
+export function createRiverEnvironment({reducedMotion=false,nightIntensity=0}={}){
   let disposed=false;
   const scene=new THREE.Scene();scene.fog=new THREE.FogExp2(0xc4dfe1,.0028);
+  const dayFogColor=new THREE.Color(0xc4dfe1),nightFogColor=new THREE.Color(0x101b2b);
+  const daySkyLight=new THREE.Color(0xe8f4ff),nightSkyLight=new THREE.Color(0x718bb4);
+  const dayGroundLight=new THREE.Color(0x465337),nightGroundLight=new THREE.Color(0x111725);
+  const daySunColor=new THREE.Color(0xfff1ca),nightSunColor=new THREE.Color(0x9cb7e0);
+  const foliageMaterials=[];
   const terrain=new THREE.Group();terrain.rotation.y=RIVER_BANK_VIEW.yaw;
   terrain.position.set(RIVER_BANK_VIEW.terrainX,0,RIVER_BANK_VIEW.terrainZ);scene.add(terrain);
-  scene.add(new THREE.HemisphereLight(0xe8f4ff,0x465337,2.05));
-  const sun=new THREE.DirectionalLight(0xfff1ca,1.7);sun.position.set(-35,60,25);scene.add(sun);
+  const hemisphere=new THREE.HemisphereLight(daySkyLight,dayGroundLight,2.05);scene.add(hemisphere);
+  const sun=new THREE.DirectionalLight(daySunColor,1.7);sun.position.set(-35,60,25);scene.add(sun);
+  let appliedNight=-1;
+  const setNight=value=>{
+    const night=clamp(value,0,1);
+    if(Math.abs(night-appliedNight)<.002)return;
+    appliedNight=night;
+    scene.fog.color.copy(dayFogColor).lerp(nightFogColor,night);
+    hemisphere.color.copy(daySkyLight).lerp(nightSkyLight,night);
+    hemisphere.groundColor.copy(dayGroundLight).lerp(nightGroundLight,night);
+    hemisphere.intensity=2.05+(0.48-2.05)*night;
+    sun.color.copy(daySunColor).lerp(nightSunColor,night);
+    sun.intensity=1.7+(0.14-1.7)*night;
+    for(const material of foliageMaterials)material.color.setRGB(1-.68*night,1-.62*night,1-.38*night);
+  };
   const textures=[],time={value:0},random=randomSource(81923),scratch=new THREE.Object3D();
   const loadTexture=(url,color,fallback)=>{
     const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
@@ -222,6 +240,7 @@ normal=normalize(mat3(viewMatrix)*normalize(rockBase+rockDetail*0.6));
   for(let variant=0;variant<4;variant++){
     const map=treeTexture(1101+variant*97);textures.push(map);
     const material=new THREE.MeshBasicMaterial({map,alphaTest:.38,side:THREE.DoubleSide,fog:true});
+    foliageMaterials.push(material);
     const trees=treePositions.filter(tree=>tree.variant===variant),mesh=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),material,trees.length*2);
     let instance=0;
     for(const tree of trees)for(const cross of [-.43,.43]){
@@ -233,6 +252,7 @@ normal=normalize(mat3(viewMatrix)*normalize(rockBase+rockDetail*0.6));
 
   const reeds=reedTexture();textures.push(reeds);
   const reedMaterial=new THREE.MeshBasicMaterial({map:reeds,alphaTest:.32,side:THREE.DoubleSide,fog:true});
+  foliageMaterials.push(reedMaterial);
   reedMaterial.onBeforeCompile=shader=>{
     shader.uniforms.uRiverWind=time;
     shader.vertexShader='uniform float uRiverWind;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed.x+=sin(uRiverWind*1.35+instanceMatrix[3].x*.51+instanceMatrix[3].z*.28)*pow(position.y+.5,2.0)*.035;');
@@ -246,6 +266,7 @@ normal=normalize(mat3(viewMatrix)*normalize(rockBase+rockDetail*0.6));
     reedMesh.setColorAt(index,new THREE.Color().setHSL(.17+random()*.04,.23,.65+random()*.15));
   }
   reedMesh.instanceMatrix.needsUpdate=true;reedMesh.computeBoundingSphere();terrain.add(reedMesh);
+  setNight(nightIntensity);
 
   const reflectionTarget=new THREE.WebGLRenderTarget(512,288,{type:THREE.HalfFloatType,depthBuffer:true});
   const reflectionCamera=new THREE.PerspectiveCamera(),reflectionMatrix=new THREE.Matrix4(),reflectionLook=new THREE.Vector3(),reflectionSize=new THREE.Vector2(),savedClear=new THREE.Color();
@@ -256,6 +277,7 @@ normal=normalize(mat3(viewMatrix)*normalize(rockBase+rockDetail*0.6));
     reflectionMatrix,
     bedTexture,
     waterNormalTexture,
+    setNight,
     update(seconds){time.value=reducedMotion?0:seconds;},
     renderReflection(renderer,camera){
       renderer.getDrawingBufferSize(reflectionSize);
@@ -266,7 +288,7 @@ normal=normalize(mat3(viewMatrix)*normalize(rockBase+rockDetail*0.6));
       reflectionCamera.up.set(0,-1,0);reflectionCamera.lookAt(reflectionLook);reflectionCamera.updateMatrixWorld();
       reflectionMatrix.copy(bias).multiply(reflectionCamera.projectionMatrix).multiply(reflectionCamera.matrixWorldInverse);
       const previous=renderer.getRenderTarget(),alpha=renderer.getClearAlpha();renderer.getClearColor(savedClear);
-      renderer.setRenderTarget(reflectionTarget);renderer.setClearColor(0xbcdde5,1);renderer.clear();renderer.render(scene,reflectionCamera);
+      renderer.setRenderTarget(reflectionTarget);renderer.setClearColor(scene.fog.color,1);renderer.clear();renderer.render(scene,reflectionCamera);
       renderer.setRenderTarget(previous);renderer.setClearColor(savedClear,alpha);
     },
     dispose(){

@@ -10,6 +10,8 @@ import { COMPLETE_SHOWCASE_COLLECTION, isCompleteShowcasePath } from "./complete
 import { TECH_TREE_BRANCHES, TECH_TREE_FISH_LINKS, TECH_TREE_NODE_DETAILS } from "./tech-tree.js";
 import { useOceanRuntime } from "./useOceanRuntime.js";
 import { resolveWaterway, WATERWAY_QUERY_PARAM, type Waterway } from "../waterway.js";
+import { weatherVisualStateFor } from "../weather-contract.js";
+import { useCurrentWeather } from "./useCurrentWeather.js";
 import { ReelControl } from "./ReelControl.js";
 import { TensionGauge } from "./TensionGauge.js";
 import type { Collection, CollectionEntry, OceanPhase } from "./types.js";
@@ -540,13 +542,16 @@ function FishingApp() {
   const isPhone = Boolean(controllerId);
   const fishingRoute = resolveFishingRoute(window.location.pathname, params.get("fish"));
   const [waterway, setWaterway] = useState<Waterway>(() => resolveWaterway(params.get(WATERWAY_QUERY_PARAM)));
+  const weatherLoad = useCurrentWeather(waterway, !isPhone);
+  const weather = weatherLoad.weather?.waterway === waterway ? weatherLoad.weather : null;
+  const weatherVisuals = useMemo(() => weatherVisualStateFor(weather), [weather]);
   const oceanMountRef = useRef<HTMLDivElement>(null);
   const helpDialogRef = useRef<HTMLDialogElement>(null);
   const connectDialogRef = useRef<HTMLDialogElement>(null);
   const collectionDialogRef = useRef<HTMLDialogElement>(null);
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
-  const runtime = useOceanRuntime({ isPhone, controllerId, initialFishId: fishingRoute.initialFishId, waterway, routePath: fishingRoute.path, oceanMountRef, collectionOpen });
+  const runtime = useOceanRuntime({ isPhone, controllerId, initialFishId: fishingRoute.initialFishId, waterway, weather: weatherVisuals, routePath: fishingRoute.path, oceanMountRef, collectionOpen });
   const { state, presentationState, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle, soundEnabled, collection, selectedCollectionId, controllerUrl, controllerHost, controllerUrlError, sensorStatus, sensorButtonLabel, sensorsOn } = runtime;
   const { activate, retryCatchSave, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, startReel, stopReel, performPhonePull, toggleSensor, toggleSound, showToast } = runtime.actions;
   const fighting = state.phase === "fighting";
@@ -708,6 +713,7 @@ function FishingApp() {
             <li><span>3</span><div><div className="instruction-heading"><strong>巻く・竿を引く</strong></div><p>魚が走っている間は巻かずに待ちます。落ち着いたら「巻く」を押し、糸の張りが赤くなったらいったん離します。スマホの画面を自分に向け、遠くから手前へ一度引くと短く巻き取れます。連続して巻くときはリールを押すか回します。</p></div></li>
           </ol>
           <p className="fine-print">スマホを使う場合は「スマホを接続」からQRコードを読み取り、スマホ画面の指示に従ってください。</p>
+          <p className="fine-print">天気の背景演出には<a href="https://open-meteo.com/en/docs/jma-api" target="_blank" rel="noreferrer">Open-Meteoの気象庁モデル</a>を使用しています（<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>）。</p>
         </div>
       </dialog>
       <dialog ref={connectDialogRef} id="connect-dialog" aria-label="スマホを接続" aria-describedby="pairing-description" onClick={event => dialogClick(event.currentTarget, event)}>

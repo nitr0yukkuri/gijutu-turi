@@ -27,6 +27,7 @@ import { RIVER_BANK_VIEW, riverBankViewGLSL } from './river-bank-view.js';
 import { riverOpticsGLSL } from './river-water.js';
 import type { FishSurfaceImpactCue } from '../fish-surface-impact.js';
 import type { Waterway } from '../waterway.js';
+import type { WeatherVisualState } from '../weather-contract.js';
 
 // Keep the escape result on screen while the camera returns to the normal view.
 const ESCAPE_FADE_MS = 420;
@@ -112,6 +113,12 @@ uniform mat4 uProjectionInverse;
 uniform vec4 uRipples[6];
 uniform vec2 uResolution;
 uniform float uRiver;
+uniform float uWeatherCloud;
+uniform float uWeatherRain;
+uniform float uWeatherWind;
+uniform float uWeatherStorm;
+uniform float uWeatherSnow;
+uniform float uNight;
 uniform sampler2D uRiverReflection;
 uniform mat4 uRiverReflectionMatrix;
 uniform sampler2D uRiverNormal;
@@ -122,17 +129,84 @@ float noise(vec2 p) {
   vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
   return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
 }
+float cloudFbm(vec2 p) {
+  float value=0.0;
+  float amplitude=0.5;
+  for(int i=0;i<4;i++) {
+    value+=noise(p)*amplitude;
+    p=p*2.03+vec2(17.1,9.2);
+    amplitude*=0.5;
+  }
+  return value/0.9375;
+}
+float cloudField(vec2 p) {
+  vec2 drift=vec2(uTime*0.0022,-uTime*0.0007);
+  vec2 warp=vec2(cloudFbm(p*0.38+drift),cloudFbm(p*0.38+drift+vec2(8.3,2.7)))-0.5;
+  float broad=cloudFbm(p*0.78+warp*0.7+drift);
+  float detail=cloudFbm(p*2.15+warp*1.1+drift*1.7+vec2(3.4,7.2));
+  return broad*0.78+detail*0.22;
+}
+float cloudCoverageMask(float field,float elevation) {
+  float coverage=clamp(uWeatherCloud,0.0,1.0);
+  float threshold=mix(0.7,0.39,sqrt(coverage));
+  float cloudMass=smoothstep(threshold-0.08,threshold+0.18,field)*coverage;
+  float thinCirrus=smoothstep(0.64,0.84,field)*0.08*(1.0-coverage);
+  float heightMask=smoothstep(0.0,0.065,elevation)*(1.0-smoothstep(0.84,1.0,elevation)*0.25);
+  return max(cloudMass,thinCirrus)*heightMask;
+}
+vec2 skyCoordinates(vec3 d) {
+  return vec2(atan(d.x,-d.z),asin(clamp(d.y,-1.0,1.0)));
+}
+float starField(vec3 direction,float cloudMask) {
+  if(direction.y<=0.04 || cloudMask>=0.98) return 0.0;
+  float elevation=max(direction.y,0.0);
+  vec2 grid=skyCoordinates(direction)*vec2(120.0,75.0);
+  vec2 cell=floor(grid);
+  vec2 local=fract(grid)-0.5;
+  float seed=hash(cell+vec2(17.1,31.7));
+  vec2 offset=vec2(hash(cell+vec2(4.3,7.1)),hash(cell+vec2(9.2,2.7)))-0.5;
+  float radius=mix(0.2,0.48,hash(cell+vec2(13.2,8.9)));
+  float distanceToStar=length(local-offset);
+  float core=1.0-smoothstep(radius*0.38,radius,distanceToStar);
+  float sparseStars=step(0.9989,seed);
+  float visible=smoothstep(0.04,0.24,elevation)*(1.0-cloudMask*0.96);
+  float twinkle=0.84+0.16*sin(uTime*(1.2+seed*1.8)+seed*6.283);
+  return core*sparseStars*visible*twinkle;
+}
+float segmentDistance(vec2 p,vec2 a,vec2 b) {
+  vec2 pa=p-a,ba=b-a;
+  float h=clamp(dot(pa,ba)/max(dot(ba,ba),0.000001),0.0,1.0);
+  return length(pa-ba*h);
+}
+vec2 lightningMainPoint(float index,float seed,float originX,float boltLength) {
+  float progress=index/10.0;
+  float broadBend=(noise(vec2(seed*1.73,progress*2.2))-0.5)*0.042;
+  float fineBend=(hash(vec2(seed+19.1,index+7.2))-0.5)*0.032;
+  return vec2(originX+broadBend+fineBend,0.97-progress*boltLength);
+}
+vec2 lightningScreenPoint(vec2 point) {
+  return vec2(point.x*uResolution.x/max(uResolution.y,1.0),point.y);
+}
 ${waterHeightGLSL}
 ${waterNormalDifferenceGLSL}
 vec3 sky(vec3 d,float cloudWeight) {
   if(uRiver>0.5) {
     float elevation=max(d.y,0.0);
     vec3 day=mix(vec3(0.48,0.7,0.76),vec3(0.12,0.4,0.64),pow(clamp(elevation*1.7,0.0,1.0),0.55));
-    vec2 cloudPoint=d.xz/(max(d.y,0.025)+0.26);
-    float clouds=noise(cloudPoint*vec2(2.1,3.6)+vec2(uTime*0.002,0.0));
-    float cloudMask=smoothstep(0.52,0.77,clouds)*smoothstep(0.025,0.2,elevation);
-    day=mix(day,vec3(0.76,0.83,0.81),cloudMask*0.38*cloudWeight);
-    return day;
+    vec2 cloudPoint=skyCoordinates(d)*vec2(4.0,4.6);
+    float cloudFieldValue=cloudField(cloudPoint);
+    float cloudMask=cloudCoverageMask(cloudFieldValue,elevation);
+    float sunFacing=max(dot(d,normalize(vec3(-0.45,0.68,-0.4))),0.0);
+    float cloudLight=smoothstep(0.38,0.72,cloudFieldValue);
+    vec3 cloudColor=mix(vec3(0.14,0.19,0.25),vec3(0.88,0.91,0.9),0.08+pow(sunFacing,0.38)*0.24+cloudLight*0.48);
+    day=mix(day,cloudColor,cloudMask*cloudWeight*mix(0.42,0.9,uWeatherCloud));
+    day=max(day+(cloudFieldValue-0.5)*uWeatherCloud*vec3(0.32,0.35,0.36),vec3(0.0));
+    day=mix(day,vec3(0.48,0.55,0.59),uWeatherCloud*0.08);
+    vec3 night=mix(vec3(0.018,0.043,0.078),vec3(0.004,0.012,0.034),pow(clamp(elevation*1.7,0.0,1.0),0.55));
+    night=mix(night,vec3(0.055,0.078,0.12),cloudMask*cloudWeight*0.62);
+    if(uNight>0.001) night+=vec3(0.34,0.46,0.72)*starField(d,cloudMask)*0.72;
+    day=mix(day,night,uNight);
+    return mix(day,vec3(0.12,0.17,0.23),uWeatherStorm*0.72);
   }
   float elevation=max(d.y,0.0);
   vec3 horizon=vec3(0.36,0.46,0.49);
@@ -140,14 +214,27 @@ vec3 sky(vec3 d,float cloudWeight) {
   vec3 c=mix(horizon,zenith,pow(clamp(elevation*2.6,0.0,1.0),0.55));
   vec3 sun=normalize(vec3(-0.42,0.065,-1.0));
   float alignment=max(dot(d,sun),0.0);
-  c+=vec3(0.28,0.15,0.075)*pow(alignment,25.0);
-  c+=vec3(1.0,0.71,0.40)*pow(alignment,17000.0)*0.85;
-  // Delicate, stretched cloud bands; the horizon stays quiet.
-  vec2 cp=d.xz/(max(d.y,0.02)+0.16);
-  float cloud=noise(cp*vec2(1.6,8.0)+vec2(uTime*0.002,0.0));
-  cloud=clamp((cloud-0.5)*1.8,0.0,0.3)*smoothstep(0.0,0.16,elevation);
-  c+=vec3(0.045,0.05,0.05)*cloud*cloudWeight;
-  return c;
+  float directSun=1.0-uWeatherCloud*0.72-uWeatherStorm*0.18;
+  c+=vec3(0.28,0.15,0.075)*pow(alignment,25.0)*directSun;
+  c+=vec3(1.0,0.71,0.40)*pow(alignment,17000.0)*(0.85*(1.0-uWeatherCloud*0.96));
+  vec2 cp=skyCoordinates(d)*vec2(4.0,4.6);
+  float cloudFieldValue=cloudField(cp);
+  float cloudMask=cloudCoverageMask(cloudFieldValue,elevation);
+  float cloudSun=pow(alignment,0.38);
+  float cloudLight=smoothstep(0.38,0.72,cloudFieldValue);
+  vec3 cloudColor=mix(vec3(0.14,0.19,0.25),vec3(0.88,0.91,0.9),0.08+cloudSun*0.24+cloudLight*0.48);
+  c=mix(c,cloudColor,cloudMask*cloudWeight*mix(0.42,0.92,uWeatherCloud));
+  c=max(c+(cloudFieldValue-0.5)*uWeatherCloud*vec3(0.32,0.35,0.36),vec3(0.0));
+  float horizonHaze=pow(1.0-elevation,3.0)*0.16;
+  c=mix(c,horizon,horizonHaze);
+  c=mix(c,vec3(0.4,0.48,0.53),uWeatherCloud*0.07);
+  vec3 nightHorizon=vec3(0.024,0.055,0.088);
+  vec3 nightZenith=vec3(0.004,0.012,0.036);
+  vec3 night=mix(nightHorizon,nightZenith,pow(clamp(elevation*2.6,0.0,1.0),0.58));
+  night=mix(night,vec3(0.052,0.076,0.12),cloudMask*cloudWeight*0.58);
+  if(uNight>0.001) night+=vec3(0.36,0.48,0.76)*starField(d,cloudMask)*0.76;
+  c=mix(c,night,uNight);
+  return mix(c,vec3(0.12,0.17,0.23),uWeatherStorm*0.72);
 }
 ${riverChannelGLSL}
 ${riverBankViewGLSL}
@@ -184,8 +271,14 @@ void main(){
     // long, aliased reflection streaks at the fishing camera's low angle.
     n=normalize(mix(n,vec3(0.0,1.0,0.0),mix(0.52,0.9,uRiver)));
     float shoreRoughness=mix(1.0,1.0-smoothstep(0.62,1.0,riverDepthRatio)*0.82,uRiver);
-    float fine=(noise(p.xz*4.5+uTime*0.07)-0.5)*0.035*mix(1.0,0.0,uRiver)*shoreRoughness;
-    n=normalize(n+vec3(fine,0.0,fine*0.8));
+    vec2 waveAxis=normalize(vec2(0.83,0.56)),crossAxis=vec2(-waveAxis.y,waveAxis.x);
+    vec2 wavePoint=vec2(dot(p.xz,waveAxis),dot(p.xz,crossAxis));
+    float broadFacet=(noise(wavePoint*vec2(2.8,8.0)+vec2(uTime*0.045,-uTime*0.025))-0.5)*0.052;
+    float fineFacet=(noise(wavePoint*vec2(8.5,23.0)+vec2(-uTime*0.12,uTime*0.05))-0.5)*0.018;
+    float fine=(broadFacet+fineFacet)*mix(1.0,0.0,uRiver)*shoreRoughness;
+    float windRipple=(noise(wavePoint*vec2(mix(2.2,5.5,uWeatherWind),mix(8.0,16.0,uWeatherWind))+uTime*0.03)-0.5)*0.06*uWeatherWind*mix(1.0,0.48,uRiver);
+    float rainMicro=(noise(wavePoint*vec2(13.0,31.0)+vec2(uTime*0.22,-uTime*0.13))-0.5)*0.026*uWeatherRain*mix(1.0,0.38,uRiver);
+    n=normalize(n+vec3(fine+windRipple+rainMicro,0.0,-fine*0.42+windRipple*0.76+rainMicro*0.5));
     n=normalize(mix(n,vec3(0.0,1.0,0.0),smoothstep(90.0,450.0,t)));
     if(uRiver>0.5) {
       n=riverSurfaceNormal(n,p,riverLateral,riverDepthRatio,t);
@@ -195,10 +288,11 @@ void main(){
     vec3 oceanWater=vec3(0.014,0.071,0.094)+vec3(0.012,0.03,0.032)*(n.y*0.5+0.5);
     vec3 water=oceanWater;
     if(uRiver>0.5)water=riverTransmittedColor(p,rd,n,riverDepthRatio);
-    // The sky's stretched cloud bands look like repeated stripes when mirrored
-    // into the shallow-angle sea. Keep the clouds in the sky, but soften their
-    // reflected detail and overall mirror contrast on the water.
-    vec3 reflectedColor=sky(reflected,0.12);
+    vec3 nightWater=mix(vec3(0.006,0.022,0.038),vec3(0.008,0.026,0.03),uRiver);
+    water=mix(water,nightWater,uNight);
+    // Let cloud shapes read in the water, while the rough microfacets keep the
+    // reflection broken into irregular, low-contrast patches.
+    vec3 reflectedColor=sky(reflected,0.34);
     if(uRiver>0.5) {
       vec4 reflectionPoint=uRiverReflectionMatrix*vec4(p.x,0.0,p.z,1.0);
       vec2 reflectionUv=reflectionPoint.xy/reflectionPoint.w+n.xz*vec2(0.045,0.024);
@@ -209,10 +303,12 @@ void main(){
     }
     color=mix(water,reflectedColor,fresnel*mix(0.72,0.94,uRiver));
     vec3 sun=normalize(mix(vec3(-0.42,0.065,-1.0),vec3(-0.45,0.68,-0.4),uRiver));
-    float glint=pow(max(dot(reflected,sun),0.0),260.0);
-    color+=vec3(0.82,0.67,0.44)*glint*mix(0.66,0.58,uRiver);
+    float roughness=clamp(max(uWeatherWind,uWeatherRain*0.55),0.0,1.0);
+    float glint=pow(max(dot(reflected,sun),0.0),mix(360.0,105.0,roughness));
+    float glintVariation=0.55+noise(wavePoint*vec2(3.4,10.0)+uTime*0.06)*0.9;
+    color+=vec3(0.82,0.67,0.44)*glint*glintVariation*(1.0-uWeatherCloud*0.42)*mix(0.66,0.58,uRiver)*(1.0-uNight*0.94);
     float broad=pow(max(dot(reflected,sun),0.0),18.0);
-    color+=vec3(0.017,0.023,0.023)*broad*mix(1.0,0.32,uRiver);
+    color+=vec3(0.017,0.023,0.023)*broad*mix(1.0,0.32,uRiver)*(1.0-uNight*0.88);
     for(int i=0;i<6;i++) {
       float age=uTime-uRipples[i].z;
       if(age>0.0 && age<6.0) {
@@ -225,6 +321,66 @@ void main(){
     color=mix(color,sky(vec3(rd.x,0.0,rd.z),0.12),haze*0.97);
   } else {
     color=sky(rd,1.0);
+  }
+  color*=mix(vec3(1.0),vec3(0.78,0.84,0.88),uWeatherRain*0.32);
+  color=mix(color,color*vec3(0.88,0.94,1.04)+vec3(0.018,0.025,0.036),uWeatherSnow*0.5);
+  float stormCycle=floor(uTime/3.0);
+  float stormPhase=mod(uTime,3.0);
+  float strikeChance=step(0.38,hash(vec2(stormCycle,37.1)));
+  float firstFlash=exp(-pow((stormPhase-0.72)/0.09,2.0));
+  float secondFlash=0.68*exp(-pow((stormPhase-0.88)/0.12,2.0));
+  float lightning=min(1.0,firstFlash+secondFlash)*strikeChance*uWeatherStorm;
+  float skyAmount=smoothstep(-0.08,0.22,rd.y);
+  float horizonAmount=exp(-abs(rd.y)*7.0);
+  float flashAmount=lightning*(skyAmount*0.24+horizonAmount*0.1);
+  color=mix(color,vec3(0.72,0.82,0.94),flashAmount);
+  float flashSide=hash(vec2(stormCycle,11.3));
+  float flashX=flashSide<0.5?0.12+hash(vec2(stormCycle,12.1))*0.25:0.63+hash(vec2(stormCycle,12.1))*0.25;
+  float cloudAtRay=cloudCoverageMask(cloudField(skyCoordinates(rd)*vec2(4.0,4.6)),max(rd.y,0.0));
+  float cloudGlow=exp(-pow((vUv.x-flashX)/0.22,2.0)-pow((vUv.y-0.79)/0.18,2.0));
+  color+=vec3(0.34,0.46,0.66)*cloudGlow*mix(0.12,0.92,cloudAtRay)*lightning*skyAmount*0.9;
+  if(lightning>0.001) {
+    float boltLength=0.22+hash(vec2(stormCycle,61.7))*0.14;
+    vec2 lightningUv=lightningScreenPoint(vUv);
+    vec2 mainPrevious=lightningScreenPoint(lightningMainPoint(0.0,stormCycle+3.7,flashX,boltLength));
+    for(int i=0;i<10;i++) {
+      float stepAmount=float(i+1)/10.0;
+      vec2 mainNext=lightningScreenPoint(lightningMainPoint(float(i+1),stormCycle+3.7,flashX,boltLength));
+      float mainDistance=segmentDistance(lightningUv,mainPrevious,mainNext);
+      float mainWidth=mix(0.00078,0.0012,stepAmount);
+      float mainCore=1.0-smoothstep(mainWidth*0.45,mainWidth,mainDistance);
+      float mainHalo=exp(-mainDistance/max(mainWidth*10.0,0.0001))*0.2;
+      float mainBrightness=0.84+hash(vec2(stormCycle,float(i)+81.9))*0.16;
+      color+=vec3(0.34,0.52,0.78)*mainHalo*lightning;
+      color+=vec3(0.84,0.94,1.0)*mainCore*1.35*lightning*mainBrightness;
+      mainPrevious=mainNext;
+    }
+    for(int branchIndex=0;branchIndex<3;branchIndex++) {
+      float branchSeed=stormCycle+float(branchIndex)*13.7+7.1;
+      float optionalBranch=step(0.3,hash(vec2(stormCycle,float(branchIndex)+47.3)));
+      float branchOn=branchIndex<2?1.0:optionalBranch;
+      float rootIndex=2.0+float(branchIndex)*3.0;
+      vec2 branchRoot=lightningScreenPoint(lightningMainPoint(rootIndex,stormCycle+3.7,flashX,boltLength));
+      float direction=hash(vec2(branchSeed,5.3))<0.5?-1.0:1.0;
+      float branchLength=0.034+hash(vec2(branchSeed,9.1))*0.052;
+      float branchIntensity=branchIndex==0?0.76:(branchIndex==1?0.54:0.32);
+      vec2 branchPrevious=branchRoot;
+      for(int branchStep=0;branchStep<3;branchStep++) {
+        float progress=float(branchStep+1)/3.0;
+        float sway=(hash(vec2(branchSeed,float(branchStep)+21.5))-0.5)*0.016;
+        vec2 branchNext=branchRoot+vec2(direction*branchLength*progress+sway,-boltLength*0.3*progress);
+        float branchDistance=segmentDistance(lightningUv,branchPrevious,branchNext);
+        float branchWidth=0.00078*(1.0-progress*0.38);
+        float branchCore=1.0-smoothstep(branchWidth*0.45,branchWidth,branchDistance);
+        float branchGlow=exp(-branchDistance/max(branchWidth*8.0,0.0001))*0.12;
+        color+=vec3(0.3,0.48,0.72)*branchGlow*lightning*branchOn*branchIntensity;
+        color+=vec3(0.74,0.86,1.0)*branchCore*0.95*lightning*branchOn*branchIntensity;
+        branchPrevious=branchNext;
+      }
+    }
+    float reflectionBreakup=0.28+noise(vec2(vUv.x*56.0,vUv.y*10.0+uTime*0.22))*0.72;
+    float waterReflection=exp(-pow((vUv.x-flashX)/0.055,2.0)-pow((vUv.y-0.54)/0.19,2.0))*reflectionBreakup;
+    color+=vec3(0.16,0.25,0.4)*waterReflection*lightning*(1.0-skyAmount)*0.7;
   }
   float vignette=1.0-smoothstep(0.3,0.95,length((vUv-0.5)*vec2(0.75,1.0)))*0.18;
   color*=vignette;
@@ -240,15 +396,16 @@ export type OceanSceneOptions = {
   onSurfaceImpact?: (impact: FishSurfaceImpactCue) => void;
   presentationTimeline?: OceanPresentationTimeline;
   waterway?: Waterway;
+  weather?: WeatherVisualState;
 };
 
-export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurfaceImpact=()=>{}, presentationTimeline:sharedTimeline, waterway='sea' }: OceanSceneOptions = {}) {
+export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurfaceImpact=()=>{}, presentationTimeline:sharedTimeline, waterway='sea', weather }: OceanSceneOptions = {}) {
   let sceneDisposed=false;
   let selectedWaterway=waterway;
   const presentationTimeline=sharedTimeline??new OceanPresentationTimeline(OCEAN_RENDER_DELAY_MS);
   const ownsPresentationTimeline=!sharedTimeline;
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let riverEnvironment=waterway==='river'?createRiverEnvironment({reducedMotion:reduced}):null;
+  let riverEnvironment=waterway==='river'?createRiverEnvironment({reducedMotion:reduced,nightIntensity:weather?.nightIntensity??0}):null;
   const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.25));
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
@@ -266,8 +423,53 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const ripples=Array.from({length:6},()=>new THREE.Vector4(0,0,-100,0));
   const emptyRiverReflection=new THREE.DataTexture(new Uint8Array([80,120,95,255]),1,1);emptyRiverReflection.needsUpdate=true;
   const uniforms={uTime:{value:0},uCamera:{value:camera.matrixWorld},uProjectionInverse:{value:camera.projectionMatrixInverse},uRipples:{value:ripples},uResolution:{value:new THREE.Vector2()},uRiver:{value:waterway==='river'?1:0},uRiverReflection:{value:riverEnvironment?.reflectionTexture??emptyRiverReflection},uRiverReflectionMatrix:{value:riverEnvironment?.reflectionMatrix??new THREE.Matrix4()},uRiverNormal:{value:riverEnvironment?.waterNormalTexture??emptyRiverReflection},uRiverBed:{value:riverEnvironment?.bedTexture??emptyRiverReflection}};
-  const material=new THREE.ShaderMaterial({uniforms,depthTest:false,depthWrite:false,vertexShader:'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',fragmentShader:waterShader});
-  const waterQuad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),material);backgroundScene.add(waterQuad);
+  const weatherUniforms={uWeatherCloud:{value:weather?.cloudCover??0},uWeatherRain:{value:weather?.rainIntensity??0},uWeatherWind:{value:weather?.windStrength??0},uWeatherStorm:{value:weather?.thunderstormIntensity??0},uWeatherSnow:{value:weather?.snowfallIntensity??0},uNight:{value:weather?.nightIntensity??0}};
+  const weatherTarget={cloudCover:weatherUniforms.uWeatherCloud.value,rainIntensity:weatherUniforms.uWeatherRain.value,windStrength:weatherUniforms.uWeatherWind.value,snowfallIntensity:weather?.snowfallIntensity??0,thunderstormIntensity:weatherUniforms.uWeatherStorm.value,nightIntensity:weatherUniforms.uNight.value};
+  const material=new THREE.ShaderMaterial({uniforms:{...uniforms,...weatherUniforms},depthTest:false,depthWrite:false,vertexShader:'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',fragmentShader:waterShader});
+  const waterQuad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),material);waterQuad.renderOrder=0;backgroundScene.add(waterQuad);
+  const snowflakeCount=280,snowGeometry=new THREE.BufferGeometry();
+  const snowPositions=new Float32Array(snowflakeCount*3),snowPhases=new Float32Array(snowflakeCount),snowSpeeds=new Float32Array(snowflakeCount),snowSizes=new Float32Array(snowflakeCount);
+  const seededRandom=(seed:number)=>{const value=Math.sin(seed*12.9898+78.233)*43758.5453;return value-Math.floor(value);};
+  for(let i=0;i<snowflakeCount;i++){
+    snowPositions[i*3]=seededRandom(i+1)*1.96-.98;
+    snowPositions[i*3+1]=0;
+    snowPositions[i*3+2]=0;
+    snowPhases[i]=seededRandom(i+101);
+    snowSpeeds[i]=.48+seededRandom(i+201)*.72;
+    snowSizes[i]=1.2+Math.pow(seededRandom(i+301),2.0)*4.0;
+  }
+  snowGeometry.setAttribute('position',new THREE.BufferAttribute(snowPositions,3));
+  snowGeometry.setAttribute('aPhase',new THREE.BufferAttribute(snowPhases,1));
+  snowGeometry.setAttribute('aSpeed',new THREE.BufferAttribute(snowSpeeds,1));
+  snowGeometry.setAttribute('aSize',new THREE.BufferAttribute(snowSizes,1));
+  const snowUniforms={uTime:{value:0},uSnow:{value:weather?.snowfallIntensity??0},uWind:{value:weather?.windStrength??0},uMotion:{value:reduced?0:1}};
+  const snowMaterial=new THREE.ShaderMaterial({
+    uniforms:snowUniforms,transparent:true,depthTest:false,depthWrite:false,
+    vertexShader:`attribute float aPhase;attribute float aSpeed;attribute float aSize;uniform float uTime;uniform float uSnow;uniform float uWind;uniform float uMotion;varying float vOpacity;varying float vStreak;void main(){float t=uTime*uMotion;float fall=fract(aPhase+t*aSpeed*.11);float depth=aPhase;float drift=(.012+uWind*.11)*fall;float x=position.x+sin(t*(.34+aSpeed*.16)+aPhase*6.283)*(.012+depth*.02)+drift;float y=1.12-fall*2.24;gl_Position=vec4(x,y,0.,1.);gl_PointSize=aSize*(.62+depth*1.18);vOpacity=uSnow*(.24+.62*depth);vStreak=clamp(uWind*.6+depth*.26,0.,.86);}`,
+    fragmentShader:`varying float vOpacity;varying float vStreak;void main(){vec2 p=(gl_PointCoord-vec2(.5))*2.;p.y+=p.x*vStreak*.5;float d=length(vec2(p.x,p.y*(1.-vStreak*.78)));float glow=exp(-d*d*3.5);float core=exp(-d*d*9.);float alpha=(glow*.3+core*.52)*vOpacity;gl_FragColor=vec4(vec3(.8,.89,.95),alpha);}`,
+  });
+  const snowflakes=new THREE.Points(snowGeometry,snowMaterial);snowflakes.renderOrder=1;snowflakes.frustumCulled=false;backgroundScene.add(snowflakes);
+  const rainCount=560,rainGeometry=new THREE.BufferGeometry();
+  const rainPositions=new Float32Array(rainCount*3),rainPhases=new Float32Array(rainCount),rainSpeeds=new Float32Array(rainCount),rainSizes=new Float32Array(rainCount);
+  for(let i=0;i<rainCount;i++){
+    rainPositions[i*3]=seededRandom(i+501)*1.96-.98;
+    rainPositions[i*3+1]=0;
+    rainPositions[i*3+2]=0;
+    rainPhases[i]=seededRandom(i+601);
+    rainSpeeds[i]=.72+seededRandom(i+701)*.72;
+    rainSizes[i]=2.6+seededRandom(i+801)*2.0;
+  }
+  rainGeometry.setAttribute('position',new THREE.BufferAttribute(rainPositions,3));
+  rainGeometry.setAttribute('aPhase',new THREE.BufferAttribute(rainPhases,1));
+  rainGeometry.setAttribute('aSpeed',new THREE.BufferAttribute(rainSpeeds,1));
+  rainGeometry.setAttribute('aSize',new THREE.BufferAttribute(rainSizes,1));
+  const rainMaterial=new THREE.ShaderMaterial({
+    uniforms:{uTime:uniforms.uTime,uRain:weatherUniforms.uWeatherRain,uWind:weatherUniforms.uWeatherWind,uMotion:{value:reduced?0:1}},
+    transparent:true,depthTest:false,depthWrite:false,
+    vertexShader:`attribute float aPhase;attribute float aSpeed;attribute float aSize;uniform float uTime;uniform float uRain;uniform float uWind;uniform float uMotion;varying float vOpacity;varying float vTilt;void main(){float t=uTime*uMotion;float fall=fract(aPhase+t*aSpeed*.46);float tilt=clamp(.12+uWind*.72,.12,.82);float x=position.x+tilt*fall*.08+sin(t*1.3+aPhase*6.283)*.003;float y=1.12-fall*2.24;gl_Position=vec4(x,y,0.,1.);gl_PointSize=aSize*(.75+aSpeed*.32);vOpacity=uRain*.42;vTilt=tilt;}`,
+    fragmentShader:`varying float vOpacity;varying float vTilt;void main(){vec2 p=(gl_PointCoord-vec2(.5))*2.;p.x+=p.y*vTilt*.28;float body=exp(-p.x*p.x*20.)*(1.-smoothstep(.46,1.,abs(p.y)));float glow=exp(-p.x*p.x*6.)*(1.-smoothstep(.55,1.,abs(p.y)))*.2;float alpha=(body*.5+glow)*vOpacity;gl_FragColor=vec4(vec3(.74,.84,.89),alpha);}`,
+  });
+  const raindrops=new THREE.Points(rainGeometry,rainMaterial);raindrops.renderOrder=2;raindrops.frustumCulled=false;backgroundScene.add(raindrops);
   const waterBackdrop=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,depthBuffer:waterway==='river'});
   const waterBackdropScale=.75;
   const waterUniforms={...uniforms,uWaterBackdrop:{value:waterBackdrop.texture},uWaterSize:{value:new THREE.Vector2()}};
@@ -715,6 +917,18 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     const dt=Math.min(.05,(now-(lastFrame||now))/1000);lastFrame=now;time+=dt*(reduced?.15:1);
     lastRenderedFrame=now;
     uniforms.uTime.value=time;
+    const weatherBlend=1-Math.exp(-dt*.32);
+    weatherUniforms.uWeatherCloud.value=THREE.MathUtils.lerp(weatherUniforms.uWeatherCloud.value,weatherTarget.cloudCover,weatherBlend);
+    weatherUniforms.uWeatherRain.value=THREE.MathUtils.lerp(weatherUniforms.uWeatherRain.value,weatherTarget.rainIntensity,weatherBlend);
+    weatherUniforms.uWeatherWind.value=THREE.MathUtils.lerp(weatherUniforms.uWeatherWind.value,weatherTarget.windStrength,weatherBlend);
+    weatherUniforms.uWeatherStorm.value=THREE.MathUtils.lerp(weatherUniforms.uWeatherStorm.value,weatherTarget.thunderstormIntensity,weatherBlend);
+    weatherUniforms.uWeatherSnow.value=THREE.MathUtils.lerp(weatherUniforms.uWeatherSnow.value,weatherTarget.snowfallIntensity,weatherBlend);
+    const nightBlend=1-Math.exp(-dt*.06);
+    weatherUniforms.uNight.value=THREE.MathUtils.lerp(weatherUniforms.uNight.value,weatherTarget.nightIntensity,nightBlend);
+    riverEnvironment?.setNight(weatherUniforms.uNight.value);
+    snowUniforms.uTime.value=time;
+    snowUniforms.uSnow.value=THREE.MathUtils.lerp(snowUniforms.uSnow.value,weatherTarget.snowfallIntensity,weatherBlend);
+    snowUniforms.uWind.value=weatherUniforms.uWeatherWind.value;
     const active=!['idle','caught','escaped'].includes(state.phase);
     const renderedSnapshot=renderSnapshot();
     const visibleFish=renderedSnapshot?.fish||null;
@@ -1326,14 +1540,22 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     selectedWaterway=value;uniforms.uRiver.value=value==='river'?1:0;
     if(value==='river'&&!waterBackdrop.depthBuffer){waterBackdrop.depthBuffer=true;waterBackdrop.dispose();}
     if(value==='river'&&!riverEnvironment){
-      riverEnvironment=createRiverEnvironment({reducedMotion:reduced});
+      riverEnvironment=createRiverEnvironment({reducedMotion:reduced,nightIntensity:weatherUniforms.uNight.value});
       uniforms.uRiverReflection.value=riverEnvironment.reflectionTexture;
       uniforms.uRiverReflectionMatrix.value=riverEnvironment.reflectionMatrix;
       uniforms.uRiverNormal.value=riverEnvironment.waterNormalTexture;
       uniforms.uRiverBed.value=riverEnvironment.bedTexture;
     }
   };
+  const setWeather=(value:WeatherVisualState)=>{
+    weatherTarget.cloudCover=THREE.MathUtils.clamp(value.cloudCover,0,1);
+    weatherTarget.rainIntensity=THREE.MathUtils.clamp(value.rainIntensity,0,1);
+    weatherTarget.windStrength=THREE.MathUtils.clamp(value.windStrength,0,1);
+    weatherTarget.snowfallIntensity=THREE.MathUtils.clamp(value.snowfallIntensity,0,1);
+    weatherTarget.thunderstormIntensity=THREE.MathUtils.clamp(value.thunderstormIntensity,0,1);
+    weatherTarget.nightIntensity=THREE.MathUtils.clamp(value.nightIntensity,0,1);
+  };
 
   frame=requestAnimationFrame(render);
-    return {setState,setCharge,setWaterway,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){sceneDisposed=true;riverEnvironment?.dispose();emptyRiverReflection.dispose();cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fishModelStore.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
+    return {setState,setCharge,setWaterway,setWeather,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){sceneDisposed=true;riverEnvironment?.dispose();emptyRiverReflection.dispose();cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fishModelStore.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
 }
