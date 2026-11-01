@@ -1,0 +1,45 @@
+#ocean[data-waterway="river"] {
+  background: linear-gradient(180deg, #283d3b 0%, #3a5d52 27%, #4b7163 47%, #31594d 64%, #1b4038 83%, #102d2a 100%);
+}
+
+.waterway-switch {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  transform: translateX(-50%);
+  border: 1px solid #d7ebe13d;
+  border-radius: 999px;
+  background: #0b2227a8;
+  box-shadow: 0 4px 20px #06171528;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.waterway-switch button {
+  min-width: 58px;
+  min-height: 32px;
+  padding: 0 13px;
+  border-radius: 999px;
+  background: transparent;
+  color: #d7e6df;
+  font-size: 11px;
+  letter-spacing: .08em;
+  opacity: .82;
+  transition: background .2s, color .2s, opacity .2s;
+}
+
+.waterway-switch button[aria-pressed="true"] {
+  background: #dbe8e2;
+  color: #18332f;
+  opacity: 1;
+}
+
+.waterway-switch button:hover { opacity: 1; }
+
+@media (max-width: 600px) {
+  .waterway-switch { top: 0; }
+  .waterway-switch button { min-width: 52px; min-height: 30px; padding: 0 11px; }
+}

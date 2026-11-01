@@ -1,4 +1,4 @@
-import { isFishSpeciesId, type FishSpeciesId } from "../fish-species.js";
+import { getWaterwayForFish, isFishSpeciesId, type FishSpeciesId } from "../fish-species.js";
 import { isPlayerId } from "../collection-contract.js";
 import { RequestRateLimiter } from "../request-rate-limit.js";
 import { apiCorsHeaders } from "../api-cors.js";
@@ -128,10 +128,13 @@ async function route(request: Request, env: CloudflareEnv): Promise<Response> {
     if (attemptRetryAfter) return rateLimited(attemptRetryAfter);
     const value = body.value;
     if (typeof value !== "object" || value === null || Array.isArray(value)
-      || Object.keys(value).some(key => key !== "fishId")) return json({ error: "invalid_ocean_session" }, 400);
+      || Object.keys(value).some(key => key !== "fishId" && key !== "waterway")) return json({ error: "invalid_ocean_session" }, 400);
     const fishValue = (value as { fishId?: unknown }).fishId;
-    if (fishValue !== undefined && typeof fishValue !== "string") return json({ error: "invalid_ocean_session" }, 400);
+    const waterwayValue = (value as { waterway?: unknown }).waterway ?? "sea";
+    if (fishValue !== undefined && typeof fishValue !== "string" || waterwayValue !== "sea" && waterwayValue !== "river") return json({ error: "invalid_ocean_session" }, 400);
     if (fishValue && !isFishSpeciesId(fishValue)) return json({ error: "invalid_fish_id" }, 400);
+    const requestedFishId = fishValue as FishSpeciesId | undefined;
+    const pinnedFishId = requestedFishId && getWaterwayForFish(requestedFishId) === waterwayValue ? requestedFishId : undefined;
     const retryAfter = roomCreationLimiter.consume([
       { key: "global", limit: 600, windowMs: limitWindowMs },
       { key: `source:${source}`, limit: 120, windowMs: limitWindowMs },
@@ -139,12 +142,12 @@ async function route(request: Request, env: CloudflareEnv): Promise<Response> {
     if (retryAfter) return rateLimited(retryAfter);
 
     const roomId = `sea_${randomHex(16)}`;
-    if (!await reserveOceanRoom(env.DB, roomId, playerId, fishValue as FishSpeciesId | undefined)) return json({ error: "rooms_full" }, 503);
+    if (!await reserveOceanRoom(env.DB, roomId, playerId, pinnedFishId)) return json({ error: "rooms_full" }, 503);
     const durableId = env.OCEAN_ROOMS.idFromName(roomId);
     const stub = env.OCEAN_ROOMS.get(durableId);
     const response = await stub.fetch(new Request("https://ocean-room.internal/create", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roomId, playerId, ...(fishValue ? { fishId: fishValue } : {}) }),
+      body: JSON.stringify({ roomId, playerId, ...(pinnedFishId ? { fishId: pinnedFishId } : {}), waterway: waterwayValue }),
     }));
     if (!response.ok) {
       await deleteOceanRoom(env.DB, roomId);

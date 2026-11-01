@@ -121,3 +121,54 @@ test("collection and room creation require a server-issued player session", asyn
     repository.close();
   }
 });
+
+test("room creation forwards the selected waterway and keeps legacy requests on sea", async () => {
+  const app = new Hono();
+  const repository = new CollectionStore(":memory:");
+  const creations: Array<{ fishId?: string; waterway?: string }> = [];
+  registerOceanSessionRoutes(app, {
+    rooms: {
+      createRoom(_playerId, fishId, waterway) {
+        creations.push({ fishId, waterway });
+        return `sea_${String(creations.length).padStart(32, "0")}`;
+      },
+    },
+    repository,
+  });
+
+  try {
+    const sessionResponse = await app.request("/api/player-sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const session = await sessionResponse.json() as { token: string };
+    const headers = { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` };
+
+    const river = await app.request("/api/ocean-sessions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ fishId: "river-yamame", waterway: "river" }),
+    });
+    assert.equal(river.status, 201);
+    assert.deepEqual(creations[0], { fishId: "river-yamame", waterway: "river" });
+
+    const legacySea = await app.request("/api/ocean-sessions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({}),
+    });
+    assert.equal(legacySea.status, 201);
+    assert.deepEqual(creations[1], { fishId: undefined, waterway: "sea" });
+
+    const invalid = await app.request("/api/ocean-sessions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ waterway: "lake" }),
+    });
+    assert.equal(invalid.status, 400);
+    assert.equal(creations.length, 2, "invalid waterways never create a room");
+  } finally {
+    repository.close();
+  }
+});

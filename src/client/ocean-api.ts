@@ -1,6 +1,7 @@
 import { ensurePlayerSession } from "./player-session.js";
 import { fetchCollection, type CollectionLoadResult } from "./collection-response.js";
 import type { FishSpeciesId } from "../fish-species.js";
+import type { Waterway } from "../waterway.js";
 
 export class OceanRoomRateLimitError extends Error {
   constructor(readonly retryAfterSeconds: number) {
@@ -21,12 +22,13 @@ export async function createPlayerOceanRoom(
   sessionEndpoint: string,
   roomEndpoint: string,
   fishId?: FishSpeciesId,
+  waterway: Waterway = "sea",
 ): Promise<{ id: string; host?: string }> {
   const session = await ensurePlayerSession(sessionEndpoint);
   const response = await fetch(roomEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
-    body: JSON.stringify(fishId ? { fishId } : {}),
+    body: JSON.stringify({ waterway, ...(fishId ? { fishId } : {}) }),
     cache: "no-store",
   });
   if (response.status === 429) {

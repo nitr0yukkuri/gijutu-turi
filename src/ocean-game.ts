@@ -2,7 +2,8 @@ import { FishLocomotion, magnitude, normalise, scale, type FishMotionSnapshot, t
 import { getFishApproachMotionProfile } from './fish-approach-motion.js';
 import { BITE_APPROACH_SECONDS, PRE_BITE_APPROACH_SECONDS, WAIT_APPROACH_FRACTION, easeFishApproach } from './fish-approach.js';
 import { getFishFightProfile, k8sSurfaceLungeProgress } from './fish-behavior.js';
-import { DEFAULT_FISH_SPECIES_ID, nextFishSpeciesId, type FishSpeciesId } from './fish-species.js';
+import { DEFAULT_FISH_SPECIES_ID, getWaterwayForFish, nextFishSpeciesId, randomActiveFishSpeciesId, type FishSpeciesId } from './fish-species.js';
+import type { Waterway } from './waterway.js';
 import { ESCAPE_ANIMATION_MS, RETRIEVE_DURATION_SECONDS } from './ocean-timing.js';
 import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH, castDistanceForStrength } from './cast-distance.js';
 import { getHookResult, isCriticalHookWindow } from './hook-timing.js';
@@ -32,6 +33,7 @@ export type OceanFishingGameSnapshot = {
   escapeAge: number;
   escapeDirection: Vec3;
   fishSelectionMode: FishSelectionMode;
+  waterway?: Waterway;
 };
 const ESCAPE_ANIMATION_SECONDS=ESCAPE_ANIMATION_MS/1000;
 // Give the player a readable reaction window after the float visibly sinks.
@@ -45,7 +47,7 @@ const CATCH_DISTANCE_METERS=0;
 const clamp=(x:number,min:number,max:number)=>Math.max(min,Math.min(max,x));
 const fresh=(fish:FishMotionSnapshot,fishId:FishSpeciesId):OceanState=>({phase:'idle',strength:.65,aim:0,revision:0,castAt:0,retrieveAt:0,tension:0,distance:0,initialDistance:0,reeling:false,biteRemaining:0,fightTime:0,mode:'rest',school:1,resultAt:0,approach:0,stamina:1,canReel:false,criticalWindow:false,hookResult:null,reason:'',catches:0,fishX:0,fishSpeed:0,fishId,fish});
 
-/** Authoritative sea game: hold intent is sampled at a fixed server cadence.
+/** Authoritative fishing game: hold intent is sampled at a fixed server cadence.
  * Network message frequency never determines reel strength or catch outcome. */
 export class OceanFishingGame {
   private locomotion=new FishLocomotion({x:0,y:-2.2,z:-20},{x:.1,y:0,z:0});
@@ -69,12 +71,16 @@ export class OceanFishingGame {
   private lineVelocity=0;
   private escapeAge=ESCAPE_ANIMATION_SECONDS;
   private escapeDirection:Vec3={x:0,y:-.22,z:-1};
+  private readonly waterway: Waterway;
   constructor(
     private readonly random:()=>number=Math.random,
     startingFishId:FishSpeciesId=DEFAULT_FISH_SPECIES_ID,
     private readonly fishSelectionMode:FishSelectionMode='rotate',
+    waterway:Waterway='sea',
   ){
-    this.state=fresh(this.locomotion.snapshot(),startingFishId);
+    this.waterway=waterway;
+    const fishId=getWaterwayForFish(startingFishId)===waterway?startingFishId:randomActiveFishSpeciesId(this.random,waterway);
+    this.state=fresh(this.locomotion.snapshot(),fishId);
   }
   serialize(): OceanFishingGameSnapshot {
     return {
@@ -97,11 +103,14 @@ export class OceanFishingGame {
       escapeAge: this.escapeAge,
       escapeDirection: { ...this.escapeDirection },
       fishSelectionMode: this.fishSelectionMode,
+      waterway: this.waterway,
     };
   }
   static restore(snapshot: OceanFishingGameSnapshot): OceanFishingGame {
-    const game = new OceanFishingGame(Math.random, snapshot.state.fishId, snapshot.fishSelectionMode);
+    const waterway = snapshot.waterway ?? 'sea';
+    const game = new OceanFishingGame(Math.random, snapshot.state.fishId, snapshot.fishSelectionMode, waterway);
     game.state = structuredClone(snapshot.state);
+    if (getWaterwayForFish(game.state.fishId) !== waterway) game.state.fishId = randomActiveFishSpeciesId(Math.random, waterway);
     game.locomotion = FishLocomotion.restore(snapshot.locomotion);
     game.age = snapshot.age;
     game.waitDuration = snapshot.waitDuration;
@@ -161,7 +170,7 @@ export class OceanFishingGame {
     this.locomotion.reset({x:0,y:this.fishDepth,z:-20},{x:.1,y:0,z:0});
     const fishId=this.fishSelectionMode==='fixed'
       ? this.state.fishId
-      : nextFishSpeciesId(this.state.fishId,this.state.catches);
+      : nextFishSpeciesId(this.state.fishId,this.state.catches,this.waterway);
     this.state={...fresh(this.locomotion.snapshot(),fishId),revision:this.state.revision,catches:this.state.catches};this.age=0;
   }
   private escape(reason:OceanState['reason'],now:number){

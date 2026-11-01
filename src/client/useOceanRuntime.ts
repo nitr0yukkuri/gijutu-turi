@@ -9,7 +9,8 @@ import { usePhoneMotion } from "./usePhoneMotion.js";
 import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH } from "../cast-distance.js";
 import { OCEAN_RENDER_DELAY_MS } from "../ocean-timing.js";
 import { OceanPresentationTimeline } from "../ocean-presentation-timeline.js";
-import { type FishSpeciesId } from "../fish-species.js";
+import { getWaterwayForFish, type FishSpeciesId } from "../fish-species.js";
+import type { Waterway } from "../waterway.js";
 import { isFirstCatch } from "./catch-discovery.js";
 import { FISH_ESCAPE_HINTS } from "./escape-hints.js";
 import type { CatchSaveStatus, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
@@ -40,21 +41,24 @@ type UseOceanRuntimeOptions = {
   isPhone: boolean;
   controllerId: string | null;
   initialFishId?: FishSpeciesId;
+  waterway: Waterway;
   routePath: string;
   oceanMountRef: RefObject<HTMLDivElement | null>;
   collectionOpen: boolean;
 };
 
-export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePath, oceanMountRef, collectionOpen }: UseOceanRuntimeOptions) {
+export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway, routePath, oceanMountRef, collectionOpen }: UseOceanRuntimeOptions) {
   const { collection, collectionRef, loadCollection, isCurrentCollectionLoad } = useOceanCollection(
     backendUrl("/api/player-sessions"),
     backendUrl("/api/collection"),
   );
   // Include the selection policy in the cache key so a room created before
   // fish-specific routes became fixed cannot be reused after the fix.
-  const roomFishKey = initialFishId ? `fixed:${initialFishId}` : "rotate";
-  const [state, setState] = useState<OceanState>(initialState);
-  const [presentationState, setPresentationState] = useState<OceanState>(initialState);
+  const roomStartingFishId = initialFishId && getWaterwayForFish(initialFishId) === waterway ? initialFishId : undefined;
+  const roomFishKey = `${waterway}:${roomStartingFishId ? `fixed:${roomStartingFishId}` : "rotate"}`;
+  const openingState: OceanState = waterway === "river" ? { ...initialState(), fishId: "river-ayu" } : initialState();
+  const [state, setState] = useState<OceanState>(openingState);
+  const [presentationState, setPresentationState] = useState<OceanState>(openingState);
   const presentationTimelineRef = useRef(new OceanPresentationTimeline(OCEAN_RENDER_DELAY_MS));
   const stateRef = useRef(state);
   const [online, setOnline] = useState(false);
@@ -80,6 +84,8 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
   const [controllerHost, setControllerHost] = useState("");
   const [controllerUrlError, setControllerUrlError] = useState("");
   const sceneRef = useRef<OceanSceneController | null>(null);
+  const waterwayRef = useRef(waterway);
+  waterwayRef.current = waterway;
   const socketRef = useRef<WebSocket | null>(null);
   const closingRef = useRef(false);
   const retriesRef = useRef(0);
@@ -352,13 +358,14 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
     const result = await createPlayerOceanRoom(
       backendUrl("/api/player-sessions"),
       backendUrl("/api/ocean-sessions"),
-      initialFishId,
+      roomStartingFishId,
+      waterway,
     );
     sessionStorage.setItem("gijutu.ocean-room", result.id);
     sessionStorage.setItem(roomFishStorageKey, roomFishKey);
     if (result.host) sessionStorage.setItem("gijutu.ocean-host-v2", result.host);
     return result;
-  }, [controllerId, initialFishId, isPhone, roomFishKey]);
+  }, [controllerId, roomStartingFishId, isPhone, roomFishKey, waterway]);
 
   const connect = useCallback(async () => {
     const scheduleRetry = (message: string, retryAfterMs?: number) => {
@@ -383,7 +390,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
           routePath,
           nextRoomId,
           configuredBackendUrl ? undefined : room.host,
-          staticRouteMode ? { routeMode: "query", fishQuery: initialFishId ? staticFishQueryById[initialFishId] : undefined } : undefined,
+          staticRouteMode ? { routeMode: "query", fishQuery: roomStartingFishId ? staticFishQueryById[roomStartingFishId] : undefined } : undefined,
         );
         if (phoneLink) {
           setControllerHost(phoneLink.host);
@@ -453,6 +460,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       try {
         scene = createOcean(oceanMountRef.current, {
           presentationTimeline: presentationTimelineRef.current,
+          waterway: waterwayRef.current,
           onLand: () => {
             fishingAudioRef.current?.play("splash");
           },
@@ -465,7 +473,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
         // An unpinned room chooses its first species on the server. Do not
         // request the placeholder Go model before that authoritative snapshot
         // arrives, or a random Docker room downloads both species chunks.
-        if (initialFishId) scene.setState({ ...stateRef.current, fishId: initialFishId });
+        if (roomStartingFishId) scene.setState({ ...stateRef.current, fishId: roomStartingFishId });
       } catch (error) {
         console.error("Ocean rendering unavailable", error);
         setRenderFailed(true);
@@ -480,7 +488,18 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, routePat
       scene?.dispose();
       if (sceneRef.current === scene) sceneRef.current = null;
     };
-  }, [getFishingAudio, initialFishId, isPhone, oceanMountRef]);
+  }, [getFishingAudio, isPhone, oceanMountRef, roomStartingFishId]);
+
+  useEffect(() => {
+    sceneRef.current?.setWaterway(waterway);
+    if (getWaterwayForFish(stateRef.current.fishId) === waterway) return;
+    const next: OceanState = { ...initialState(), fishId: waterway === "river" ? "river-ayu" : "fish-001" };
+    stateRef.current = next;
+    setState(next);
+    setPresentationState(next);
+    presentationTimelineRef.current.push(next, Date.now());
+    sceneRef.current?.setState(next, Date.now());
+  }, [waterway]);
 
   useEffect(() => { sceneRef.current?.setOverlayOpen?.(collectionOpen); }, [collectionOpen]);
 

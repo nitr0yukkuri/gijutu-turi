@@ -467,7 +467,7 @@ const K8S_LEVIATHAN_PROFILE: FishFightProfile = {
   modeAt: k8sModeAt,
 };
 
-const FISH_FIGHT_PROFILES: Readonly<Record<FishSpeciesId, FishFightProfile>> = {
+const FISH_FIGHT_PROFILES: Readonly<Partial<Record<FishSpeciesId, FishFightProfile>>> = {
   "fish-001": GO_FISH_PROFILE,
   "whale-001": DOCKER_WHALE_PROFILE,
   "css-001": CSS_FISH_PROFILE,
@@ -476,4 +476,4 @@ const FISH_FIGHT_PROFILES: Readonly<Record<FishSpeciesId, FishFightProfile>> = {
   "js-001": JS_EEL_PROFILE,
 };
 
-export const getFishFightProfile = (fishId: FishSpeciesId): FishFightProfile => FISH_FIGHT_PROFILES[fishId];
+export const getFishFightProfile = (fishId: FishSpeciesId): FishFightProfile => FISH_FIGHT_PROFILES[fishId] ?? GO_FISH_PROFILE;

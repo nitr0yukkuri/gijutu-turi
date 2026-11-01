@@ -11,6 +11,7 @@ import { cssFishPreviewStateAt } from '../css-fish-style.js';
 import { dockerWhalePreviewMotionAt } from './docker-whale-motion.js';
 import { K8S_ECHO_COUNT } from './k8s-fight-presentation.js';
 import { applyCollectionSilhouette } from './collection-silhouette.js';
+import { createRiverFish } from './river-fish-model.js';
 
 export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = false } = {}) {
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'high-performance' });
@@ -31,7 +32,10 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
   const isClusterFish = modelKey === 'cluster-leviathan';
   const isRustFish = modelKey === 'rust-swordfish';
   const isJsEel = modelKey === 'js-eel';
-  const fish = isDockerWhale
+  const isRiverFish = modelKey.startsWith('river-');
+  const fish = isRiverFish
+    ? createRiverFish(modelKey, { detail: 'high' })
+    : isDockerWhale
     ? createDockerWhale({ detail: 'high' })
     : createGoFish({ detail: 'high', naturalSwim: true, visualProfile: isClusterFish ? 'cluster' : isCssFish ? 'css' : isRustFish ? 'rust' : isJsEel ? 'eel' : 'catalog' });
   if (isDockerWhale) fish.group.scale.setScalar(.42);

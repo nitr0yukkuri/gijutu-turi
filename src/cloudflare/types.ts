@@ -59,4 +59,4 @@ export interface CloudflareEnv {
   FRONTEND_ORIGIN?: string;
 }
 
-export type OceanRoomCreatePayload = { roomId: string; playerId: string; fishId?: FishSpeciesId };
+export type OceanRoomCreatePayload = { roomId: string; playerId: string; fishId?: FishSpeciesId; waterway?: "sea" | "river" };

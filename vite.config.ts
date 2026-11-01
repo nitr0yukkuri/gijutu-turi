@@ -25,6 +25,7 @@ export default defineConfig({
       },
       closeBundle() {
         const clientOutput = resolve(process.cwd(), "dist/client");
+        mkdirSync(clientOutput, { recursive: true });
         copyFileSync(
           resolve(process.cwd(), "LICENSE"),
           resolve(process.cwd(), "dist/client/license.txt"),

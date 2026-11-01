@@ -1,4 +1,5 @@
 import type { FishSpeciesId } from "../fish-species.js";
+import { RIVER_FISH_DESIGNS } from "../river-fish-designs.js";
 
 export type TechTreeBranch = {
   id: string;
@@ -53,6 +54,11 @@ export const TECH_TREE_BRANCHES: readonly TechTreeBranch[] = [
     speciesIds: ["whale-001", "k8s-001"],
     relationship: "コンテナ実行と、コンテナ群のオーケストレーションは関連する技術です。",
   },
+  { id: "river-concurrency", label: "並行処理と運用", summary: "並行処理と、群れをまとめる運用を扱う。", speciesIds: ["river-ayu", "river-ugui"] },
+  { id: "river-systems", label: "所有権と長期実行", summary: "安全な値の受け渡しと、長く動く処理を扱う。", speciesIds: ["river-yamame", "river-koi"] },
+  { id: "river-interface", label: "状態とイベント", summary: "見た目の状態変化と、イベントへの反応を扱う。", speciesIds: ["river-oikawa", "river-kawamutsu"] },
+  { id: "river-runtime", label: "実行環境と基盤", summary: "実行環境と、システムを支える基盤を扱う。", speciesIds: ["river-namazu", "river-ginbuna"] },
+  { id: "river-data", label: "柔軟な処理と検索", summary: "柔軟な手順と、条件に合うデータの検索を扱う。", speciesIds: ["river-dojo", "river-kamatsuka"] },
 ];
 
 /** Dashed links show related ideas, never unlock order or prerequisites. */
@@ -60,9 +66,14 @@ export const TECH_TREE_FISH_LINKS: readonly TechTreeFishLink[] = [
   { id: "systems", from: "fish-001", to: "rust-001", route: "direct" },
   { id: "presentation", from: "css-001", to: "js-001", route: "bridge" },
   { id: "operations", from: "whale-001", to: "k8s-001", route: "direct" },
+  { id: "river-concurrency", from: "river-ayu", to: "river-ugui", route: "direct" },
+  { id: "river-systems", from: "river-yamame", to: "river-koi", route: "direct" },
+  { id: "river-interface", from: "river-oikawa", to: "river-kawamutsu", route: "direct" },
+  { id: "river-runtime", from: "river-namazu", to: "river-ginbuna", route: "direct" },
+  { id: "river-data", from: "river-dojo", to: "river-kamatsuka", route: "direct" },
 ];
 
-export const TECH_TREE_NODE_DETAILS: Record<FishSpeciesId, TechTreeNodeDetails> = {
+const OCEAN_NODE_DETAILS: Record<Exclude<FishSpeciesId, `river-${string}`>, TechTreeNodeDetails> = {
   "fish-001": {
     name: "Go",
     technology: "並行処理",
@@ -101,3 +112,15 @@ export const TECH_TREE_NODE_DETAILS: Record<FishSpeciesId, TechTreeNodeDetails> 
     gameExpression: "頭から尾へ波を伝え、途切れず泳ぎ続ける。",
   },
 };
+
+const RIVER_NODE_DETAILS = Object.fromEntries(RIVER_FISH_DESIGNS.map(design => {
+  const [name, technology = design.technology] = design.technology.split(" · ");
+  return [design.id, {
+    name,
+    technology,
+    concept: design.technologyConcept,
+    gameExpression: design.gameBehavior,
+  }];
+})) as Record<`river-${string}`, TechTreeNodeDetails>;
+
+export const TECH_TREE_NODE_DETAILS = { ...OCEAN_NODE_DETAILS, ...RIVER_NODE_DETAILS } as Record<FishSpeciesId, TechTreeNodeDetails>;
