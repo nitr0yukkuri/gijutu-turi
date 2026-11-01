@@ -646,7 +646,7 @@ function FishingApp() {
   return (
     <>
       <main id="sea" aria-label={`技術釣りの${waterwayName}`} hidden={isPhone}>
-        <div id="ocean" ref={oceanMountRef} data-waterway={waterway} role="img" aria-label={waterway === "river" ? "緑の川岸に挟まれ、ゆっくり流れる川" : "空の光が映る、穏やかな夕暮れの海"} />
+        <div id="ocean" ref={oceanMountRef} data-waterway={waterway} role="img" aria-label={waterway === "river" ? "川と川岸を描いた釣り場の風景" : "海と水面を描いた釣り場の風景"} />
         <div className="edge-shade" aria-hidden="true" />
         <header className="masthead">
           <nav className="waterway-switch" aria-label="釣り場を選択">
