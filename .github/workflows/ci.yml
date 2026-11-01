@@ -22,7 +22,7 @@ jobs:
       - name: Node.jsを準備
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '22.23.4'
           cache: npm
 
       - name: 依存関係をインストール
@@ -70,7 +70,7 @@ jobs:
         run: npm run test:browser
 
       - name: Dockerイメージをビルド
-        run: docker build --tag gijutu-turi:ci .
+        run: docker build --pull --tag gijutu-turi:ci .
 
       - name: 海釣り用サーバーを停止
         if: ${{ always() }}
