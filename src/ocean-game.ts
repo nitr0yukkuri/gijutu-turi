@@ -4,6 +4,8 @@ import { BITE_APPROACH_SECONDS, PRE_BITE_APPROACH_SECONDS, WAIT_APPROACH_FRACTIO
 import { getFishFightProfile, k8sSurfaceLungeProgress } from './fish-behavior.js';
 import { DEFAULT_FISH_SPECIES_ID, getWaterwayForFish, nextFishSpeciesId, randomActiveFishSpeciesId, type FishSpeciesId } from './fish-species.js';
 import type { Waterway } from './waterway.js';
+import type { CurrentWeather } from './weather-contract.js';
+import { weatherFishingAssistFor } from './weather-fishing-assist.js';
 import { ESCAPE_ANIMATION_MS, RETRIEVE_DURATION_SECONDS } from './ocean-timing.js';
 import { CAST_MAX_STRENGTH, CAST_MIN_STRENGTH, castDistanceForStrength } from './cast-distance.js';
 import { getHookResult, isCriticalHookWindow } from './hook-timing.js';
@@ -34,6 +36,7 @@ export type OceanFishingGameSnapshot = {
   escapeDirection: Vec3;
   fishSelectionMode: FishSelectionMode;
   waterway?: Waterway;
+  weather?: CurrentWeather;
 };
 const ESCAPE_ANIMATION_SECONDS=ESCAPE_ANIMATION_MS/1000;
 // Give the player a readable reaction window after the float visibly sinks.
@@ -72,14 +75,19 @@ export class OceanFishingGame {
   private escapeAge=ESCAPE_ANIMATION_SECONDS;
   private escapeDirection:Vec3={x:0,y:-.22,z:-1};
   private readonly waterway: Waterway;
+  private readonly weather: CurrentWeather | null;
+  private weatherAssist: number;
   constructor(
     private readonly random:()=>number=Math.random,
     startingFishId:FishSpeciesId=DEFAULT_FISH_SPECIES_ID,
     private readonly fishSelectionMode:FishSelectionMode='rotate',
     waterway:Waterway='sea',
+    weather:CurrentWeather|null=null,
   ){
     this.waterway=waterway;
+    this.weather=weather?.waterway===waterway?weather:null;
     const fishId=getWaterwayForFish(startingFishId)===waterway?startingFishId:randomActiveFishSpeciesId(this.random,waterway);
+    this.weatherAssist=weatherFishingAssistFor(this.weather,waterway,fishId);
     this.state=fresh(this.locomotion.snapshot(),fishId);
   }
   serialize(): OceanFishingGameSnapshot {
@@ -104,13 +112,17 @@ export class OceanFishingGame {
       escapeDirection: { ...this.escapeDirection },
       fishSelectionMode: this.fishSelectionMode,
       waterway: this.waterway,
+      ...(this.weather ? { weather: structuredClone(this.weather) } : {}),
     };
   }
   static restore(snapshot: OceanFishingGameSnapshot): OceanFishingGame {
     const waterway = snapshot.waterway ?? 'sea';
-    const game = new OceanFishingGame(Math.random, snapshot.state.fishId, snapshot.fishSelectionMode, waterway);
+    const game = new OceanFishingGame(Math.random, snapshot.state.fishId, snapshot.fishSelectionMode, waterway, snapshot.weather ?? null);
     game.state = structuredClone(snapshot.state);
-    if (getWaterwayForFish(game.state.fishId) !== waterway) game.state.fishId = randomActiveFishSpeciesId(Math.random, waterway);
+    if (getWaterwayForFish(game.state.fishId) !== waterway) {
+      game.state.fishId = randomActiveFishSpeciesId(Math.random, waterway);
+      game.weatherAssist = weatherFishingAssistFor(game.weather, waterway, game.state.fishId);
+    }
     game.locomotion = FishLocomotion.restore(snapshot.locomotion);
     game.age = snapshot.age;
     game.waitDuration = snapshot.waitDuration;
@@ -134,7 +146,7 @@ export class OceanFishingGame {
     const s=this.state;
     if(input.action==='cast'&&s.phase==='idle'){
       const strength=clamp(input.strength,CAST_MIN_STRENGTH,CAST_MAX_STRENGTH), length=castDistanceForStrength(strength);
-      this.age=0;this.overload=0;this.slack=0;this.finalBurst=-1;this.waitDuration=2.4+clamp(this.random(),0,1)*1.8;
+      this.age=0;this.overload=0;this.slack=0;this.finalBurst=-1;this.waitDuration=(2.4+clamp(this.random(),0,1)*1.8)*(1-this.weatherAssist);
       this.fishDepth=-2.2;
       this.steeringPhase=0;this.lateralVelocity=0;this.swimYaw=.3;this.swimEffort=.2;this.lineVelocity=0;
       this.escapeAge=ESCAPE_ANIMATION_SECONDS;
@@ -171,6 +183,7 @@ export class OceanFishingGame {
     const fishId=this.fishSelectionMode==='fixed'
       ? this.state.fishId
       : nextFishSpeciesId(this.state.fishId,this.state.catches,this.waterway);
+    this.weatherAssist=weatherFishingAssistFor(this.weather,this.waterway,fishId);
     this.state={...fresh(this.locomotion.snapshot(),fishId),revision:this.state.revision,catches:this.state.catches};this.age=0;
   }
   private escape(reason:OceanState['reason'],now:number){
@@ -266,12 +279,13 @@ export class OceanFishingGame {
           : warning
             ? profile.warningPressure??profile.basePressure
             : profile.basePressure;
+      const weatherAdjustedPressure=pressure*(1-this.weatherAssist);
       // A hook-shake briefly unloads even a line the player is winding in.
       // Keep tension in its real 0..1 domain; the existing slack danger cue
       // makes the drop readable without inventing a negative game value.
       const headshakeSlack= maneuver?.kind==='headshake' ? .36*maneuverEnvelope : 0;
       s.tension=clamp(
-        s.tension+((reeling?profile.reelingLoad:-profile.releaseRecovery)+pressure*staminaFactor-headshakeSlack)*dt,
+        s.tension+((reeling?profile.reelingLoad:-profile.releaseRecovery)+weatherAdjustedPressure*staminaFactor-headshakeSlack)*dt,
         headshakeSlack>0?0:(reeling?profile.minimumReelingTension:0),
         1,
       );
@@ -289,7 +303,7 @@ export class OceanFishingGame {
           ? profile.surgeRetreatSpeed??profile.baseRetreatSpeed
           : warning
             ? profile.warningRetreatSpeed??profile.baseRetreatSpeed
-            : profile.baseRetreatSpeed)*retreatStaminaFactor;
+            : profile.baseRetreatSpeed)*retreatStaminaFactor*(1-this.weatherAssist*.6);
       const reelSpeed=reeling
         ? opening
           ? profile.openingReelSpeed

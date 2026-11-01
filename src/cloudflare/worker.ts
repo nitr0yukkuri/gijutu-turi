@@ -4,12 +4,18 @@ import { RequestRateLimiter } from "../request-rate-limit.js";
 import { apiCorsHeaders } from "../api-cors.js";
 import { deleteOceanRoom, getCollection, getPlayerIdForSession, ping, registerPlayerSession, reserveOceanRoom } from "./d1-store.js";
 import type { CloudflareEnv } from "./types.js";
+import { getCurrentWeather, handleCurrentWeatherRequest, type WeatherFetcher } from "../current-weather.js";
+import type { CurrentWeather } from "../weather-contract.js";
 
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
 const limitWindowMs = 10 * 60_000;
 const playerSessionLimiter = new RequestRateLimiter();
 const roomAttemptLimiter = new RequestRateLimiter();
 const roomCreationLimiter = new RequestRateLimiter();
+const weatherFetcher: WeatherFetcher = (input, init) => fetch(input, {
+  ...init,
+  cf: { cacheTtl: 1800, cacheEverything: true },
+} as RequestInit);
 
 const json = (value: unknown, status = 200, headers: HeadersInit = {}): Response =>
   new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json; charset=utf-8", ...headers } });
@@ -113,6 +119,8 @@ async function route(request: Request, env: CloudflareEnv): Promise<Response> {
     return json(await getCollection(env.DB, playerId), 200, noStore);
   }
 
+  if (url.pathname === "/api/weather") return handleCurrentWeatherRequest(request, weatherFetcher);
+
   if (url.pathname === "/api/ocean-sessions" && request.method === "POST") {
     const body = await readSmallJson(request);
     if (!body.ok) return body.response;
@@ -141,13 +149,15 @@ async function route(request: Request, env: CloudflareEnv): Promise<Response> {
     ]);
     if (retryAfter) return rateLimited(retryAfter);
 
+    let weather: CurrentWeather | null = null;
+    try { weather = await getCurrentWeather(waterwayValue, weatherFetcher); } catch { /* Weather failure keeps the neutral fishing balance. */ }
     const roomId = `sea_${randomHex(16)}`;
     if (!await reserveOceanRoom(env.DB, roomId, playerId, pinnedFishId)) return json({ error: "rooms_full" }, 503);
     const durableId = env.OCEAN_ROOMS.idFromName(roomId);
     const stub = env.OCEAN_ROOMS.get(durableId);
     const response = await stub.fetch(new Request("https://ocean-room.internal/create", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roomId, playerId, ...(pinnedFishId ? { fishId: pinnedFishId } : {}), waterway: waterwayValue }),
+      body: JSON.stringify({ roomId, playerId, ...(pinnedFishId ? { fishId: pinnedFishId } : {}), waterway: waterwayValue, ...(weather ? { weather } : {}) }),
     }));
     if (!response.ok) {
       await deleteOceanRoom(env.DB, roomId);

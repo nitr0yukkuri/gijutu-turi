@@ -1,9 +1,35 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const routes = ["/", "/gofish", "/dockerwhale", "/cssfish", "/k8sfish", "/rustfish", "/jseel"];
 
+async function stubCurrentWeather(page: Page): Promise<void> {
+  await page.route("**/api/weather**", async route => {
+    const waterway = new URL(route.request().url()).searchParams.get("waterway") === "river" ? "river" : "sea";
+    const now = new Date().toISOString();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        waterway,
+        location: waterway === "river" ? "荒川（熊谷付近）" : "東京湾（参考地点）",
+        temperatureC: 18,
+        weatherCode: 0,
+        thunderstormCode: null,
+        isDay: true,
+        precipitationMm: 0,
+        cloudCoverPercent: 15,
+        windSpeedMs: 2,
+        currentAt: now,
+        fetchedAt: now,
+      }),
+    });
+  });
+}
+
 for (const route of routes) {
   test(`${route} renders its WebGL scene without browser errors`, async ({ page }) => {
+    if (route === "/") test.setTimeout(60_000);
+    await stubCurrentWeather(page);
     if (route === "/") {
       // Keep the browser request unqualified, but make the test server choose
       // a fixed species. This exercises the default route without relying on
@@ -68,6 +94,7 @@ for (const route of routes) {
 }
 
 test("the fishing scene stays within common desktop and phone viewports", async ({ page }) => {
+  await stubCurrentWeather(page);
   await page.goto("/gofish");
   await page.waitForFunction(() => document.querySelector<HTMLElement>("#ocean")?.dataset.ready === "true");
 

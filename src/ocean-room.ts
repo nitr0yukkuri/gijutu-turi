@@ -5,6 +5,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { OceanFishingGame, type OceanAction, type OceanPhase } from './ocean-game.js';
 import { getWaterwayForFish, isFishSpeciesId, randomActiveFishSpeciesId, type FishSpeciesId } from './fish-species.js';
 import type { Waterway } from './waterway.js';
+import type { CurrentWeather } from './weather-contract.js';
 import { canContinueAfterCatchSave, oceanCommandSchema, type OceanMessage } from './ocean-contract.js';
 import { CatchSaveCoordinator } from './catch-save.js';
 export type { OceanState } from './ocean-game.js';
@@ -54,14 +55,14 @@ export function createOceanRooms(options:{onCatch?:(playerId:string,eventKey:str
       error=>{console.error('Unable to record fish catch',error);room.lastActive=Date.now();broadcast(room);},
     );
   };
-  const createRoom=(playerId:string,requestedFishId?:string,waterway:Waterway='sea'):string|undefined=>{
+  const createRoom=(playerId:string,requestedFishId?:string,waterway:Waterway='sea',weather?:CurrentWeather|null):string|undefined=>{
     if(rooms.size>=128)return undefined;
     const requested=isFishSpeciesId(requestedFishId)?requestedFishId:undefined;
     const pinnedFishId=requested&&getWaterwayForFish(requested)===waterway?requested:undefined;
     const fishId=pinnedFishId??randomActiveFishSpeciesId(Math.random,waterway);
     const fishSelectionMode=pinnedFishId?'fixed':'rotate';
     const id=`sea_${randomBytes(16).toString('hex')}`;
-    rooms.set(id,{game:new OceanFishingGame(Math.random,fishId,fishSelectionMode,waterway),clients:new Map(),commands:[],lastActive:Date.now(),playerId,rodStroke:0,catchSave:new CatchSaveCoordinator()});
+    rooms.set(id,{game:new OceanFishingGame(Math.random,fishId,fishSelectionMode,waterway,weather??null),clients:new Map(),commands:[],lastActive:Date.now(),playerId,rodStroke:0,catchSave:new CatchSaveCoordinator()});
     return id;
   };
   const upgrade=(request:IncomingMessage,socket:Duplex,head:Buffer):boolean=>{

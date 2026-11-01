@@ -13,11 +13,11 @@ import { getWaterwayForFish, type FishSpeciesId } from "../fish-species.js";
 import type { Waterway } from "../waterway.js";
 import { isFirstCatch } from "./catch-discovery.js";
 import { FISH_ESCAPE_HINTS } from "./escape-hints.js";
+import { backendUrl, configuredBackendUrl } from "./backend-url.js";
+import type { WeatherVisualState } from "../weather-contract.js";
 import type { CatchSaveStatus, Feedback, OceanMessage, OceanSceneController, OceanState, Reticle } from "./types.js";
 
-const configuredBackendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim().replace(/\/+$/, "");
 const staticRouteMode = import.meta.env.VITE_STATIC_ROUTE_MODE === "query";
-const backendUrl = (path: string): string => configuredBackendUrl ? `${configuredBackendUrl}${path}` : path;
 const roomFishStorageKey = "gijutu.ocean-room-fish";
 const staticFishQueryById: Partial<Record<FishSpeciesId, string>> = {
   "fish-001": "gofish",
@@ -42,12 +42,13 @@ type UseOceanRuntimeOptions = {
   controllerId: string | null;
   initialFishId?: FishSpeciesId;
   waterway: Waterway;
+  weather: WeatherVisualState;
   routePath: string;
   oceanMountRef: RefObject<HTMLDivElement | null>;
   collectionOpen: boolean;
 };
 
-export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway, routePath, oceanMountRef, collectionOpen }: UseOceanRuntimeOptions) {
+export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway, weather, routePath, oceanMountRef, collectionOpen }: UseOceanRuntimeOptions) {
   const { collection, collectionRef, loadCollection, isCurrentCollectionLoad } = useOceanCollection(
     backendUrl("/api/player-sessions"),
     backendUrl("/api/collection"),
@@ -86,6 +87,8 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
   const sceneRef = useRef<OceanSceneController | null>(null);
   const waterwayRef = useRef(waterway);
   waterwayRef.current = waterway;
+  const weatherRef = useRef(weather);
+  weatherRef.current = weather;
   const socketRef = useRef<WebSocket | null>(null);
   const closingRef = useRef(false);
   const retriesRef = useRef(0);
@@ -461,6 +464,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
         scene = createOcean(oceanMountRef.current, {
           presentationTimeline: presentationTimelineRef.current,
           waterway: waterwayRef.current,
+          weather: weatherRef.current,
           onLand: () => {
             fishingAudioRef.current?.play("splash");
           },
@@ -500,6 +504,8 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
     presentationTimelineRef.current.push(next, Date.now());
     sceneRef.current?.setState(next, Date.now());
   }, [waterway]);
+
+  useEffect(() => { sceneRef.current?.setWeather(weather); }, [weather]);
 
   useEffect(() => { sceneRef.current?.setOverlayOpen?.(collectionOpen); }, [collectionOpen]);
 

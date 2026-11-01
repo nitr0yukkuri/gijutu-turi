@@ -13,6 +13,7 @@ import { createCollectionRepository, resolveCollectionBackend } from "./collecti
 import { CANONICAL_FISH_ROUTE_PATHS, COMPLETE_SHOWCASE_PATH, FISHING_ROUTE_PATHS, LEGACY_FISH_PATH_ALIASES } from "./fishing-routes.js";
 import { publicAssetCandidates, resolveContainedAssetPath } from "./public-asset-path.js";
 import { apiCorsHeaders } from "./api-cors.js";
+import { getCurrentWeather, handleCurrentWeatherRequest } from "./current-weather.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "0.0.0.0";
@@ -39,7 +40,8 @@ const oceanRooms = createOceanRooms({
   },
 });
 
-registerOceanSessionRoutes(app, { rooms: oceanRooms, repository: collectionStore });
+registerOceanSessionRoutes(app, { rooms: oceanRooms, repository: collectionStore, getWeather: waterway => getCurrentWeather(waterway) });
+app.all("/api/weather", c => handleCurrentWeatherRequest(c.req.raw));
 
 // Explicit public assets only: never expose .git, .env, or the source tree.
 const publicAssets = new Map<string, string[]>([

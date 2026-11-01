@@ -6,6 +6,7 @@ import type { CollectionRepository } from "./collection-contract.js";
 import { isPlayerId } from "./collection-contract.js";
 import { isFishSpeciesId } from "./fish-species.js";
 import type { Waterway } from "./waterway.js";
+import type { CurrentWeather } from "./weather-contract.js";
 import { accessHost } from "./ocean-host.js";
 import { createPlayerSessionToken, hashPlayerSessionToken, readPlayerSessionToken } from "./player-session.js";
 import { RequestRateLimiter } from "./request-rate-limit.js";
@@ -24,7 +25,7 @@ const rateLimited = (c: { header(name: string, value: string): void; json(value:
 
 export function registerOceanSessionRoutes(
   app: Hono,
-  options: { rooms: { createRoom(playerId: string, fishId?: string, waterway?: Waterway): string | undefined }; repository: Pick<CollectionRepository, "registerPlayerSession" | "getPlayerIdForSession" | "getCollection"> },
+  options: { rooms: { createRoom(playerId: string, fishId?: string, waterway?: Waterway, weather?: CurrentWeather | null): string | undefined }; repository: Pick<CollectionRepository, "registerPlayerSession" | "getPlayerIdForSession" | "getCollection">; getWeather?: (waterway: Waterway) => Promise<CurrentWeather> },
 ): void {
   const playerSessionLimiter = new RequestRateLimiter();
   const roomAttemptLimiter = new RequestRateLimiter();
@@ -97,7 +98,10 @@ export function registerOceanSessionRoutes(
       return rateLimited(c, retryAfter);
     }
 
-    const id = options.rooms.createRoom(playerId, parsed.data.fishId, parsed.data.waterway ?? "sea");
+    const waterway = parsed.data.waterway ?? "sea";
+    let weather: CurrentWeather | null = null;
+    try { weather = await options.getWeather?.(waterway) ?? null; } catch { /* Weather failure keeps the neutral fishing balance. */ }
+    const id = options.rooms.createRoom(playerId, parsed.data.fishId, waterway, weather);
     if (!id) return c.json({ error: "rooms_full" }, 503);
     c.header("Cache-Control", "no-store");
     return c.json({ id, host: accessHost(c.req.url) }, 201);

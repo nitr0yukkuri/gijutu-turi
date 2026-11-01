@@ -4,6 +4,7 @@ import { canContinueAfterCatchSave, oceanCommandSchema, type OceanMessage, type 
 import { recordCatch } from "./d1-store.js";
 import type { CloudflareEnv, DurableObjectState, DurableSocket } from "./types.js";
 import { ESCAPE_ANIMATION_MS } from "../ocean-timing.js";
+import { isCurrentWeather } from "../weather-contract.js";
 
 type ClientAttachment = {
   role: "display" | "controller";
@@ -213,7 +214,7 @@ export class OceanRoom {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/create" && request.method === "POST") {
-      const input = await request.json().catch(() => null) as Partial<{ roomId: string; playerId: string; fishId: string; waterway: "sea" | "river" }> | null;
+      const input = await request.json().catch(() => null) as Partial<{ roomId: string; playerId: string; fishId: string; waterway: "sea" | "river"; weather: unknown }> | null;
       if (!input || typeof input.roomId !== "string" || !/^sea_[a-f0-9]{32}$/.test(input.roomId)
         || typeof input.playerId !== "string" || !/^player_[a-z0-9-]{12,80}$/.test(input.playerId)
         || input.fishId !== undefined && !isFishSpeciesId(input.fishId)
@@ -222,7 +223,8 @@ export class OceanRoom {
       const waterway = input.waterway ?? "sea";
       const requestedFishId = input.fishId as FishSpeciesId | undefined;
       const fishId = requestedFishId && getWaterwayForFish(requestedFishId) === waterway ? requestedFishId : randomActiveFishSpeciesId(Math.random, waterway);
-      this.game = new OceanFishingGame(Math.random, fishId, requestedFishId && fishId === requestedFishId ? "fixed" : "rotate", waterway);
+      const weather = isCurrentWeather(input.weather) && input.weather.waterway === waterway ? input.weather : null;
+      this.game = new OceanFishingGame(Math.random, fishId, requestedFishId && fishId === requestedFishId ? "fixed" : "rotate", waterway, weather);
       this.room = {
         id: input.roomId,
         playerId: input.playerId,
