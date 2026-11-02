@@ -66,7 +66,7 @@ export type FishFightProfile = {
   reelingEffort: number;
   openingEffort: number;
   gaitAt: (context: { mode: FishFightMode; opening: boolean; reeling: boolean }) => FishGait;
-  /** Species-specific server-synchronized path and gait, separate from line rules. */
+  /** Server-synchronized river path and gait over the shared fight coefficients. */
   movementAt?: (context: RiverFishMovementContext) => RiverFishMovementCue;
   modeAt: (fightTime: number, finale: number) => { mode: FishFightMode; school: number };
   /** Server-clocked attack shape layered over the existing fight phase. */
@@ -478,8 +478,8 @@ const K8S_LEVIATHAN_PROFILE: FishFightProfile = {
 const riverFishProfile = (fishId: RiverFishId): FishFightProfile => {
   const movement = getRiverFishMovementProfile(fishId);
   return {
-    // Reuse Go's tension, stamina, reel-speed, and attack timings so movement
-    // differences do not silently change catch difficulty.
+    // Keep pressure, reeling, and fatigue coefficients shared; only the
+    // swimming path and gait vary for river species.
     ...GO_FISH_PROFILE,
     lateralLimit: movement.lateralLimit,
     lateralAcceleration: movement.lateralAcceleration,
