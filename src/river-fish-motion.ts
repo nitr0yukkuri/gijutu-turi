@@ -186,12 +186,14 @@ const createMovementCue = (style: RiverMovementStyle) =>
         ? Math.max(pulse, .30)
         : mode === "split"
           ? Math.max(pulse, .2)
-          : pulse * .42;
+          : reeling
+            ? Math.max(pulse * .42, .28)
+            : pulse * .42;
     const gait = opening
       ? style.openingGait ?? style.burstGait
       : mode === "surge"
         ? style.burstGait
-        : mode === "warning" || mode === "split"
+        : mode === "warning" || mode === "split" || reeling
           ? style.turnGait
           : cycleTime < recoveryEnd
             ? style.turnGait
