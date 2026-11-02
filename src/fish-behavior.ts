@@ -478,15 +478,17 @@ const K8S_LEVIATHAN_PROFILE: FishFightProfile = {
 const riverFishProfile = (fishId: RiverFishId): FishFightProfile => {
   const movement = getRiverFishMovementProfile(fishId);
   return {
-    // Keep pressure, reeling, and fatigue coefficients shared; only the
-    // swimming path and gait vary for river species.
+    // Keep line-load and fatigue coefficients shared, while each river fish
+    // supplies its own server-clocked surge rhythm and maneuver.
     ...GO_FISH_PROFILE,
+    openingSeconds: movement.openingSeconds,
     lateralLimit: movement.lateralLimit,
     lateralAcceleration: movement.lateralAcceleration,
     turnRate: movement.turnRate,
     depthResponse: movement.depthResponse,
     escapeGait: movement.escapeGait,
-    modeAt: (fightTime, finale) => ({ mode: goModeAt(fightTime, finale).mode, school: 1 }),
+    modeAt: movement.modeAt,
+    maneuverAt: movement.maneuverAt,
     movementAt: movement.cueAt,
   };
 };
