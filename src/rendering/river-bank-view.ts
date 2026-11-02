@@ -3,7 +3,7 @@ import { riverBankHeightAt, riverCenterAt, riverHalfWidthAt } from './river-chan
 // The fishing simulation keeps its existing angler-local coordinates. Place
 // that angler on the left bank and turn the river around the same origin, so
 // the cast, fish, rod, refraction and aim marker still share one coordinate space.
-const shoreSetback=2.7,riverZ=7,yaw=65*Math.PI/180;
+const shoreSetback=2.7,riverZ=7,yaw=90*Math.PI/180;
 const riverX=riverCenterAt(riverZ)-riverHalfWidthAt(riverZ)-shoreSetback;
 const cos=Math.cos(yaw),sin=Math.sin(yaw);
 const groundY=riverBankHeightAt(-1,shoreSetback,riverZ);
