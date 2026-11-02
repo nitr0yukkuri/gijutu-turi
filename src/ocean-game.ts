@@ -267,6 +267,7 @@ export class OceanFishingGame {
       // replica shadows before a cluster strike. Docker keeps its steady pull.
       const warning=s.mode==='warning'&&s.fishId==='fish-001';
       const opening=t<profile.openingSeconds;
+      const movementCue=profile.movementAt?.({fightTime:t,encounter:s.revision,opening,reeling});
       const staminaFactor=.55+s.stamina*.45;
       // A running fish cannot be brute-forced by holding the reel. The
       // recovery window comes from the fish's own fatigue and fight mode, so
@@ -349,7 +350,8 @@ export class OceanFishingGame {
             ? maneuver.side*.25*maneuverEnvelope+attackOscillation*.9*maneuverEnvelope
             : maneuver.side*(maneuver.kind==='dart'?1.05:.78)*maneuverEnvelope
         : 0;
-      const lateral=Math.sin(this.steeringPhase)*lateralAmplitude+lungeSide*.72*surfaceLunge+maneuverLateral;
+      const lateral=(movementCue?.lateralTarget??Math.sin(this.steeringPhase)*lateralAmplitude)
+        +lungeSide*.72*surfaceLunge+maneuverLateral;
       const wantedVelocity=clamp((lateral-s.fishX)*2.2,-profile.lateralLimit,profile.lateralLimit);
       const lateralAcceleration=profile.lateralAcceleration??4;
       this.lateralVelocity+=clamp(wantedVelocity-this.lateralVelocity,-dt*lateralAcceleration,dt*lateralAcceleration);
@@ -366,9 +368,9 @@ export class OceanFishingGame {
       // long armored body upright out of the water.
       const rustBillfishRush=s.fishId==='rust-001'&&(opening||surge);
       const surfaceLeap=maneuver?.kind==='leap' ? maneuverEnvelope : 0;
-      const targetDepth=surfaceLeap>0
+      const targetDepth=movementCue?.depthTarget??(surfaceLeap>0
         ? -1.95+2.7*surfaceLeap
-        : k8sSurfaceLunge?-1.95+2*surfaceLunge:rustBillfishRush?-1.55:s.mode==='split'?-1.65:s.mode==='surge'?-1.8:warning?-2.05:-2.4;
+        : k8sSurfaceLunge?-1.95+2*surfaceLunge:rustBillfishRush?-1.55:s.mode==='split'&&s.fishId==='fish-001'?-1.65:s.mode==='surge'?-1.8:warning?-2.05:-2.4);
       const k8sSurfaceRecovery=s.fishId==='k8s-001'&&this.fishDepth>-2.4;
       const horizontalTravel=Math.hypot(s.fishX-previousFishX,s.distance-previousDistance);
       const diveResponse=surfaceLeap>0?8:k8sSurfaceLunge?7:k8sSurfaceRecovery?1.8:profile.depthResponse??1.2;
@@ -398,7 +400,7 @@ export class OceanFishingGame {
       const swimSpeed=.65+this.swimEffort*2.5;
       const propulsion:Vec3={x:Math.sin(this.swimYaw)*swimSpeed,y:velocity.y*.4,z:-Math.cos(this.swimYaw)*swimSpeed};
       const turn=clamp((this.swimYaw-previousYaw)/dt/turnRate,-1,1);
-      this.locomotion.update(dt,{direction:normalise(propulsion),speed:magnitude(propulsion),gait:profile.gaitAt({mode:s.mode,opening,reeling})});
+      this.locomotion.update(dt,{direction:normalise(propulsion),speed:magnitude(propulsion),gait:movementCue?.gait??profile.gaitAt({mode:s.mode,opening,reeling})});
       this.locomotion.setRootMotion({x:s.fishX,y:this.fishDepth,z:-s.distance},velocity,{velocity:propulsion,effort:this.swimEffort,turn});
       this.syncFishSnapshot();
       // Give the player time to react to a bad reel decision. A short red
