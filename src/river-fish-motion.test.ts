@@ -117,10 +117,11 @@ test("the authoritative river battle applies its own surge schedule and gait", (
   assert.equal(game.state.phase, "biting");
   assert.equal(game.action({ action: "hook" }, now), true);
 
+  const currentPhase = () => game.snapshot().state.phase;
   const profile = getFishFightProfile(fishId);
   let sawRest = false;
   let sawScheduledSurge = false;
-  for (let frame = 0; frame < 90 && game.state.phase === "fighting"; frame++) {
+  for (let frame = 0; frame < 90 && currentPhase() === "fighting"; frame++) {
     step();
     const expected = profile.modeAt(game.state.fightTime, -1);
     assert.equal(game.state.mode, expected.mode);
