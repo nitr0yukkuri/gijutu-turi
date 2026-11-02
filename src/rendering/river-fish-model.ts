@@ -101,6 +101,8 @@ uniform float uRiverVisibility;
 uniform float uRiverPhase;
 uniform float uRiverAmplitude;
 uniform float uRiverWavelength;
+uniform float uRiverBodyStartX;
+uniform float uRiverBodyLength;
 uniform float uRiverTurn;
 uniform float uRiverEffort;
 uniform float uRiverTetherLoad;
@@ -109,15 +111,20 @@ uniform float uRiverFlexLength;
 uniform float uRiverBendGain;
 uniform float uRiverTurnGain;
 uniform float uRiverFinLag;
+float riverBodyProgress(float x) {
+  return clamp((x-uRiverBodyStartX)/uRiverBodyLength,0.0,1.0);
+}
+// A small, nonzero head beat grows quadratically toward the tail.
 float riverEnvelope(float x) {
   float s=clamp((x-uRiverFlexStart)/uRiverFlexLength,0.0,1.0);
-  return s*s;
+  return mix(.16,1.0,s*s);
 }
 float riverBend(float x) {
-  float s=sqrt(riverEnvelope(x));
-  float wave=sin(s*(6.2831853/max(.5,uRiverWavelength))-uRiverPhase);
-  return wave*riverEnvelope(x)*uRiverAmplitude*uRiverBendGain
-    +riverEnvelope(x)*uRiverTurn*uRiverTurnGain;
+  float bodyProgress=riverBodyProgress(x);
+  float wave=sin(bodyProgress*(6.2831853/max(.5,uRiverWavelength))-uRiverPhase);
+  float envelope=riverEnvelope(x);
+  return wave*envelope*uRiverAmplitude*uRiverBendGain
+    +envelope*uRiverTurn*uRiverTurnGain;
 }
 float riverFinAmplitude(float finClass) {
   return finClass>2.5?.052:finClass>.5?.028:.018;
@@ -228,6 +235,8 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0, 
 
   const low = detail === "low";
   const shape = bodyShape(design.profile);
+  const bodyStartX = design.profile[0][0];
+  const bodyLength = design.profile[design.profile.length - 1][0] - bodyStartX;
   const group = new THREE.Group();
   group.name = design.name;
   const habitatUniforms = waterUniforms
@@ -242,7 +251,8 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0, 
   const materials = new Set();
   const waterAppliedMaterials = new Set();
   const uniforms = {
-    uRiverVisibility: { value: 1 }, uRiverPhase: { value: phase }, uRiverAmplitude: { value: .11 }, uRiverWavelength: { value: .82 }, uRiverTurn: { value: 0 },
+    uRiverVisibility: { value: 1 }, uRiverPhase: { value: phase }, uRiverAmplitude: { value: .11 }, uRiverWavelength: { value: .82 },
+    uRiverBodyStartX: { value: bodyStartX }, uRiverBodyLength: { value: Math.max(.001, bodyLength) }, uRiverTurn: { value: 0 },
     uRiverEffort: { value: .3 }, uRiverTetherLoad: { value: 0 },
     uRiverFlexStart: { value: design.motion.flexStartX }, uRiverFlexLength: { value: design.motion.flexLength },
     uRiverBendGain: { value: design.motion.bendGain }, uRiverTurnGain: { value: design.motion.turnGain },
