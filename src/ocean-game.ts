@@ -267,7 +267,7 @@ export class OceanFishingGame {
       // replica shadows before a cluster strike. Docker keeps its steady pull.
       const warning=s.mode==='warning'&&s.fishId==='fish-001';
       const opening=t<profile.openingSeconds;
-      const movementCue=profile.movementAt?.({fightTime:t,encounter:s.revision,opening,reeling});
+      const movementCue=profile.movementAt?.({fightTime:t,encounter:s.revision,opening,reeling,mode:s.mode});
       // River movement is centered on where the fish took the bait, not the
       // middle of the world-space channel.
       const movementManeuver=movementCue&&maneuver?.kind==='cut'?null:maneuver;
