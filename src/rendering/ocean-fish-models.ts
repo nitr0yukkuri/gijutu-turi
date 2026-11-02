@@ -74,7 +74,7 @@ export function createOceanFishModels(scene, waterUniforms, createFishOrientatio
   });
   const riverFightModels=createLazyModelRegistry(Object.fromEntries(RIVER_FISH_DESIGNS.map(design=>[design.id,async()=>{
     const {createRiverFish}=await loadRiverFishModule();
-    return prepareFightModel(design.id,createRiverFish(design.modelKey,{detail:'high',phase:.7}));
+    return prepareFightModel(design.id,createRiverFish(design.modelKey,{detail:'high',phase:.7,waterUniforms}));
   }])));
   const fightFish=()=>fightModels.peek('fish-001');
   const dockerWhale=()=>fightModels.peek('whale-001');

@@ -1,6 +1,7 @@
 // @ts-nocheck -- the model uses the vendored Three.js runtime without declarations.
 import * as THREE from "../../vendor/three.module.js";
 import { getRiverFishDesign, type RiverBodyPoint, type RiverFinPlan, type RiverFishDesign } from "../river-fish-designs.js";
+import { applyFishWater, DEFAULT_FISH_WATER_PROFILE } from "./fish-water.js";
 
 const TAU = Math.PI * 2;
 const clamp = THREE.MathUtils.clamp;
@@ -172,7 +173,7 @@ function animatedMaterial(material, uniforms, withBodyPattern = false) {
 const patternValue = pattern => ({ plain: 0, spots: 1, bars: 2, "lateral-line": 3, "scale-arc": 4, mottled: 5, "parr-marks": 6 })[pattern] ?? 0;
 
 /** Create one anatomically distinct river-fish model using the same body-wave clock as game fish. */
-export function createRiverFish(modelKey: string, { detail = "high", phase = 0 } = {}) {
+export function createRiverFish(modelKey: string, { detail = "high", phase = 0, waterUniforms = null } = {}) {
   const design = getRiverFishDesign(modelKey);
   if (!design) throw new Error(`unknown_river_fish_model:${modelKey}`);
 
@@ -180,8 +181,17 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0 }
   const shape = bodyShape(design.profile);
   const group = new THREE.Group();
   group.name = design.name;
+  const habitatUniforms = waterUniforms
+    ? {
+        ...waterUniforms,
+        uFishCenter: { value: group.position },
+        // River meshes already fade through uRiverVisibility; keep water optics fully enabled.
+        uFishVisibility: { value: 1 },
+      }
+    : null;
   const geometries = new Set();
   const materials = new Set();
+  const waterAppliedMaterials = new Set();
   const uniforms = {
     uRiverVisibility: { value: 1 }, uRiverPhase: { value: phase }, uRiverAmplitude: { value: .11 }, uRiverWavelength: { value: .82 }, uRiverTurn: { value: 0 },
     uRiverFlexStart: { value: design.motion.flexStartX }, uRiverFlexLength: { value: design.motion.flexLength },
@@ -193,7 +203,7 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0 }
     uRiverPattern: { value: patternValue(design.pattern) },
   };
 
-  const add = (geometry, material, name, finFactor = 0) => {
+  const add = (geometry, material, name, finFactor = 0, waterPart = "detail") => {
     const positions = geometry.attributes.position;
     if (!geometry.attributes.aRiverFin) {
       const flex = new Float32Array(positions.count);
@@ -202,6 +212,10 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0 }
         flex[i] = Math.max(finFactor, s * s);
       }
       geometry.setAttribute("aRiverFin", new THREE.Float32BufferAttribute(flex, 1));
+    }
+    if (habitatUniforms && !waterAppliedMaterials.has(material)) {
+      applyFishWater(material, habitatUniforms, waterPart, DEFAULT_FISH_WATER_PROFILE);
+      waterAppliedMaterials.add(material);
     }
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = name;
@@ -214,12 +228,12 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0 }
   const bodyMaterial = animatedMaterial(new THREE.MeshPhysicalMaterial({
     color: 0xffffff, roughness: .52, metalness: .04, clearcoat: .22, clearcoatRoughness: .44, side: THREE.DoubleSide, transparent: true, depthWrite: true,
   }), uniforms, true);
-  add(makeBodyGeometry(shape, low), bodyMaterial, "river-fish-body");
+  add(makeBodyGeometry(shape, low), bodyMaterial, "river-fish-body", 0, "body");
 
   const finMaterial = animatedMaterial(new THREE.MeshPhysicalMaterial({
     color: design.palette.fin, roughness: .62, metalness: .015, clearcoat: .08, side: THREE.DoubleSide, transparent: true, depthWrite: true,
   }), uniforms);
-  const addFin = (name, outline, z = 0) => add(shapeGeometry(outline, z), finMaterial, name, .8);
+  const addFin = (name, outline, z = 0) => add(shapeGeometry(outline, z), finMaterial, name, .8, "fin");
   addFin("dorsal-fin", finOutline(design.dorsal), 0);
   addFin("anal-fin", finOutline(design.anal), 0);
   addFin("caudal-fin", tailOutline(design.tail), 0);
@@ -254,11 +268,11 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0 }
     const eye = new THREE.SphereGeometry(1, low ? 12 : 18, low ? 10 : 14);
     eye.scale(design.id === "river-namazu" ? .076 : .082, .083, .045);
     eye.translate(eyeX, eyeY, side * eyeZ);
-    add(eye, eyeMaterial, `eye-${side}`);
+    add(eye, eyeMaterial, `eye-${side}`, 0, "light");
     const iris = new THREE.SphereGeometry(1, low ? 8 : 12, low ? 8 : 10);
     iris.scale(.033,.035,.018);
     iris.translate(eyeX-.012, eyeY+.006, side*(eyeZ+.036));
-    add(iris, irisMaterial, `iris-${side}`);
+    add(iris, irisMaterial, `iris-${side}`, 0, "light");
 
   }
   if (design.id === "river-yamame") {
