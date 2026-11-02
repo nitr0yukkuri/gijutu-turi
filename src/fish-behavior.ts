@@ -1,5 +1,11 @@
 import type { FishSpeciesId } from "./fish-species.js";
 import type { FishGait } from "./fish-contract.js";
+import {
+  getRiverFishMovementProfile,
+  type RiverFishId,
+  type RiverFishMovementContext,
+  type RiverFishMovementCue,
+} from "./river-fish-motion.js";
 
 export type FishFightMode = "rest" | "surge" | "warning" | "split";
 export type FishAttackManeuver = "cut" | "headshake" | "dart" | "leap" | "coil";
@@ -60,6 +66,8 @@ export type FishFightProfile = {
   reelingEffort: number;
   openingEffort: number;
   gaitAt: (context: { mode: FishFightMode; opening: boolean; reeling: boolean }) => FishGait;
+  /** Server-synchronized river path and gait over the shared fight coefficients. */
+  movementAt?: (context: RiverFishMovementContext) => RiverFishMovementCue;
   modeAt: (fightTime: number, finale: number) => { mode: FishFightMode; school: number };
   /** Server-clocked attack shape layered over the existing fight phase. */
   maneuverAt?: (fightTime: number, mode: FishFightMode, finale: number) => FishAttackManeuverState | null;
@@ -467,6 +475,37 @@ const K8S_LEVIATHAN_PROFILE: FishFightProfile = {
   modeAt: k8sModeAt,
 };
 
+const riverFishProfile = (fishId: RiverFishId): FishFightProfile => {
+  const movement = getRiverFishMovementProfile(fishId);
+  return {
+    // Keep line-load and fatigue coefficients shared, while each river fish
+    // supplies its own server-clocked surge rhythm and maneuver.
+    ...GO_FISH_PROFILE,
+    openingSeconds: movement.openingSeconds,
+    lateralLimit: movement.lateralLimit,
+    lateralAcceleration: movement.lateralAcceleration,
+    turnRate: movement.turnRate,
+    depthResponse: movement.depthResponse,
+    escapeGait: movement.escapeGait,
+    modeAt: movement.modeAt,
+    maneuverAt: movement.maneuverAt,
+    movementAt: movement.cueAt,
+  };
+};
+
+const RIVER_FISH_PROFILES: Readonly<Record<RiverFishId, FishFightProfile>> = {
+  "river-ayu": riverFishProfile("river-ayu"),
+  "river-yamame": riverFishProfile("river-yamame"),
+  "river-oikawa": riverFishProfile("river-oikawa"),
+  "river-ugui": riverFishProfile("river-ugui"),
+  "river-kawamutsu": riverFishProfile("river-kawamutsu"),
+  "river-namazu": riverFishProfile("river-namazu"),
+  "river-dojo": riverFishProfile("river-dojo"),
+  "river-kamatsuka": riverFishProfile("river-kamatsuka"),
+  "river-koi": riverFishProfile("river-koi"),
+  "river-ginbuna": riverFishProfile("river-ginbuna"),
+};
+
 const FISH_FIGHT_PROFILES: Readonly<Partial<Record<FishSpeciesId, FishFightProfile>>> = {
   "fish-001": GO_FISH_PROFILE,
   "whale-001": DOCKER_WHALE_PROFILE,
@@ -474,6 +513,8 @@ const FISH_FIGHT_PROFILES: Readonly<Partial<Record<FishSpeciesId, FishFightProfi
   "k8s-001": K8S_LEVIATHAN_PROFILE,
   "rust-001": RUST_BILLFISH_PROFILE,
   "js-001": JS_EEL_PROFILE,
+  ...RIVER_FISH_PROFILES,
 };
 
-export const getFishFightProfile = (fishId: FishSpeciesId): FishFightProfile => FISH_FIGHT_PROFILES[fishId] ?? GO_FISH_PROFILE;
+export const getFishFightProfile = (fishId: FishSpeciesId): FishFightProfile =>
+  FISH_FIGHT_PROFILES[fishId] ?? GO_FISH_PROFILE;

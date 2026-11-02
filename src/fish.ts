@@ -43,6 +43,8 @@ const GAIT_PROFILES: Record<FishGait, GaitProfile> = {
   // their acceleration wave can be forceful without speeding up other fish.
   billfish_burst: { acceleration: 8.2, drag: 0.22, amplitude: 0.31, frequency: 5.8, wavelength: 0.52 },
   coast: { acceleration: 0.7, drag: 0.28, amplitude: 0.045, frequency: 0.8, wavelength: 0.9 },
+  // Ayu sustain a faster tail beat while holding position in river flow.
+  river_cruise: { acceleration: 1.8, drag: 0.7, amplitude: 0.11, frequency: 2.8, wavelength: 0.8 },
   hooked_burst: { acceleration: 7.2, drag: 0.3, amplitude: 0.3, frequency: 5.8, wavelength: 0.58 },
   // Large animals need a distinct, authoritative gait: a short heavy start
   // followed by a slow body wave. A separate heavy surge lets a large animal

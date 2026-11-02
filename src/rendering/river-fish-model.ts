@@ -101,6 +101,8 @@ uniform float uRiverVisibility;
 uniform float uRiverPhase;
 uniform float uRiverAmplitude;
 uniform float uRiverWavelength;
+uniform float uRiverBodyStartX;
+uniform float uRiverBodyLength;
 uniform float uRiverTurn;
 uniform float uRiverEffort;
 uniform float uRiverTetherLoad;
@@ -109,38 +111,51 @@ uniform float uRiverFlexLength;
 uniform float uRiverBendGain;
 uniform float uRiverTurnGain;
 uniform float uRiverFinLag;
+float riverBodyProgress(float x) {
+  return clamp((x-uRiverBodyStartX)/uRiverBodyLength,0.0,1.0);
+}
+// A small, nonzero head beat grows quadratically toward the tail.
 float riverEnvelope(float x) {
   float s=clamp((x-uRiverFlexStart)/uRiverFlexLength,0.0,1.0);
-  return s*s;
+  return mix(.16,1.0,s*s);
 }
 float riverBend(float x) {
-  float s=sqrt(riverEnvelope(x));
-  float wave=sin(s*(6.2831853/max(.5,uRiverWavelength))-uRiverPhase);
-  return wave*riverEnvelope(x)*uRiverAmplitude*uRiverBendGain
-    +riverEnvelope(x)*uRiverTurn*uRiverTurnGain;
+  float bodyProgress=riverBodyProgress(x);
+  float wave=sin(bodyProgress*(6.2831853/max(.5,uRiverWavelength))-uRiverPhase);
+  float envelope=riverEnvelope(x);
+  return wave*envelope*uRiverAmplitude*uRiverBendGain
+    +envelope*uRiverTurn*uRiverTurnGain;
 }
 float riverFinAmplitude(float finClass) {
-  return finClass>2.5?.044:finClass>.5?.028:.018;
+  return finClass>2.5?.052:finClass>.5?.028:.018;
 }
-vec3 riverDeform(vec3 p,float fin,float finClass,float finSide) {
+vec3 riverDeform(vec3 p,float fin,float finClass,float finSide,float finSpan) {
   float phaseLag=mix(0.0,uRiverFinLag,clamp(fin,0.0,1.0));
   float effort=clamp(uRiverEffort,0.0,1.0);
   float response=clamp(fin,0.0,1.0);
   if(finClass>1.5&&finClass<2.5) {
-    // Paired fins scull while cruising, then tuck slightly under a strong pull.
-    float strokePhase=uRiverPhase*.65+finSide*.55;
-    float slowScull=1.0-effort*.7;
-    p.z*=1.0-response*(effort*.36-uRiverTetherLoad*.22);
-    p.x+=response*slowScull*(.10*sin(strokePhase)+finSide*uRiverTurn*.12);
-    p.y+=response*.035*sin(strokePhase-finSide*.55);
+    // Keep the fin root planted; the distal fin sweeps and opens with the
+    // server-synchronized body beat, with unequal strokes during a turn.
+    float span=clamp(finSpan,0.0,1.0);
+    float turnSide=finSide*clamp(uRiverTurn,-1.0,1.0);
+    float turnAmount=abs(uRiverTurn);
+    float strokePhase=uRiverPhase*.55+finSide*.12-phaseLag;
+    float stroke=sin(strokePhase);
+    float strokeUse=clamp(.28+(1.0-effort)*.36+turnAmount*.42+uRiverTetherLoad*.10,.18,.82);
+    float strokeBias=1.0+clamp(turnSide,-1.0,1.0)*.32;
+    float tuck=clamp(effort*.58+uRiverTetherLoad*.35-turnAmount*.28,0.0,.82);
+    p.x+=span*(stroke*.09*strokeUse*strokeBias+turnSide*.05);
+    p.y+=span*(cos(strokePhase)*.032*strokeUse+turnAmount*.014);
+    p.z+=finSide*span*(stroke*.018*strokeUse-.075*tuck);
   } else if(finClass>2.5) {
-    // The tail cups under load instead of following the body as a rigid paddle.
+    // The caudal fin cups slightly under load instead of acting as a rigid paddle.
     p.y*=1.0-response*(effort*.14+uRiverTetherLoad*.08);
   } else if(finClass>.5) {
     p.y*=1.0-response*effort*.08;
   }
   float finBeat=sin(uRiverPhase-phaseLag-p.x*1.7)*fin*riverFinAmplitude(finClass)*mix(.75,1.2,effort);
-  p.z+=riverBend(p.x)+finBeat;
+  float finSpanBeat=finClass>1.5&&finClass<2.5?finSpan:1.0;
+  p.z+=riverBend(p.x)+finBeat*finSpanBeat;
   return p;
 }`;
 
@@ -149,7 +164,7 @@ function animatedMaterial(material, uniforms, withBodyPattern = false) {
   material.onBeforeCompile = shader => {
     originalCompile.call(material, shader);
     Object.assign(shader.uniforms, uniforms);
-    shader.vertexShader = `${bodyVertexMotion}\nattribute float aRiverFin; attribute float aRiverFinClass; attribute float aRiverFinSide;${withBodyPattern ? "varying vec2 vRiverUv; varying vec3 vRiverLocal;" : ""}\n${shader.vertexShader}`;
+    shader.vertexShader = `${bodyVertexMotion}\nattribute float aRiverFin; attribute float aRiverFinClass; attribute float aRiverFinSide; attribute float aRiverFinSpan;${withBodyPattern ? "varying vec2 vRiverUv; varying vec3 vRiverLocal;" : ""}\n${shader.vertexShader}`;
     shader.vertexShader = shader.vertexShader.replace(
       "#include <beginnormal_vertex>",
       `#include <beginnormal_vertex>
@@ -162,7 +177,7 @@ function animatedMaterial(material, uniforms, withBodyPattern = false) {
       "#include <begin_vertex>",
       `#include <begin_vertex>
       ${withBodyPattern ? "vRiverUv=uv; vRiverLocal=position;" : ""}
-      transformed=riverDeform(position,aRiverFin,aRiverFinClass,aRiverFinSide);`,
+      transformed=riverDeform(position,aRiverFin,aRiverFinClass,aRiverFinSide,aRiverFinSpan);`,
     );
     shader.fragmentShader = `uniform float uRiverVisibility;\n${shader.fragmentShader}`;
     shader.fragmentShader = shader.fragmentShader.replace("#include <opaque_fragment>", `diffuseColor.a*=uRiverVisibility;\n\t#include <opaque_fragment>`);
@@ -220,6 +235,8 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0, 
 
   const low = detail === "low";
   const shape = bodyShape(design.profile);
+  const bodyStartX = design.profile[0][0];
+  const bodyLength = design.profile[design.profile.length - 1][0] - bodyStartX;
   const group = new THREE.Group();
   group.name = design.name;
   const habitatUniforms = waterUniforms
@@ -234,7 +251,8 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0, 
   const materials = new Set();
   const waterAppliedMaterials = new Set();
   const uniforms = {
-    uRiverVisibility: { value: 1 }, uRiverPhase: { value: phase }, uRiverAmplitude: { value: .11 }, uRiverWavelength: { value: .82 }, uRiverTurn: { value: 0 },
+    uRiverVisibility: { value: 1 }, uRiverPhase: { value: phase }, uRiverAmplitude: { value: .11 }, uRiverWavelength: { value: .82 },
+    uRiverBodyStartX: { value: bodyStartX }, uRiverBodyLength: { value: Math.max(.001, bodyLength) }, uRiverTurn: { value: 0 },
     uRiverEffort: { value: .3 }, uRiverTetherLoad: { value: 0 },
     uRiverFlexStart: { value: design.motion.flexStartX }, uRiverFlexLength: { value: design.motion.flexLength },
     uRiverBendGain: { value: design.motion.bendGain }, uRiverTurnGain: { value: design.motion.turnGain },
@@ -245,7 +263,7 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0, 
     uRiverPattern: { value: patternValue(design.pattern) },
   };
 
-  const add = (geometry, material, name, finFactor = 0, waterPart = "detail", finClass = 0, finSide = 0) => {
+  const add = (geometry, material, name, finFactor = 0, waterPart = "detail", finClass = 0, finSide = 0, finSpanStartX = null, finSpanLength = 0) => {
     const positions = geometry.attributes.position;
     if (!geometry.attributes.aRiverFin) {
       const flex = new Float32Array(positions.count);
@@ -258,6 +276,15 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0, 
     if (!geometry.attributes.aRiverFinClass) {
       geometry.setAttribute("aRiverFinClass", new THREE.Float32BufferAttribute(new Float32Array(positions.count).fill(finClass), 1));
       geometry.setAttribute("aRiverFinSide", new THREE.Float32BufferAttribute(new Float32Array(positions.count).fill(finSide), 1));
+    }
+    if (!geometry.attributes.aRiverFinSpan) {
+      const spans = new Float32Array(positions.count);
+      if (Number.isFinite(finSpanStartX) && finSpanLength > 0) {
+        for (let i = 0; i < positions.count; i++) {
+          spans[i] = clamp((positions.getX(i) - finSpanStartX) / finSpanLength, 0, 1);
+        }
+      }
+      geometry.setAttribute("aRiverFinSpan", new THREE.Float32BufferAttribute(spans, 1));
     }
     if (habitatUniforms && !waterAppliedMaterials.has(material)) {
       applyFishWater(material, habitatUniforms, waterPart, DEFAULT_FISH_WATER_PROFILE);
@@ -279,8 +306,8 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0, 
   const finMaterial = animatedMaterial(new THREE.MeshPhysicalMaterial({
     color: design.palette.fin, roughness: .62, metalness: .015, clearcoat: .08, side: THREE.DoubleSide, transparent: true, depthWrite: true,
   }), uniforms);
-  const addFin = (name, outline, z = 0, finClass = 1, finSide = 0, outward = 0, rootX = 0) =>
-    add(shapeGeometry(outline, z, finSide, outward, rootX), finMaterial, name, .8, "fin", finClass, finSide);
+  const addFin = (name, outline, z = 0, finClass = 1, finSide = 0, outward = 0, outwardRootX = 0, finSpanStartX = null, finSpanLength = 0) =>
+    add(shapeGeometry(outline, z, finSide, outward, outwardRootX), finMaterial, name, .8, "fin", finClass, finSide, finSpanStartX, finSpanLength);
   addFin("dorsal-fin", finOutline(design.dorsal), 0);
   addFin("anal-fin", finOutline(design.anal), 0);
   addFin("caudal-fin", tailOutline(design.tail), 0, 3);
@@ -289,8 +316,8 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0, 
   const pectoralSideZ = Math.max(.11, bodyHalfWidthAtX(design.profile, -.78) * .94);
   for (const side of [-1, 1]) {
     const sideZ = side * pectoralSideZ;
-    addFin(`pectoral-fin-${side}`, [[-.98,-.09],[-.75,-.12],[-.38,-.26],[-.28,-.38],[-.50,-.40],[-.82,-.27]], sideZ, 2, side, .10, -.82);
-    addFin(`pelvic-fin-${side}`, [[.04,-.24],[.30,-.21],[.54,-.28],[.66,-.40],[.48,-.42],[.20,-.34]], side * .095, 2, side);
+    addFin(`pectoral-fin-${side}`, [[-.98,-.09],[-.75,-.12],[-.38,-.26],[-.28,-.38],[-.50,-.40],[-.82,-.27]], sideZ, 2, side, .10, -.82, -.98, .70);
+    addFin(`pelvic-fin-${side}`, [[.04,-.24],[.30,-.21],[.54,-.28],[.66,-.40],[.48,-.42],[.20,-.34]], side * .095, 1.4, side, 0, 0, .04, .62);
   }
 
   // Adipose fins are a small, identifying silhouette cue on the two trout-like forms.
