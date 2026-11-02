@@ -12,9 +12,9 @@ export type RiverFishMovementContext = Readonly<{
 }>;
 
 export type RiverFishMovementCue = Readonly<{
-  /** Server-owned side position in the fight's world-space X axis. */
+  /** Lateral offset from the hook point in world-space X. */
   lateralTarget: number;
-  /** Server-owned depth target; this remains presentation-only. */
+  /** Server-owned swimming depth; it does not affect fishing difficulty. */
   depthTarget: number;
   gait: FishGait;
 }>;
@@ -38,10 +38,6 @@ type RiverMovementStyle = Readonly<{
 }>;
 
 export type RiverFishMovementProfile = Readonly<{
-  openingLateralAmplitude: number;
-  baseLateralAmplitude: number;
-  surgeLateralAmplitude: number;
-  reelingLateralAmplitude: number;
   lateralLimit: number;
   lateralAcceleration: number;
   turnRate: number;
@@ -79,7 +75,7 @@ const RIVER_FISH_MOTION_STYLES: Readonly<Record<RiverFishId, RiverMovementStyle>
     period: 2.35, phaseOffset: .65, burstSeconds: .24, recoverySeconds: .48,
     lateralExcursion: .72, cruiseDepth: -2.5, dartDepth: -2.22,
     lateralLimit: 1.8, lateralAcceleration: 3.1, turnRate: 2.25, depthResponse: 1.05,
-    cruiseGait: "coast", burstGait: "burst", turnGait: "turn",
+    cruiseGait: "cruise", burstGait: "burst", turnGait: "turn",
   },
   "river-namazu": {
     period: 6.7, phaseOffset: 1.8, burstSeconds: .5, recoverySeconds: 1.1,
@@ -154,10 +150,6 @@ const createMovementCue = (style: RiverMovementStyle) =>
   };
 
 const createMovementProfile = (style: RiverMovementStyle): RiverFishMovementProfile => ({
-  openingLateralAmplitude: style.lateralExcursion * .45,
-  baseLateralAmplitude: style.lateralExcursion * .25,
-  surgeLateralAmplitude: style.lateralExcursion * .6,
-  reelingLateralAmplitude: style.lateralExcursion * .35,
   lateralLimit: style.lateralLimit,
   lateralAcceleration: style.lateralAcceleration,
   turnRate: style.turnRate,

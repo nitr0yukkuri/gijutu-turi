@@ -481,10 +481,6 @@ const riverFishProfile = (fishId: RiverFishId): FishFightProfile => {
     // Reuse Go's tension, stamina, reel-speed, and attack timings so movement
     // differences do not silently change catch difficulty.
     ...GO_FISH_PROFILE,
-    openingLateralAmplitude: movement.openingLateralAmplitude,
-    baseLateralAmplitude: movement.baseLateralAmplitude,
-    surgeLateralAmplitude: movement.surgeLateralAmplitude,
-    reelingLateralAmplitude: movement.reelingLateralAmplitude,
     lateralLimit: movement.lateralLimit,
     lateralAcceleration: movement.lateralAcceleration,
     turnRate: movement.turnRate,

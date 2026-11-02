@@ -268,6 +268,9 @@ export class OceanFishingGame {
       const warning=s.mode==='warning'&&s.fishId==='fish-001';
       const opening=t<profile.openingSeconds;
       const movementCue=profile.movementAt?.({fightTime:t,encounter:s.revision,opening,reeling});
+      // River movement is centered on where the fish took the bait, not the
+      // middle of the world-space channel.
+      const movementManeuver=movementCue&&maneuver?.kind==='cut'?null:maneuver;
       const staminaFactor=.55+s.stamina*.45;
       // A running fish cannot be brute-forced by holding the reel. The
       // recovery window comes from the fish's own fatigue and fight mode, so
@@ -340,17 +343,19 @@ export class OceanFishingGame {
             ? profile.reelingLateralAmplitude??profile.baseLateralAmplitude
             : profile.baseLateralAmplitude;
       const lungeSide=-Math.sign(this.approachDirection.x||1);
-      const attackOscillation=maneuver
-        ? Math.sin(maneuver.progress*Math.PI*2*(maneuver.kind==='headshake'?3:maneuver.kind==='coil'?2.4:1))
+      const attackOscillation=movementManeuver
+        ? Math.sin(movementManeuver.progress*Math.PI*2*(movementManeuver.kind==='headshake'?3:movementManeuver.kind==='coil'?2.4:1))
         : 0;
-      const maneuverLateral=maneuver
-        ? maneuver.kind==='headshake'
-          ? maneuver.side*.3*maneuverEnvelope+attackOscillation*.85*maneuverEnvelope
-          : maneuver.kind==='coil'
-            ? maneuver.side*.25*maneuverEnvelope+attackOscillation*.9*maneuverEnvelope
-            : maneuver.side*(maneuver.kind==='dart'?1.05:.78)*maneuverEnvelope
+      const maneuverLateral=movementManeuver
+        ? movementManeuver.kind==='headshake'
+          ? movementManeuver.side*.3*maneuverEnvelope+attackOscillation*.85*maneuverEnvelope
+          : movementManeuver.kind==='coil'
+            ? movementManeuver.side*.25*maneuverEnvelope+attackOscillation*.9*maneuverEnvelope
+            : movementManeuver.side*(movementManeuver.kind==='dart'?1.05:.78)*maneuverEnvelope
         : 0;
-      const lateral=(movementCue?.lateralTarget??Math.sin(this.steeringPhase)*lateralAmplitude)
+      const lateral=(movementCue
+        ? this.approachEnd.x+movementCue.lateralTarget
+        : Math.sin(this.steeringPhase)*lateralAmplitude)
         +lungeSide*.72*surfaceLunge+maneuverLateral;
       const wantedVelocity=clamp((lateral-s.fishX)*2.2,-profile.lateralLimit,profile.lateralLimit);
       const lateralAcceleration=profile.lateralAcceleration??4;
@@ -367,7 +372,7 @@ export class OceanFishingGame {
       // Skim the surface with a low, forward lunge instead of launching the
       // long armored body upright out of the water.
       const rustBillfishRush=s.fishId==='rust-001'&&(opening||surge);
-      const surfaceLeap=maneuver?.kind==='leap' ? maneuverEnvelope : 0;
+      const surfaceLeap=movementManeuver?.kind==='leap' ? maneuverEnvelope : 0;
       const targetDepth=movementCue?.depthTarget??(surfaceLeap>0
         ? -1.95+2.7*surfaceLeap
         : k8sSurfaceLunge?-1.95+2*surfaceLunge:rustBillfishRush?-1.55:s.mode==='split'&&s.fishId==='fish-001'?-1.65:s.mode==='surge'?-1.8:warning?-2.05:-2.4);
@@ -379,10 +384,10 @@ export class OceanFishingGame {
       this.fishDepth+=clamp(diveStep,-verticalLimit,verticalLimit);
       const velocity:Vec3={x:(s.fishX-previousFishX)/dt,y:(this.fishDepth-previousDepth)/dt,z:-(s.distance-previousDistance)/dt};
       const previousYaw=this.swimYaw;
-      const maneuverYaw=maneuver
-        ? maneuver.kind==='headshake'||maneuver.kind==='coil'
-          ? attackOscillation*(maneuver.kind==='headshake'?.3:.42)*maneuverEnvelope
-          : maneuver.side*(maneuver.kind==='dart'?.28:.2)*maneuverEnvelope
+      const maneuverYaw=movementManeuver
+        ? movementManeuver.kind==='headshake'||movementManeuver.kind==='coil'
+          ? attackOscillation*(movementManeuver.kind==='headshake'?.3:.42)*maneuverEnvelope
+          : movementManeuver.side*(movementManeuver.kind==='dart'?.28:.2)*maneuverEnvelope
         : 0;
       const wantedYaw=Math.atan2(this.lateralVelocity,.8)+maneuverYaw;
       const turnRate=profile.turnRate??1.65;
