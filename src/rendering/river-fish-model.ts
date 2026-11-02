@@ -1,7 +1,7 @@
 // @ts-nocheck -- the model uses the vendored Three.js runtime without declarations.
 import * as THREE from "../../vendor/three.module.js";
 import { getRiverFishDesign, type RiverBodyPoint, type RiverFinPlan, type RiverFishDesign } from "../river-fish-designs.js";
-import { applyFishWater } from "./fish-water.js";
+import { applyFishWater, DEFAULT_FISH_WATER_PROFILE } from "./fish-water.js";
 
 const TAU = Math.PI * 2;
 const clamp = THREE.MathUtils.clamp;
@@ -182,10 +182,16 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0, 
   const group = new THREE.Group();
   group.name = design.name;
   const habitatUniforms = waterUniforms
-    ? { ...waterUniforms, uFishCenter: { value: group.position }, uFishVisibility: { value: 1 } }
+    ? {
+        ...waterUniforms,
+        uFishCenter: { value: group.position },
+        // River meshes already fade through uRiverVisibility; keep water optics fully enabled.
+        uFishVisibility: { value: 1 },
+      }
     : null;
   const geometries = new Set();
   const materials = new Set();
+  const waterAppliedMaterials = new Set();
   const uniforms = {
     uRiverVisibility: { value: 1 }, uRiverPhase: { value: phase }, uRiverAmplitude: { value: .11 }, uRiverWavelength: { value: .82 }, uRiverTurn: { value: 0 },
     uRiverFlexStart: { value: design.motion.flexStartX }, uRiverFlexLength: { value: design.motion.flexLength },
@@ -207,7 +213,10 @@ export function createRiverFish(modelKey: string, { detail = "high", phase = 0, 
       }
       geometry.setAttribute("aRiverFin", new THREE.Float32BufferAttribute(flex, 1));
     }
-    if (habitatUniforms && !materials.has(material)) applyFishWater(material, habitatUniforms, waterPart);
+    if (habitatUniforms && !waterAppliedMaterials.has(material)) {
+      applyFishWater(material, habitatUniforms, waterPart, DEFAULT_FISH_WATER_PROFILE);
+      waterAppliedMaterials.add(material);
+    }
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = name;
     mesh.frustumCulled = false;
