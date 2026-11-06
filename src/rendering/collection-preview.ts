@@ -12,6 +12,7 @@ import { dockerWhalePreviewMotionAt } from './docker-whale-motion.js';
 import { K8S_ECHO_COUNT } from './k8s-fight-presentation.js';
 import { applyCollectionSilhouette } from './collection-silhouette.js';
 import { createRiverFish } from './river-fish-model.js';
+import { createJavaOctopus } from './java-octopus.js';
 
 export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = false } = {}) {
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'high-performance' });
@@ -32,11 +33,14 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
   const isClusterFish = modelKey === 'cluster-leviathan';
   const isRustFish = modelKey === 'rust-swordfish';
   const isJsEel = modelKey === 'js-eel';
+  const isJavaOctopus = modelKey === 'java-octopus';
   const isRiverFish = modelKey.startsWith('river-');
   const fish = isRiverFish
     ? createRiverFish(modelKey, { detail: 'high' })
     : isDockerWhale
     ? createDockerWhale({ detail: 'high' })
+    : isJavaOctopus
+    ? createJavaOctopus({ detail: 'high' })
     : createGoFish({ detail: 'high', naturalSwim: true, visualProfile: isClusterFish ? 'cluster' : isCssFish ? 'css' : isRustFish ? 'rust' : isJsEel ? 'eel' : 'catalog' });
   if (isDockerWhale) fish.group.scale.setScalar(.42);
   if (isClusterFish) fish.group.scale.setScalar(.62);
@@ -166,6 +170,10 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
         tetherLoad: motion.cargoLoad,
         styleDelta: delta,
       });
+    }
+    else if (isJavaOctopus) {
+      const bodyPhase = time * .68 * Math.PI * 2;
+      fish.update(time, { power: .24, glow: .35, bodyPhase, bodyFrequency: .58, bodyWavelength: .9, effort: .28, turn: .08, styleDelta: delta });
     }
     else {
       const swimPhase = time * .82 * Math.PI * 2;

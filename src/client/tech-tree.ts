@@ -37,9 +37,9 @@ export const TECH_TREE_BRANCHES: readonly TechTreeBranch[] = [
   },
   {
     id: "asynchronous",
-    label: "非同期",
-    summary: "イベントループと非同期処理を扱う。",
-    speciesIds: ["js-001"],
+    label: "非同期と並行処理",
+    summary: "イベント駆動と、独立して進む処理を扱う。",
+    speciesIds: ["js-001", "java-001"],
   },
   {
     id: "interface",
@@ -65,6 +65,7 @@ export const TECH_TREE_BRANCHES: readonly TechTreeBranch[] = [
 export const TECH_TREE_FISH_LINKS: readonly TechTreeFishLink[] = [
   { id: "systems", from: "fish-001", to: "rust-001", route: "direct" },
   { id: "presentation", from: "css-001", to: "js-001", route: "bridge" },
+  { id: "concurrency", from: "js-001", to: "java-001", route: "direct" },
   { id: "operations", from: "whale-001", to: "k8s-001", route: "direct" },
   { id: "river-concurrency", from: "river-ayu", to: "river-ugui", route: "direct" },
   { id: "river-systems", from: "river-yamame", to: "river-koi", route: "direct" },
@@ -110,6 +111,13 @@ const OCEAN_NODE_DETAILS: Record<Exclude<FishSpeciesId, `river-${string}`>, Tech
     nodeLabel: "イベントループ\n非同期処理",
     concept: "待ち時間で処理を止めず、完了したイベントを順番に扱う。",
     gameExpression: "頭から尾へ波を伝え、途切れず泳ぎ続ける。",
+  },
+  "java-001": {
+    name: "Java",
+    technology: "並行処理",
+    nodeLabel: "並行処理\nスレッド",
+    concept: "複数の処理を独立して進め、必要な場面で連携させる。",
+    gameExpression: "8本の腕が別々に探索し、逃げる瞬間は腕と漏斗の動きが一つにまとまる。",
   },
 };
 

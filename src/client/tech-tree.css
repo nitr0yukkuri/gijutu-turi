@@ -80,6 +80,8 @@
 .tech-tree-node--fish-001 { --node-accent: #9dd8cb; }
 .tech-tree-node--rust-001 { --node-accent: #dfb49c; }
 .tech-tree-node--js-001 { --node-accent: #e2cf92; }
+.tech-tree-node--java-001 { --node-accent: #d2a98c; }
+.tech-tree-node--java-001 .tech-tree-fish-detail { stroke-width: 2.2; }
 .tech-tree-node--css-001 { --node-accent: #b9b7e1; }
 .tech-tree-node--whale-001 { --node-accent: #94c4db; }
 .tech-tree-node--k8s-001 { --node-accent: #adc2e6; }

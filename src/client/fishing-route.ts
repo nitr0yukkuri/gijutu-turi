@@ -56,6 +56,13 @@ const JS_EEL_ROUTE: FishingRoute = {
   title: "JSアナゴ — 技術釣り",
 };
 
+const JAVA_OCTOPUS_ROUTE: FishingRoute = {
+  key: "javatako",
+  path: FISHING_ROUTE_PATHS.javatako,
+  initialFishId: "java-001",
+  title: "Javaタコ — 技術釣り",
+};
+
 const K8S_FISH_ROUTE: FishingRoute = {
   key: "k8sfish",
   path: FISHING_ROUTE_PATHS.k8sfish,
@@ -78,6 +85,7 @@ export const resolveFishingRoute = (pathname: string, legacyFish?: string | null
     case FISHING_ROUTE_PATHS.cssfish: return CSS_FISH_ROUTE;
     case FISHING_ROUTE_PATHS.rustfish: return RUST_FISH_ROUTE;
     case FISHING_ROUTE_PATHS.jseel: return JS_EEL_ROUTE;
+    case FISHING_ROUTE_PATHS.javatako: return JAVA_OCTOPUS_ROUTE;
     case FISHING_ROUTE_PATHS.k8sfish: return K8S_FISH_ROUTE;
   }
 
@@ -92,6 +100,7 @@ export const resolveFishingRoute = (pathname: string, legacyFish?: string | null
     case "k8sfish": return K8S_FISH_ROUTE;
     case "rustfish": return RUST_FISH_ROUTE;
     case "jseel": return JS_EEL_ROUTE;
+    case "javatako": return JAVA_OCTOPUS_ROUTE;
   }
   return DEFAULT_ROUTE;
 };

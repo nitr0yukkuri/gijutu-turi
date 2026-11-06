@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const routes = ["/", "/gofish", "/dockerwhale", "/cssfish", "/k8sfish", "/rustfish", "/jseel"];
+const routes = ["/", "/gofish", "/dockerwhale", "/cssfish", "/k8sfish", "/rustfish", "/jseel", "/javatako"];
 
 async function stubCurrentWeather(page: Page): Promise<void> {
   await page.route("**/api/weather**", async route => {
@@ -53,20 +53,25 @@ for (const route of routes) {
 
     const expectedModelChunks = route === "/" || route === "/dockerwhale"
       ? ["docker-whale"]
-      : ["go-fish"];
+      : route === "/javatako"
+        ? ["java-octopus"]
+        : ["go-fish"];
     const loadedModelChunks = new Set<string>();
     page.on("response", response => {
       if (response.request().resourceType() !== "script") return;
       const path = new URL(response.url()).pathname;
       if (path.includes("/chunks/go-fish-")) loadedModelChunks.add("go-fish");
       if (path.includes("/chunks/docker-whale-") && !path.includes("/chunks/docker-whale-profile-")) loadedModelChunks.add("docker-whale");
+      if (path.includes("/chunks/java-octopus-")) loadedModelChunks.add("java-octopus");
     });
     const modelChunkResponse = page.waitForResponse(response => {
       if (response.request().resourceType() !== "script") return false;
       const path = new URL(response.url()).pathname;
       return expectedModelChunks.some(chunkName => chunkName === "docker-whale"
         ? path.includes("/chunks/docker-whale-") && !path.includes("/chunks/docker-whale-profile-")
-        : path.includes("/chunks/go-fish-"));
+        : chunkName === "java-octopus"
+          ? path.includes("/chunks/java-octopus-")
+          : path.includes("/chunks/go-fish-"));
     });
     await page.goto(route);
     expect((await modelChunkResponse).ok()).toBe(true);
@@ -121,9 +126,9 @@ test("the fishing scene stays within common desktop and phone viewports", async 
 });
 
 test("/complete shows every fish as a read-only showcase without opening game APIs", async ({ page }) => {
-  // This route mounts each high-detail fish preview in turn; software WebGL
-  // needs more than the default timeout to compile all sixteen species shaders.
-  test.setTimeout(180_000);
+  // This route mounts each high-detail catalog preview in turn; software WebGL
+  // needs extra time to compile the current species set.
+  test.setTimeout(300_000);
   const apiRequests: string[] = [];
   const sockets: string[] = [];
   page.on("request", request => {
@@ -135,14 +140,20 @@ test("/complete shows every fish as a read-only showcase without opening game AP
   await page.goto("/complete");
   await expect(page.getByRole("heading", { name: "魚図鑑コンプリート" })).toBeVisible();
   await expect(page.getByText(/展示用サンプル/)).toBeVisible();
-  await expect(page.getByLabel(/発見済み 16 \/ 16 種/)).toBeVisible();
+  const progress = page.getByLabel(/発見済み \d+ \/ \d+ 種/);
+  await expect(progress).toBeVisible();
+  const progressLabel = await progress.getAttribute("aria-label");
+  const progressCounts = progressLabel?.match(/発見済み (\d+) \/ (\d+) 種/);
+  expect(progressCounts).not.toBeNull();
+  expect(progressCounts?.[1]).toBe(progressCounts?.[2]);
+  const speciesCount = Number(progressCounts?.[2]);
 
   const fishCards = page.locator(".complete-fish-card");
   await expect(page.getByRole("heading", { name: "魚図鑑", exact: true })).toBeVisible();
-  await expect(fishCards).toHaveCount(16);
+  await expect(fishCards).toHaveCount(speciesCount);
   await expect(page.locator(".complete-fish-card-status")).toHaveCount(0);
   await expect(page.locator(".complete-fish-record-note, .complete-showcase-footer span")).toHaveCount(0);
-  for (let index = 0; index < 16; index += 1) {
+  for (let index = 0; index < speciesCount; index += 1) {
     const card = fishCards.nth(index);
     await card.click();
     const selectedFishName = await card.locator("strong").innerText();
@@ -152,7 +163,7 @@ test("/complete shows every fish as a read-only showcase without opening game AP
 
   await page.getByRole("navigation", { name: "展示内容" }).getByRole("button", { name: "技術ツリー" }).click();
   await expect(page.getByRole("heading", { name: "技術ツリー" })).toBeVisible();
-  await expect(page.locator(".tech-tree-node.is-unlocked")).toHaveCount(16);
+  await expect(page.locator(".tech-tree-node.is-unlocked")).toHaveCount(speciesCount);
   await expect(page.locator(".tech-tree-node-mark")).toHaveCount(0);
 
   await page.getByRole("navigation", { name: "展示内容" }).getByRole("button", { name: "魚図鑑" }).click();

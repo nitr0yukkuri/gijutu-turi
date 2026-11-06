@@ -26,7 +26,7 @@ test("fish-to-fish links cover the active catalog without self-links or duplicat
   const endpoints = TECH_TREE_FISH_LINKS.flatMap(link => [link.from, link.to]);
   const pairs = TECH_TREE_FISH_LINKS.map(link => [link.from, link.to].sort().join(":"));
 
-  assert.deepEqual([...endpoints].sort(), activeIds);
+  assert.deepEqual([...new Set(endpoints)].sort(), activeIds);
   assert.equal(new Set(TECH_TREE_FISH_LINKS.map(link => link.id)).size, TECH_TREE_FISH_LINKS.length);
   assert.equal(new Set(pairs).size, TECH_TREE_FISH_LINKS.length);
   assert.ok(TECH_TREE_FISH_LINKS.every(link => link.from !== link.to));

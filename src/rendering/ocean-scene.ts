@@ -531,6 +531,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       ? point.set(-2.82,-.018,0)
     : fishId==='js-001'
       ? point.set(-1.84,-.012,0)
+    : fishId==='java-001'
+      ? point.set(-.52,-.12,0)
     : point.set(-1.86,-.012,0);
   const projectSubmergedLinePoint=(point,submergedProgress)=>{
     fishApparentPoint(point,lineProjectionCenter,lineProjectionEye,lineProjectionPoint);
@@ -642,9 +644,9 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const spray=new THREE.Points(dropletGeo,new THREE.PointsMaterial({color:0xd9efed,size:.045,transparent:true,opacity:.85,depthWrite:false}));spray.visible=false;spray.frustumCulled=false;scene.add(spray);
   const dropSpeeds=Array.from({length:36},(_,i)=>{const a=i*2.399;return new THREE.Vector3(Math.cos(a)*(.5+(i%5)*.16),.75+(i%7)*.21,Math.sin(a)*(.5+(i%5)*.16));});
   const fishModelStore=createOceanFishModels(scene,waterUniforms,createFishOrientationScratch);
-  const {fightFish,dockerWhale,cssFish,rustFish,jsEel,fightModelFor,requestFightModel}=fishModelStore;
+  const {fightFish,dockerWhale,cssFish,rustFish,jsEel,javaOctopus,fightModelFor,requestFightModel}=fishModelStore;
   const cssFishProfile=getFishFightProfile('css-001');
-  const liveFishScale=(fishId,phase)=>fishScaleForResponsiveCamera(fishId==='whale-001'?.42:fishId==='k8s-001'?(phase==='fighting'?1.02:.76):fishId==='css-001'?(phase==='fighting'?.74:.55):fishId==='rust-001'?(phase==='fighting'?.80:.63):fishId==='js-001'?(phase==='fighting'?.78:.61):(phase==='fighting'?.84:.66),camera.fov,portraitBlend);
+  const liveFishScale=(fishId,phase)=>fishScaleForResponsiveCamera(fishId==='whale-001'?.42:fishId==='k8s-001'?(phase==='fighting'?1.02:.76):fishId==='css-001'?(phase==='fighting'?.74:.55):fishId==='rust-001'?(phase==='fighting'?.80:.63):fishId==='js-001'?(phase==='fighting'?.78:.61):fishId==='java-001'?(phase==='fighting'?.82:.68):(phase==='fighting'?.84:.66),camera.fov,portraitBlend);
   const catchFishScale=(fishId)=>fishScaleForResponsiveCamera(catchFraming(fishId,camera.aspect,camera.fov).baseScale,camera.fov,portraitBlend);
   // The submerged line ends at the same undeformed nose anchor as the model.
   const mouth=new THREE.Vector3(),lineEntry=new THREE.Vector3(),curvePoint=new THREE.Vector3();
@@ -1176,12 +1178,13 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       ? escapeFishVisibility(escapeStartVisibility,escapeFade)
       : displayedFishVisibility;
     const activeFightFish=fightModelFor(state.fishId);
-    const currentFightFish=fightFish(),currentDockerWhale=dockerWhale(),currentCssFish=cssFish(),currentRustFish=rustFish(),currentJsEel=jsEel();
+    const currentFightFish=fightFish(),currentDockerWhale=dockerWhale(),currentCssFish=cssFish(),currentRustFish=rustFish(),currentJsEel=jsEel(),currentJavaOctopus=javaOctopus();
     if(currentFightFish)currentFightFish.group.visible=activeFightFish===currentFightFish&&fishShowing&&Boolean(visibleFish);
     if(currentDockerWhale)currentDockerWhale.group.visible=activeFightFish===currentDockerWhale&&fishShowing&&Boolean(visibleFish);
     if(currentCssFish)currentCssFish.group.visible=activeFightFish===currentCssFish&&fishShowing&&Boolean(visibleFish);
     if(currentRustFish)currentRustFish.group.visible=activeFightFish===currentRustFish&&fishShowing&&Boolean(visibleFish);
     if(currentJsEel)currentJsEel.group.visible=activeFightFish===currentJsEel&&fishShowing&&Boolean(visibleFish);
+    if(currentJavaOctopus)currentJavaOctopus.group.visible=activeFightFish===currentJavaOctopus&&fishShowing&&Boolean(visibleFish);
     if(fishModelStore.clusterFish)fishModelStore.clusterFish.group.visible=activeFightFish===fishModelStore.clusterFish&&fishShowing&&Boolean(visibleFish);
     if(state.fishId?.startsWith('river-')&&activeFightFish)activeFightFish.group.visible=fishShowing&&Boolean(visibleFish);
     const cssFishVisualState=CSS_FISH_LIVE_STATE;

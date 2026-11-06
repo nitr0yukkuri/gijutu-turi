@@ -30,6 +30,8 @@ const VISIBILITY_BY_SPECIES: Partial<Record<FishSpeciesId, FishVisibilityProfile
   // The eel is long but low-contrast; reveal enough of its continuous body
   // wave to read the species before the hook, without showing the full glow.
   'js-001': { waitingMax: .36, bitingMax: .94 },
+  // Keep the spread arms readable during the approach without making the animal glow.
+  'java-001': { waitingMax: .42, bitingMax: .96 },
 };
 
 export const easeFishApproach = (progress: number): number => {
