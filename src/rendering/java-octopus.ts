@@ -92,7 +92,6 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     clearcoatRoughness: .66,
     emissive: 0x1a0d08,
     emissiveIntensity: .045,
-    side: THREE.DoubleSide,
   });
   const headSkin = skin;
   const armSkin = skin;
@@ -171,10 +170,10 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   beak.scale.set(.75, 1, .72);
 
   const armDirections = [
-    [-1.0, -.84, -.72], [-1.12, -.62, .82], [-1.28, -.34, -.55], [-1.38, -.05, .9],
-    [-1.34, .24, -.88], [-1.18, .52, .63], [-.98, .83, -.7], [-.8, .65, .96],
+    [-1.15, -.12, .98], [-.95, .68, .72], [-.82, 1.0, .08], [-1.05, .72, -.78],
+    [-1.24, .12, -.98], [-1.02, -.68, -.75], [-.86, -.98, -.1], [-1.08, -.7, .76],
   ];
-  const armLengths = [2.78, 3.18, 3.48, 3.72, 3.54, 2.94, 3.38, 3.08];
+  const armLengths = [3.12, 3.48, 3.72, 3.38, 3.08, 3.4, 3.78, 3.24];
   const arms = armDirections.map((values, index) => {
     const direction = new THREE.Vector3(...values).normalize();
     const curveAxis = new THREE.Vector3().crossVectors(direction, new THREE.Vector3(0, 0, 1));
