@@ -45,6 +45,7 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
   if (isDockerWhale) fish.group.scale.setScalar(.42);
   if (isClusterFish) fish.group.scale.setScalar(.62);
   if (isJsEel) fish.group.scale.setScalar(.76);
+  if (isJavaOctopus) fish.group.rotation.x = -.28;
   rig.add(fish.group);
   const echoes = isClusterFish ? Array.from({ length: K8S_ECHO_COUNT }, (_, index) => {
     const echo = createGoFish({ detail: 'low', naturalSwim: true, visualProfile: 'cluster', phase: index * 1.2 });
@@ -103,7 +104,7 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
   // beetle-like front view.
   const maxPreviewYaw = THREE.MathUtils.degToRad(54);
   const clampPreviewYaw = value => THREE.MathUtils.clamp(value, -maxPreviewYaw, maxPreviewYaw);
-  let yaw = .22;
+  let yaw = isJavaOctopus ? .36 : .22;
 
   const resize = () => {
     const width = mount.clientWidth;

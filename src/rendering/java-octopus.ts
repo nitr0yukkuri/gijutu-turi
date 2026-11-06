@@ -10,24 +10,40 @@ const smoothstep = (edge0, edge1, value) => {
 };
 
 function createSkinMottle() {
-  const size = 96;
+  const size = 128;
   const pixels = new Uint8Array(size * size * 3);
+  const hash = (x, y) => {
+    const value = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+    return (value - Math.floor(value)) * 2 - 1;
+  };
+  const noise = (x, y) => {
+    const x0 = Math.floor(x);
+    const y0 = Math.floor(y);
+    const tx = smoothstep(0, 1, x - x0);
+    const ty = smoothstep(0, 1, y - y0);
+    const top = hash(x0, y0) * (1 - tx) + hash(x0 + 1, y0) * tx;
+    const bottom = hash(x0, y0 + 1) * (1 - tx) + hash(x0 + 1, y0 + 1) * tx;
+    return top * (1 - ty) + bottom * ty;
+  };
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      const broad = Math.sin(x * .19 + Math.sin(y * .13) * 1.6) * Math.cos(y * .17 - x * .07);
-      const fine = Math.sin(x * 1.71 + y * 2.13) * .16 + Math.cos(x * .91 - y * 1.37) * .12;
-      const value = clamp(Math.round(188 + broad * 25 + fine * 18), 132, 235);
+      const broad = noise(x / 34, y / 29);
+      const patch = noise(x / 13 + 7, y / 16 - 3);
+      const fine = noise(x / 3.5, y / 3.5);
+      const pigment = broad * .4 + patch * .45 + fine * .15;
+      const paleMottle = smoothstep(.18, .72, noise(x / 19 + 21, y / 22 - 8));
+      const red = clamp(Math.round(215 + pigment * 22 + paleMottle * 5), 176, 248);
       const offset = (y * size + x) * 3;
-      pixels[offset] = value;
-      pixels[offset + 1] = Math.min(255, value + 3);
-      pixels[offset + 2] = Math.max(0, value - 5);
+      pixels[offset] = red;
+      pixels[offset + 1] = clamp(Math.round(red - 10 - paleMottle * 8), 145, 239);
+      pixels[offset + 2] = clamp(Math.round(red - 19 - paleMottle * 11), 132, 230);
     }
   }
   const texture = new THREE.DataTexture(pixels, size, size, THREE.RGBFormat, THREE.UnsignedByteType);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(1.6, 1.1);
+  texture.repeat.set(1.15, 1.15);
   texture.generateMipmaps = true;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
@@ -61,36 +77,43 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   const lowDetail = detail === 'low';
   const segmentCount = lowDetail ? 12 : 20;
   const radialCount = lowDetail ? 6 : 8;
-  const suckerStations = lowDetail ? 6 : 10;
+  const suckerStations = lowDetail ? 8 : 16;
   const geometries = new Set();
   const materials = new Set();
   const skinMottle = createSkinMottle();
-  const normalSkinColor = new THREE.Color(0x8d6250);
-  const stressSkinColor = new THREE.Color(0x74483f);
+  const normalSkinColor = new THREE.Color(0x9b5948);
+  const stressSkinColor = new THREE.Color(0x794238);
   const skin = new THREE.MeshPhysicalMaterial({
-    color: 0x8d6250,
+    color: 0x9b5948,
     map: skinMottle,
-    roughness: .58,
+    roughness: .68,
     metalness: 0,
-    clearcoat: .12,
-    clearcoatRoughness: .52,
-    emissive: 0x170b08,
-    emissiveIntensity: .035,
+    clearcoat: .06,
+    clearcoatRoughness: .66,
+    emissive: 0x1a0d08,
+    emissiveIntensity: .045,
   });
   const headSkin = skin;
   const armSkin = skin;
   const paleSkin = new THREE.MeshPhysicalMaterial({
-    color: 0xc08b70,
-    roughness: .54,
-    clearcoat: .1,
+    color: 0xc58b73,
+    roughness: .65,
+    clearcoat: .04,
     map: skinMottle,
   });
-  const eyeWhite = new THREE.MeshPhysicalMaterial({ color: 0xb6a17b, roughness: .36, clearcoat: .34 });
-  const pupilMaterial = new THREE.MeshPhysicalMaterial({ color: 0x100d0b, roughness: .13, clearcoat: 1, clearcoatRoughness: .08 });
-  const suckerMaterial = new THREE.MeshPhysicalMaterial({ color: 0xc39b7d, roughness: .4, clearcoat: .18 });
+  const webSkin = new THREE.MeshPhysicalMaterial({
+    color: 0xb87863,
+    map: skinMottle,
+    roughness: .7,
+    clearcoat: .035,
+    side: THREE.DoubleSide,
+  });
+  const eyeWhite = new THREE.MeshPhysicalMaterial({ color: 0xc8aa89, roughness: .48, clearcoat: .12 });
+  const pupilMaterial = new THREE.MeshPhysicalMaterial({ color: 0x100d0b, roughness: .22, clearcoat: .45, clearcoatRoughness: .2 });
+  const suckerMaterial = new THREE.MeshPhysicalMaterial({ color: 0xc99780, roughness: .62, clearcoat: .04 });
   const funnelInner = new THREE.MeshStandardMaterial({ color: 0x38271f, roughness: .72, side: THREE.DoubleSide });
   const beakMaterial = new THREE.MeshPhysicalMaterial({ color: 0x1b1714, roughness: .27, clearcoat: .38 });
-  for (const material of [skin, paleSkin, eyeWhite, pupilMaterial, suckerMaterial, funnelInner, beakMaterial]) materials.add(material);
+  for (const material of [skin, paleSkin, webSkin, eyeWhite, pupilMaterial, suckerMaterial, funnelInner, beakMaterial]) materials.add(material);
 
   const addMesh = (geometry, material, parent = group, name = '') => {
     geometries.add(geometry);
@@ -131,13 +154,13 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     const eye = new THREE.Group();
     eye.position.set(-.43, .015, side * .205);
     group.add(eye);
-    const sclera = addMesh(new THREE.SphereGeometry(.064, 16, 12), eyeWhite, eye, 'eye-sclera');
+    const sclera = addMesh(new THREE.SphereGeometry(.07, 18, 14), eyeWhite, eye, 'eye-sclera');
     sclera.scale.set(1, .84, .74);
-    const iris = addMesh(new THREE.SphereGeometry(.035, 14, 10), pupilMaterial, eye, 'eye-pupil');
-    iris.position.set(-.024, .004, side * .038);
+    const iris = addMesh(new THREE.SphereGeometry(.039, 16, 12), pupilMaterial, eye, 'eye-pupil');
+    iris.position.set(-.026, .004, side * .042);
     iris.scale.set(.86, .9, .58);
-    const glint = addMesh(new THREE.SphereGeometry(.008, 8, 6), eyeWhite, eye, 'eye-glint');
-    glint.position.set(-.03, .018, side * .056);
+    const glint = addMesh(new THREE.SphereGeometry(.009, 8, 6), eyeWhite, eye, 'eye-glint');
+    glint.position.set(-.032, .02, side * .061);
     eyes.push(eye);
   }
 
@@ -147,15 +170,15 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   beak.scale.set(.75, 1, .72);
 
   const armDirections = [
-    [-.96, -.64, -.2], [-1.08, -.4, .32], [-1.22, -.16, -.42], [-1.35, .08, .42],
-    [-1.26, .34, -.26], [-1.13, .57, .35], [-.96, .76, -.38], [-.82, .48, .52],
+    [-1.15, -.12, .98], [-.95, .68, .72], [-.82, 1.0, .08], [-1.05, .72, -.78],
+    [-1.24, .12, -.98], [-1.02, -.68, -.75], [-.86, -.98, -.1], [-1.08, -.7, .76],
   ];
+  const armLengths = [3.12, 3.48, 3.72, 3.38, 3.08, 3.4, 3.78, 3.24];
   const arms = armDirections.map((values, index) => {
     const direction = new THREE.Vector3(...values).normalize();
     const curveAxis = new THREE.Vector3().crossVectors(direction, new THREE.Vector3(0, 0, 1));
     if (curveAxis.lengthSq() < .001) curveAxis.set(0, 1, 0);
     curveAxis.normalize();
-    const baseLength = 1.08 + (index % 4) * .105;
     const geometry = createArmGeometry(segmentCount, radialCount);
     geometries.add(geometry);
     const mesh = new THREE.Mesh(geometry, armSkin);
@@ -166,7 +189,7 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
       direction,
       curveAxis,
       phaseOffset: index * 2.399,
-      length: baseLength,
+      length: armLengths[index],
       animatedDirection: new THREE.Vector3(),
       geometry,
       centers: Array.from({ length: segmentCount + 1 }, () => new THREE.Vector3()),
@@ -176,7 +199,37 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     };
   });
 
-  const suckerGeometry = new THREE.TorusGeometry(.022, .005, 5, lowDetail ? 8 : 12);
+  const webSegmentCount = Math.max(3, Math.round(segmentCount * .24));
+  const webRingSize = webSegmentCount + 1;
+  const webPositions = new Float32Array(ARM_COUNT * webRingSize * 3);
+  const webIndices = [];
+  for (let armIndex = 0; armIndex < ARM_COUNT; armIndex++) {
+    const current = armIndex * webRingSize;
+    const next = ((armIndex + 1) % ARM_COUNT) * webRingSize;
+    for (let segment = 0; segment < webSegmentCount; segment++) {
+      const a0 = current + segment;
+      const a1 = a0 + 1;
+      const b0 = next + segment;
+      const b1 = b0 + 1;
+      webIndices.push(a0, a1, b1, a0, b1, b0);
+    }
+  }
+  const webGeometry = new THREE.BufferGeometry();
+  webGeometry.setAttribute('position', new THREE.BufferAttribute(webPositions, 3).setUsage(THREE.DynamicDrawUsage));
+  webGeometry.setIndex(webIndices);
+  const webMesh = addMesh(webGeometry, webSkin, group, 'interbrachial-web');
+  webMesh.frustumCulled = false;
+
+  const suckerProfile = [
+    new THREE.Vector2(0, 0),
+    new THREE.Vector2(.02, .002),
+    new THREE.Vector2(.032, .009),
+    new THREE.Vector2(.034, .019),
+    new THREE.Vector2(.027, .024),
+    new THREE.Vector2(.018, .014),
+    new THREE.Vector2(0, .011),
+  ];
+  const suckerGeometry = new THREE.LatheGeometry(suckerProfile, lowDetail ? 8 : 12);
   geometries.add(suckerGeometry);
   const suckerCount = ARM_COUNT * suckerStations * 2;
   const suckers = new THREE.InstancedMesh(suckerGeometry, suckerMaterial, suckerCount);
@@ -190,14 +243,14 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   const suckerMatrix = new THREE.Matrix4();
   const ventral = new THREE.Vector3(0, -1, 0);
   const armStart = new THREE.Vector3(-.39, -.105, 0);
-  const normalAxis = new THREE.Vector3(0, 0, 1);
+  const suckerAxis = new THREE.Vector3(0, 1, 0);
   const flowDirection = new THREE.Vector3(1, .08, 0);
   const armReference = new THREE.Vector3(0, 0, 1);
   let disposed = false;
   let visibleAmount = 1;
 
   const waterMaterials = [
-    [skin, 'body'], [paleSkin, 'detail'], [eyeWhite, 'detail'], [pupilMaterial, 'detail'],
+    [skin, 'body'], [webSkin, 'body'], [paleSkin, 'detail'], [eyeWhite, 'detail'], [pupilMaterial, 'detail'],
     [suckerMaterial, 'detail'], [funnelInner, 'detail'], [beakMaterial, 'detail'],
   ];
   if (waterUniforms) {
@@ -214,16 +267,20 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     for (let segment = 0; segment <= segmentCount; segment++) {
       const along = segment / segmentCount;
       const bend = Math.sin(along * Math.PI);
+      const travelingPhase = along * 5.1 - bodyPhase * .58 + arm.phaseOffset;
       const localPhase = phaseAtArm + along * (3.1 + exploration * 1.2);
-      const probing = Math.sin(localPhase + armIndex * .31);
-      const curl = (Math.sin(localPhase * .72) * .075 + probing * .035 * exploration) * along;
-      const sweep = (Math.sin(localPhase * .46 + along * 2.7) * .07 + turn * .09) * along * (1 - jet * .55);
+      const probing = Math.sin(travelingPhase + armIndex * .31);
+      const tipWeight = smoothstep(.68, 1, along);
+      const restingCurl = Math.sin(arm.phaseOffset * 1.17) * .16;
+      const curl = (probing * .14 + Math.sin(travelingPhase * .61 + armIndex) * .045) * along
+        + tipWeight * (restingCurl + Math.sin(bodyPhase * .31 + arm.phaseOffset) * .12) * exploration;
+      const sweep = (Math.sin(localPhase * .46 + along * 2.7) * .13 + turn * .09) * along * (1 - jet * .55);
       const point = centerline[segment];
       point.copy(armStart)
         .addScaledVector(direction, length * along)
         .addScaledVector(arm.curveAxis, curl + sweep)
-        .addScaledVector(arm.tangent.set(0, 1, 0), bend * .055 * (1 - jet * .55));
-      point.z += Math.sin(localPhase + along * 2.2) * .035 * along * (1 - jet * .4);
+        .addScaledVector(arm.tangent.set(0, 1, 0), bend * (.07 + probing * .025) * (1 - jet * .55));
+      point.z += (Math.sin(travelingPhase * .72 + armIndex) * .12 + Math.sin(localPhase) * .035) * along * (1 - jet * .4);
     }
 
     for (let segment = 0; segment <= segmentCount; segment++) {
@@ -235,7 +292,7 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
       arm.normal.normalize();
       arm.side.crossVectors(tangent, arm.normal).normalize();
       const along = segment / segmentCount;
-      const radius = (.105 * (1 - along) ** 1.18 + .012) * (1 - jet * .08);
+      const radius = (.13 * (1 - along) ** 1.18 + .02) * (1 - jet * .08);
       const center = centerline[segment];
       for (let radialIndex = 0; radialIndex < radialCount; radialIndex++) {
         const theta = radialIndex / radialCount * Math.PI * 2;
@@ -249,23 +306,41 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     arm.geometry.computeVertexNormals();
   };
 
-  const updateSuckers = (bodyPhase, effort) => {
+  const updateWeb = () => {
+    let vertex = 0;
+    for (const arm of arms) {
+      for (let segment = 0; segment <= webSegmentCount; segment++) {
+        const point = arm.centers[segment];
+        const offset = vertex++ * 3;
+        webPositions[offset] = point.x;
+        webPositions[offset + 1] = point.y;
+        webPositions[offset + 2] = point.z;
+      }
+    }
+    webGeometry.attributes.position.needsUpdate = true;
+    webGeometry.computeVertexNormals();
+  };
+
+  const updateSuckers = (bodyPhase, effort, jet) => {
     let instance = 0;
     for (let armIndex = 0; armIndex < arms.length; armIndex++) {
       const arm = arms[armIndex];
       for (let sample = 0; sample < suckerStations; sample++) {
-        const along = .26 + sample / Math.max(1, suckerStations - 1) * .63;
+        const along = .28 + sample / Math.max(1, suckerStations - 1) * .61;
         const segment = Math.round(along * segmentCount);
         const center = arm.centers[segment];
         arm.tangent.subVectors(arm.centers[Math.min(segmentCount, segment + 1)], arm.centers[Math.max(0, segment - 1)]).normalize();
         arm.normal.copy(ventral).addScaledVector(arm.tangent, -ventral.dot(arm.tangent)).normalize();
         arm.side.crossVectors(arm.tangent, arm.normal).normalize();
-        const radius = .022 * (1 - along * .5) * (1 + .06 * Math.sin(bodyPhase * .4 + arm.phaseOffset));
+        const radius = .034 * (1 - along * .38) * (1 + .04 * Math.sin(bodyPhase * .4 + arm.phaseOffset));
+        const armSurfaceRadius = (.13 * (1 - along) ** 1.18 + .02) * (1 - jet * .08);
         for (const row of [-1, 1]) {
-          suckerPosition.copy(center).addScaledVector(arm.normal, radius * .88).addScaledVector(arm.side, row * radius * .52);
-          suckerOrientation.setFromUnitVectors(normalAxis, arm.normal);
-          const pulse = .94 + .06 * (1 + Math.sin(bodyPhase * .35 + arm.phaseOffset + sample * .61)) * .5 * effort;
-          const cupScale = radius / .022 * pulse;
+          const rowOffset = row * radius * .72;
+          const surfaceOffset = Math.sqrt(Math.max(0, armSurfaceRadius ** 2 - rowOffset ** 2)) + .003;
+          suckerPosition.copy(center).addScaledVector(arm.normal, surfaceOffset).addScaledVector(arm.side, rowOffset);
+          suckerOrientation.setFromUnitVectors(suckerAxis, arm.normal);
+          const pulse = .96 + .04 * (1 + Math.sin(bodyPhase * .35 + arm.phaseOffset + sample * .61)) * .5 * effort;
+          const cupScale = radius / .034 * pulse;
           suckerScale.set(cupScale, cupScale, cupScale);
           suckerMatrix.compose(suckerPosition, suckerOrientation, suckerScale);
           suckers.setMatrixAt(instance++, suckerMatrix);
@@ -286,11 +361,12 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     const steering = clamp(turn, -1, 1);
     const stress = Math.max(jet, clamp(tetherLoad, 0, 1) * .18);
     skin.color.copy(normalSkinColor).lerp(stressSkinColor, stress * .16);
-    skin.roughness = .58 - stress * .035;
+    skin.roughness = .68 - stress * .025;
     for (let index = 0; index < arms.length; index++) updateArm(arms[index], index, phaseNow, exertion, jet, steering);
-    updateSuckers(phaseNow, exertion);
+    updateWeb();
+    updateSuckers(phaseNow, exertion, jet);
 
-    const breathing = Math.sin(phaseNow * .46) * (.012 + exertion * .008);
+    const breathing = Math.sin(phaseNow * .46) * (.024 + exertion * .01);
     mantle.scale.set(.73 * (1 + breathing), .43 * (1 + breathing), .4 * (1 + breathing));
     head.rotation.z = Math.sin(phaseNow * .16) * .025 + steering * .035;
     funnel.rotation.z = -Math.PI / 2 - .14 + jet * .18 + steering * .04;
