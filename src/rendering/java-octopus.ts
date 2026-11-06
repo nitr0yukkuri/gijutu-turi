@@ -120,7 +120,7 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   const funnelOuter = addMesh(funnelGeo, paleSkin, funnel, 'siphon-wall');
   funnelOuter.position.x = .015;
   const funnelRim = addMesh(new THREE.TorusGeometry(.083, .015, 7, lowDetail ? 12 : 20), paleSkin, funnel, 'siphon-rim');
-  funnelRim.rotation.x = Math.PI / 2;
+  funnelRim.rotation.x = -Math.PI / 2;
   funnelRim.position.x = .14;
   addMesh(new THREE.ConeGeometry(.072, .19, lowDetail ? 10 : 16, 1, true), funnelInner, funnel, 'siphon-interior')
     .position.x = .035;

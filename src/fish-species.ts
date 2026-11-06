@@ -151,7 +151,7 @@ const OCEAN_FISH_SPECIES: readonly FishSpeciesDefinition[] = [
     unknownTitle: "8本の腕を持つタコ",
     unknownHint: "腕を広げて周囲を探り、危険を感じると後ろへたたんで逃げる。",
     traits: ["8本の腕が別々に探る", "吸盤で触れて調べる", "漏斗噴射で短く逃げる"],
-    observation: "腕を同期した波で振るのではなく、探索する腕と体を支える腕がずれて動く。",
+    observation: "腕の動きはそろった反復運動ではなく、腕ごとに異なるタイミングで探索・移動する。",
     catalogStatus: "active",
   },
 ];
