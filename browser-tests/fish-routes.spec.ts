@@ -176,3 +176,12 @@ test("/complete shows every fish as a read-only showcase without opening game AP
   expect(apiRequests).toEqual([]);
   expect(sockets).toEqual([]);
 });
+
+
+test("/complete?species=java-001 opens the Java octopus preview directly", async ({ page }) => {
+  await page.goto("/complete?species=java-001");
+
+  await expect(page.locator(".complete-fish-card[aria-pressed=\"true\"]")).toContainText("Javaタコ");
+  await expect(page.getByRole("heading", { name: "Javaタコ", exact: true })).toBeVisible();
+  await expect(page.locator("#collection-model canvas")).toBeVisible();
+});
