@@ -7,7 +7,7 @@ import { createLazyModelRegistry } from './lazy-model-registry.js';
 /** Own species model loading, construction, and disposal for the ocean scene. */
 export function createOceanFishModels(scene, waterUniforms, createFishOrientationScratch) {
   let disposed=false;
-  let goFishModulePromise=null,dockerWhaleModulePromise=null,riverFishModulePromise=null,createGoFishModel=null;
+  let goFishModulePromise=null,dockerWhaleModulePromise=null,riverFishModulePromise=null,javaOctopusModulePromise=null,createGoFishModel=null;
   const optionalModelPreparation=new Set();
   const optionalModelTasks=[];
   let idleWorkHandle=null,idleWorkTimer=null,idleWorkScheduledAt=0;
@@ -40,6 +40,7 @@ export function createOceanFishModels(scene, waterUniforms, createFishOrientatio
   const loadGoFishModule=()=>goFishModulePromise??=(import('./go-fish.js').then(module=>{createGoFishModel=module.createGoFish;return module;}).catch(error=>{goFishModulePromise=null;throw error;}));
   const loadDockerWhaleModule=()=>dockerWhaleModulePromise??=(import('./docker-whale.js').catch(error=>{dockerWhaleModulePromise=null;throw error;}));
   const loadRiverFishModule=()=>riverFishModulePromise??=(import('./river-fish-model.js').catch(error=>{riverFishModulePromise=null;throw error;}));
+  const loadJavaOctopusModule=()=>javaOctopusModulePromise??=(import('./java-octopus.js').catch(error=>{javaOctopusModulePromise=null;throw error;}));
 
   // Empty slots retain the original species order for transparent sorting.
   const fightModelSlots={
@@ -48,6 +49,7 @@ export function createOceanFishModels(scene, waterUniforms, createFishOrientatio
     'css-001':new THREE.Group(),
     'rust-001':new THREE.Group(),
     'js-001':new THREE.Group(),
+    'java-001':new THREE.Group(),
   };
   for(const design of RIVER_FISH_DESIGNS)fightModelSlots[design.id]=new THREE.Group();
   for(const slot of Object.values(fightModelSlots)){slot.renderOrder=4;scene.add(slot);}
@@ -71,6 +73,7 @@ export function createOceanFishModels(scene, waterUniforms, createFishOrientatio
     'css-001':async()=>{const {createGoFish}=await loadGoFishModule();return prepareFightModel('css-001',createGoFish({detail:'high',phase:.7,waterUniforms,visualProfile:'css'}));},
     'rust-001':async()=>{const {createGoFish}=await loadGoFishModule();return prepareFightModel('rust-001',createGoFish({detail:'high',phase:.7,waterUniforms,visualProfile:'rust'}));},
     'js-001':async()=>{const {createGoFish}=await loadGoFishModule();return prepareFightModel('js-001',createGoFish({detail:'high',phase:.7,waterUniforms,visualProfile:'eel'}));},
+    'java-001':async()=>{const {createJavaOctopus}=await loadJavaOctopusModule();return prepareFightModel('java-001',createJavaOctopus({detail:'high',phase:.7,waterUniforms}));},
   });
   const riverFightModels=createLazyModelRegistry(Object.fromEntries(RIVER_FISH_DESIGNS.map(design=>[design.id,async()=>{
     const {createRiverFish}=await loadRiverFishModule();
@@ -81,6 +84,7 @@ export function createOceanFishModels(scene, waterUniforms, createFishOrientatio
   const cssFish=()=>fightModels.peek('css-001');
   const rustFish=()=>fightModels.peek('rust-001');
   const jsEel=()=>fightModels.peek('js-001');
+  const javaOctopus=()=>fightModels.peek('java-001');
 
   let cssFishAfterimages=[],cssFishAfterimagesPromise=null;
   const createNextCssFishAfterimage=()=>{
@@ -158,7 +162,7 @@ export function createOceanFishModels(scene, waterUniforms, createFishOrientatio
     return clusterEchoesPromise;
   };
 
-  const fightModelFor=fishId=>fishId==='k8s-001'?clusterFish:typeof fishId==='string'&&fishId.startsWith('river-')?riverFightModels.peek(fishId):fightModels.peek(fishId==='whale-001'||fishId==='css-001'||fishId==='rust-001'||fishId==='js-001'?fishId:'fish-001');
+  const fightModelFor=fishId=>fishId==='k8s-001'?clusterFish:typeof fishId==='string'&&fishId.startsWith('river-')?riverFightModels.peek(fishId):fightModels.peek(fishId==='whale-001'||fishId==='css-001'||fishId==='rust-001'||fishId==='js-001'||fishId==='java-001'?fishId:'fish-001');
   const scheduleOptionalModelPreparation=fishId=>{
     if(optionalModelPreparation.has(fishId))return;
     const createNext=fishId==='fish-001'?createNextSchoolFish:fishId==='k8s-001'?createNextClusterEcho:fishId==='css-001'?createNextCssFishAfterimage:null;
@@ -180,7 +184,7 @@ export function createOceanFishModels(scene, waterUniforms, createFishOrientatio
     const request=(async()=>{
       if(fishId==='k8s-001')await ensureClusterFish();
       else if(typeof fishId==='string'&&fishId.startsWith('river-'))await riverFightModels.load(fishId);
-      else await fightModels.load(fishId==='whale-001'||fishId==='css-001'||fishId==='rust-001'||fishId==='js-001'?fishId:'fish-001');
+      else await fightModels.load(fishId==='whale-001'||fishId==='css-001'||fishId==='rust-001'||fishId==='js-001'||fishId==='java-001'?fishId:'fish-001');
       scheduleOptionalModelPreparation(fishId);
     })();
     fightModelRequests.set(fishId,request);
@@ -189,7 +193,7 @@ export function createOceanFishModels(scene, waterUniforms, createFishOrientatio
   };
 
   return {
-    fightFish,dockerWhale,cssFish,rustFish,jsEel,fightModelFor,requestFightModel,
+    fightFish,dockerWhale,cssFish,rustFish,jsEel,javaOctopus,fightModelFor,requestFightModel,
     ensureCssFishAfterimages,ensureClusterFish,ensureSchoolFish,ensureClusterEchoes,
     get cssFishAfterimages(){return cssFishAfterimages;},
     get clusterFish(){return clusterFish;},
