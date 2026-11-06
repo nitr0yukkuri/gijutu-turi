@@ -65,6 +65,7 @@ export const TECH_TREE_BRANCHES: readonly TechTreeBranch[] = [
 export const TECH_TREE_FISH_LINKS: readonly TechTreeFishLink[] = [
   { id: "systems", from: "fish-001", to: "rust-001", route: "direct" },
   { id: "presentation", from: "css-001", to: "js-001", route: "bridge" },
+  { id: "concurrency", from: "js-001", to: "java-001", route: "direct" },
   { id: "operations", from: "whale-001", to: "k8s-001", route: "direct" },
   { id: "river-concurrency", from: "river-ayu", to: "river-ugui", route: "direct" },
   { id: "river-systems", from: "river-yamame", to: "river-koi", route: "direct" },
