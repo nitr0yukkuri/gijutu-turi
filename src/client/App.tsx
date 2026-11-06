@@ -494,8 +494,15 @@ function CompleteFishBook({ selectedId, onSelect }: { selectedId: string; onSele
   </section>;
 }
 
+function initialShowcaseFishId(): string {
+  const requestedId = new URLSearchParams(window.location.search).get("species");
+  return COMPLETE_SHOWCASE_COLLECTION.entries.find(entry => entry.id === requestedId)?.id
+    ?? COMPLETE_SHOWCASE_COLLECTION.entries[0]?.id
+    ?? "fish-001";
+}
+
 function CompleteShowcasePage() {
-  const [selectedId, setSelectedId] = useState(COMPLETE_SHOWCASE_COLLECTION.entries[0]?.id ?? "fish-001");
+  const [selectedId, setSelectedId] = useState(initialShowcaseFishId);
   const [activeView, setActiveView] = useState<"fish" | "tech">("fish");
 
   useEffect(() => {
