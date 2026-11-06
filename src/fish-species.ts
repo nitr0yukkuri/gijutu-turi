@@ -210,5 +210,5 @@ export const nextFishSpeciesId = (current: FishSpeciesId, catches: number, water
     const index = active.findIndex(species => species.id === current);
     return active[(index + 1) % active.length]!.id;
   }
-  return ({ "fish-001": "whale-001", "whale-001": "rust-001", "rust-001": "js-001", "js-001": "fish-001", "css-001": "fish-001", "k8s-001": "fish-001" } as const)[current as OceanFishSpeciesId] ?? active[0]!.id;
+  return ({ "fish-001": "whale-001", "whale-001": "rust-001", "rust-001": "js-001", "js-001": "java-001", "java-001": "fish-001", "css-001": "fish-001", "k8s-001": "fish-001" } as const)[current as OceanFishSpeciesId] ?? active[0]!.id;
 };
