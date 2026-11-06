@@ -116,3 +116,7 @@ jobs:
           done
           curl --fail --show-error --silent "$WORKER_URL/" -o "$RUNNER_TEMP/gijutu-turi-index.html"
           grep -qi '<html' "$RUNNER_TEMP/gijutu-turi-index.html"
+          curl --fail --show-error --silent "$WORKER_URL/complete?species=java-001" -o "$RUNNER_TEMP/java-octopus-showcase.html"
+          grep -qi '<html' "$RUNNER_TEMP/java-octopus-showcase.html"
+          curl --fail --show-error --silent "$WORKER_URL/javatako" -o "$RUNNER_TEMP/java-octopus-fishing.html"
+          grep -qi '<html' "$RUNNER_TEMP/java-octopus-fishing.html"
