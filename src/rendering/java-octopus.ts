@@ -322,7 +322,7 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     webGeometry.computeVertexNormals();
   };
 
-  const updateSuckers = (bodyPhase, effort) => {
+  const updateSuckers = (bodyPhase, effort, jet) => {
     let instance = 0;
     for (let armIndex = 0; armIndex < arms.length; armIndex++) {
       const arm = arms[armIndex];
@@ -334,8 +334,11 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
         arm.normal.copy(ventral).addScaledVector(arm.tangent, -ventral.dot(arm.tangent)).normalize();
         arm.side.crossVectors(arm.tangent, arm.normal).normalize();
         const radius = .034 * (1 - along * .38) * (1 + .04 * Math.sin(bodyPhase * .4 + arm.phaseOffset));
+        const armSurfaceRadius = (.13 * (1 - along) ** 1.18 + .02) * (1 - jet * .08);
         for (const row of [-1, 1]) {
-          suckerPosition.copy(center).addScaledVector(arm.normal, radius * .55).addScaledVector(arm.side, row * radius * .58);
+          const rowOffset = row * radius * .72;
+          const surfaceOffset = Math.sqrt(Math.max(0, armSurfaceRadius ** 2 - rowOffset ** 2)) + .003;
+          suckerPosition.copy(center).addScaledVector(arm.normal, surfaceOffset).addScaledVector(arm.side, rowOffset);
           suckerOrientation.setFromUnitVectors(suckerAxis, arm.normal);
           const pulse = .96 + .04 * (1 + Math.sin(bodyPhase * .35 + arm.phaseOffset + sample * .61)) * .5 * effort;
           const cupScale = radius / .034 * pulse;
@@ -362,7 +365,7 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     skin.roughness = .68 - stress * .025;
     for (let index = 0; index < arms.length; index++) updateArm(arms[index], index, phaseNow, exertion, jet, steering);
     updateWeb();
-    updateSuckers(phaseNow, exertion);
+    updateSuckers(phaseNow, exertion, jet);
 
     const breathing = Math.sin(phaseNow * .46) * (.024 + exertion * .01);
     mantle.scale.set(.73 * (1 + breathing), .43 * (1 + breathing), .4 * (1 + breathing));
