@@ -231,6 +231,15 @@ export const K8S_LEVIATHAN_WATER_PROFILE: FishWaterProfile = {
   bodyLightMin: .40, bodyLightMax: .62, finLight: .46, lightPartLight: .64, detailPartLight: .14, cargoPartLight: .30,
 };
 
+// Java octopus pigment needs a stronger local visibility budget: red wavelengths
+// attenuate quickly in seawater, while the animal's warm skin remains legible.
+export const JAVA_OCTOPUS_WATER_PROFILE: FishWaterProfile = {
+  floor: .38, surface: .42, clearDepth: 3.0, falloff: .22, near: 40, far: 92,
+  rangeLoss: .64, fin: .92, light: .38, detail: .28,
+  cargo: .36,
+  bodyLightMin: .62, bodyLightMax: .76, finLight: .52, lightPartLight: .72, detailPartLight: .24, cargoPartLight: .28,
+};
+
 const FIN_VIEW_BLEND_START = -.22;
 const FIN_VIEW_BLEND_END = .22;
 const FAR_FIN_COVERAGE_REDUCTION = .22;
@@ -322,7 +331,7 @@ vec3 throughWater(vec3 fishColor) {
 export function applyFishWater(material, waterUniforms, part='detail', profile=DEFAULT_FISH_WATER_PROFILE, finSide=0) {
   const compile=material.onBeforeCompile;
   const cacheKey=material.customProgramCacheKey();
-  const underwaterVersion=profile===DOCKER_WHALE_WATER_PROFILE?'underwater-docker-consistent-v1':'underwater-consistent-v2';
+  const underwaterVersion=profile===DOCKER_WHALE_WATER_PROFILE?'underwater-docker-consistent-v1':profile===JAVA_OCTOPUS_WATER_PROFILE?'underwater-java-octopus-v1':'underwater-consistent-v2';
   const originallyToneMapped=material.toneMapped;
   material.onBeforeCompile=shader=>{
     compile.call(material,shader);

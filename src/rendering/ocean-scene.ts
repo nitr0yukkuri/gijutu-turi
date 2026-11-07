@@ -21,6 +21,7 @@ import { K8S_SURFACE_BODY_PROBES, k8sSurfaceWakeStrength, updateK8sSurfaceExposu
 import { OceanPresentationTimeline } from '../ocean-presentation-timeline.js';
 import { copyFishMotion as copyFish, interpolateFishPresentationState } from './fish-presentation-state.js';
 import { createOceanFishModels } from './ocean-fish-models.js';
+import { createOctopusInkEffect } from './octopus-ink.js';
 import { createRiverEnvironment } from './river-environment.js';
 import { riverChannelGLSL } from './river-channel.js';
 import { RIVER_BANK_VIEW, riverBankViewGLSL } from './river-bank-view.js';
@@ -409,6 +410,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   let portraitBlend=0;
   let riverCameraBlend=waterway==='river'?1:0;
   const scene=new THREE.Scene();
+  const octopusInk=createOctopusInkEffect(scene);
   const backgroundScene=new THREE.Scene();
   const screenCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
   const ripples=Array.from({length:6},()=>new THREE.Vector4(0,0,-100,0));
@@ -705,6 +707,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const tackleStore=new TackleStateStore();
   let time=0,lastFrame=0,lastRenderedFrame=0,overlayOpen=false,fightTackleForeground=false,landedRevision=-1,splashAt=-100,rodStrokeAt=-100,sprayPower=1,rippleIndex=0,charge=0,chargeAim=0,lastWake=0,lastStroke=0,reelPhase=0;
   let marlinSurfaceExposed=false;
+  let javaInkWasSurging=false,javaInkBursts=0;
+  const javaInkOrigin=new THREE.Vector3(),javaInkDirection=new THREE.Vector3();
   let serverOffset=0,cameraProgress=0,frame,catchOrigin=null,displayedWave=null,displayedGlow=.65,displayedSwim=null,displayedLoad=0,displayedRodLoad=0,displayedFishVisibility=0,escapeStartVisibility=0,hookImpactAt=-100;
   let dockerRodSurgeAt=-100,wasDockerSurging=false,displayedDockerSurgeLoad=0;
   let fishShaderWarmupTimer:ReturnType<typeof setTimeout>|null=null;
@@ -794,7 +798,10 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if(ownsPresentationTimeline)presentationTimeline.push(next,Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset);
     tackleStore.update(next,Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset);
     const previousPhase=state.phase,changed=next.revision!==state.revision;
-    if(next.phase==='fighting'&&previousPhase!=='fighting')k8sFirstBreachPlayed=false;
+    if(next.phase==='fighting'&&previousPhase!=='fighting'){
+      k8sFirstBreachPlayed=false;
+      javaInkWasSurging=false;javaInkBursts=0;octopusInk.reset();
+    }
     if(next.phase==='escaped'&&previousPhase!=='escaped'){
       // A newly connected display may receive the escaped snapshot without
       // having rendered the bite/fight first. Keep its silhouette readable.
@@ -1238,7 +1245,20 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         displayedWave={...fish.bodyWave};displayedGlow=approaching?THREE.MathUtils.lerp(.04,.65,state.phase==='waiting'?0:biteReveal):escapePresentation?.8:urgent?.8:.65;displayedSwim=fish.swim?{...fish.swim}:null;displayedLoad=cues.load;
         // The body material and water optics stay fixed; only the existing
         // visibility reveal and short movement/attack cues change over time.
-        activeFightFish.update(time,{power:THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1),glow:state.fishId==='whale-001'||state.fishId==='rust-001'?displayedGlow*.76:state.fishId==='js-001'?displayedGlow*.78:displayedGlow,bodyPhase:fish.bodyWave.phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,amplitude:fish.bodyWave.amplitude,turn:fish.swim?.turn||0,effort:escapePresentation?1:fish.swim?.effort||.2,tetherLoad:cues.load,cargoMoment:state.fishId==='whale-001'&&state.phase==='fighting'&&state.mode==='surge',visibility:renderedFishVisibility,styleDelta:dt});
+        const javaJetSurge=state.fishId==='java-001'&&state.phase==='fighting'&&visualMode==='surge';
+        const renderedPower=THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1);
+        const renderedEffort=escapePresentation?1:fish.swim?.effort||.2;
+        activeFightFish.update(time,{power:javaJetSurge?Math.max(renderedPower,.92):renderedPower,glow:state.fishId==='whale-001'||state.fishId==='rust-001'?displayedGlow*.76:state.fishId==='js-001'?displayedGlow*.78:displayedGlow,bodyPhase:fish.bodyWave.phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,amplitude:fish.bodyWave.amplitude,turn:fish.swim?.turn||0,effort:javaJetSurge?Math.max(renderedEffort,.9):renderedEffort,tetherLoad:cues.load,cargoMoment:state.fishId==='whale-001'&&state.phase==='fighting'&&state.mode==='surge',visibility:renderedFishVisibility,styleDelta:dt});
+        if(state.fishId==='java-001'&&state.phase==='fighting'&&currentJavaOctopus?.group.visible){
+          const isSurging=visualMode==='surge';
+          if(isSurging&&!javaInkWasSurging&&javaInkBursts<2){
+            currentJavaOctopus.getInkEjectionPoint(javaInkOrigin,javaInkDirection);
+            if(octopusInk.trigger(javaInkOrigin,javaInkDirection))javaInkBursts++;
+          }
+          javaInkWasSurging=isSurging;
+        }else if(state.fishId!=='java-001'||state.phase!=='fighting'){
+          javaInkWasSurging=false;
+        }
         if(cssFishTrailActive)rememberCssFishPose(now,fish);
       }
     }
@@ -1513,6 +1533,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       for(let i=0;i<36;i++){const v=dropSpeeds[i];drops[i*3]=sprayOrigin.x+v.x*age*sprayImpulse;drops[i*3+1]=sprayOrigin.y+Math.max(0,v.y*sprayImpulse*age-2.9*age*age);drops[i*3+2]=sprayOrigin.z+v.z*age*sprayImpulse;}
       dropletGeo.attributes.position.needsUpdate=true;spray.material.size=.045+Math.max(0,sprayPower-1)*.012;spray.material.opacity=Math.max(0,1-age/sprayLife);
     }
+    octopusInk.update(dt*(reduced?.15:1),renderer.domElement.height,camera.fov);
     const riverVisible=selectedWaterway==='river'&&riverEnvironment;
     if(riverVisible){riverEnvironment.update(time);riverEnvironment.renderReflection(renderer,camera);}
     if(fishShowing){
@@ -1527,7 +1548,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     // renderer.clear() above already cleared the default framebuffer depth;
     // the background water quad has depthTest/depthWrite disabled, so no 3D
     // object can dirty it before the scene pass.
-    if(active||fishShowing||charge>0)renderer.render(scene,camera);
+    if(active||fishShowing||charge>0||octopusInk.active)renderer.render(scene,camera);
     if(!mount.dataset.ready)mount.dataset.ready='true';
   };
   const setWaterway=(value:Waterway)=>{
@@ -1551,5 +1572,5 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   };
 
   frame=requestAnimationFrame(render);
-    return {setState,setCharge,setWaterway,setWeather,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){sceneDisposed=true;riverEnvironment?.dispose();emptyRiverReflection.dispose();cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fishModelStore.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
+    return {setState,setCharge,setWaterway,setWeather,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){sceneDisposed=true;octopusInk.dispose();riverEnvironment?.dispose();emptyRiverReflection.dispose();cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fishModelStore.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
 }
