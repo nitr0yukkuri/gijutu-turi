@@ -1,7 +1,7 @@
 // @ts-nocheck -- procedural GPU particles at the vendored Three.js boundary.
 import * as THREE from '../../vendor/three.module.js';
 
-const PARTICLES_PER_BURST = 96;
+const PARTICLES_PER_BURST = 144;
 const MAX_BURSTS = 1;
 const PARTICLE_CAPACITY = PARTICLES_PER_BURST * MAX_BURSTS;
 const PARTICLE_LIFETIME = 4.8;
@@ -106,37 +106,39 @@ export function createOctopusInkEffect(scene) {
   let burstCount = 0;
   let activeParticles = 0;
   let disposed = false;
-
   const setParticle = (index, origin, seed, ordinal) => {
-    const core = ordinal < 20;
-    const trailing = ordinal >= 72;
-    const radial = Math.sqrt(random01(seed + 1.3)) * (core ? 0.035 : trailing ? 0.12 : 0.08);
+    // Keep a small, dense nucleus while distributing most ink into an
+    // elongated, low-density smoke screen behind the fleeing animal.
+    const core = ordinal < 12;
+    const middle = ordinal >= 12 && ordinal < 64;
+    const radial = Math.sqrt(random01(seed + 1.3)) * (core ? 0.12 : middle ? 0.4 : 0.72);
     const angle = random01(seed + 2.7) * Math.PI * 2;
-    const axial = random01(seed + 3.9) * (core ? 0.08 : trailing ? 0.44 : 0.25);
-    const offsetSide = radial * Math.cos(angle);
-    const offsetUp = radial * Math.sin(angle);
+    const radialSide = Math.cos(angle);
+    const radialUp = Math.sin(angle);
+    const axial = random01(seed + 3.9) * (core ? 0.06 : middle ? 0.42 : 0.98);
     const particle = particles[index];
     particle.position.copy(origin)
       .addScaledVector(forward, axial)
-      .addScaledVector(side, offsetSide)
-      .addScaledVector(up, offsetUp);
-    const lateral = (random01(seed + 5.1) - 0.5) * 0.12;
-    const vertical = (random01(seed + 6.4) - 0.5) * 0.10;
-    particle.velocity.copy(forward).multiplyScalar(0.54 + random01(seed + 7.8) * 0.34)
-      .addScaledVector(side, lateral)
-      .addScaledVector(up, vertical + 0.01);
+      .addScaledVector(side, radial * radialSide)
+      .addScaledVector(up, radial * radialUp);
+    const outward = core ? 0.1 : middle ? 0.28 : 0.52 + random01(seed + 5.1) * 0.18;
+    const lateralNoise = (random01(seed + 6.4) - 0.5) * 0.12;
+    const verticalNoise = (random01(seed + 7.8) - 0.5) * 0.1;
+    particle.velocity.copy(forward).multiplyScalar(core ? 0.22 : middle ? 0.42 + random01(seed + 8.9) * 0.18 : 0.62 + random01(seed + 9.7) * 0.24)
+      .addScaledVector(side, radialSide * outward + lateralNoise)
+      .addScaledVector(up, radialUp * outward + verticalNoise);
     particle.age = 0;
-    particle.lifetime = 3.4 + random01(seed + 8.9) * 1.2;
-    particle.seed = random01(seed + 9.2);
+    particle.lifetime = 3.8 + random01(seed + 10.1) * 1.0;
+    particle.seed = random01(seed + 11.2);
     particle.baseSize = core
-      ? 0.40 + random01(seed + 10.5) * 0.16
-      : trailing ? 0.16 + random01(seed + 10.5) * 0.12 : 0.25 + random01(seed + 10.5) * 0.17;
+      ? 0.18 + random01(seed + 12.5) * 0.1
+      : middle ? 0.11 + random01(seed + 12.5) * 0.08 : 0.07 + random01(seed + 12.5) * 0.08;
     particle.baseAlpha = core
-      ? 0.92
-      : trailing ? 0.36 + random01(seed + 11.6) * 0.12 : 0.56 + random01(seed + 11.6) * 0.18;
+      ? 0.52 + random01(seed + 13.6) * 0.14
+      : middle ? 0.25 + random01(seed + 13.6) * 0.13 : 0.11 + random01(seed + 13.6) * 0.13;
 
-    const tint = new THREE.Color(core ? 0x120e0d : trailing ? 0x352723 : 0x241916);
-    tint.lerp(new THREE.Color(0x493630), random01(seed + 12.7) * (core ? 0.06 : 0.20));
+    const tint = new THREE.Color(core ? 0x130e0c : middle ? 0x211714 : 0x30231f);
+    tint.lerp(new THREE.Color(0x493630), random01(seed + 14.7) * (core ? 0.05 : 0.12));
     const offset = index * 3;
     tints[offset] = tint.r;
     tints[offset + 1] = tint.g;
@@ -163,7 +165,7 @@ export function createOctopusInkEffect(scene) {
       positions[offset] = particle.position.x;
       positions[offset + 1] = particle.position.y;
       positions[offset + 2] = particle.position.z;
-      sizes[index] = particle.baseSize;
+      sizes[index] = particle.baseSize * 0.66;
       alphas[index] = 0;
     }
     burstCount++;
@@ -198,13 +200,13 @@ export function createOctopusInkEffect(scene) {
       }
       const age = particle.age;
       const progress = age / particle.lifetime;
-      particle.velocity.x += Math.sin(age * 2.2 + particle.seed * 9.0) * 0.052 * dt;
-      particle.velocity.y += (0.012 + Math.cos(age * 1.7 + particle.seed * 7.0) * 0.024) * dt;
-      particle.velocity.z += Math.cos(age * 2.0 + particle.seed * 11.0) * 0.055 * dt;
+      particle.velocity.x += Math.sin(age * 1.7 + particle.seed * 9.0) * 0.11 * dt;
+      particle.velocity.y += (Math.cos(age * 1.3 + particle.seed * 7.0) * 0.085 + 0.012) * dt;
+      particle.velocity.z += Math.cos(age * 1.9 + particle.seed * 11.0) * 0.12 * dt;
       particle.position.addScaledVector(particle.velocity, dt);
-      particle.velocity.multiplyScalar(Math.exp(-0.48 * dt));
-      alphas[index] = particle.baseAlpha * smoothstep(0, 0.045, age) * (1 - smoothstep(0.62, 1, progress));
-      sizes[index] = particle.baseSize * (1 + progress * 0.82);
+      particle.velocity.multiplyScalar(Math.exp(-0.28 * dt));
+      alphas[index] = particle.baseAlpha * smoothstep(0, 0.08, age) * (1 - smoothstep(0.58, 1, progress)) / (1 + progress * 0.55);
+      sizes[index] = particle.baseSize * (0.66 + progress * 2.0);
       const offset = index * 3;
       positions[offset] = particle.position.x;
       positions[offset + 1] = particle.position.y;
