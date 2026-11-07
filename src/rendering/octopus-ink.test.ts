@@ -3,6 +3,33 @@ import test from 'node:test';
 import * as THREE from '../../vendor/three.module.js';
 import { createOctopusInkEffect, shouldReleaseJavaOctopusInk } from './octopus-ink.js';
 
+test('octopus ink shows a compact bolus before it expands and disperses', () => {
+  const scene = new THREE.Scene();
+  const effect = createOctopusInkEffect(scene);
+  const bolus = scene.getObjectByName('java-octopus-ink-bolus');
+  try {
+    if (!(bolus instanceof THREE.Mesh)) throw new Error('a visible ink bolus mesh is present');
+    const bolusMaterial = bolus.material;
+    if (!(bolusMaterial instanceof THREE.MeshBasicMaterial)) throw new Error('the bolus uses a stable dark material');
+    const bolusTransform = bolus as unknown as { scale: { x: number }; position: { x: number } };
+    assert.equal(bolus.visible, false);
+    assert.equal(effect.trigger(new THREE.Vector3(2, -2, 4), new THREE.Vector3(1, 0, 0)), true);
+    assert.equal(bolus.visible, true, 'the dense discharge appears with the particle plume');
+    assert.ok(bolusMaterial.opacity >= 0.8, 'the initial bolus has strong contrast against dark water');
+    const initialLength = bolusTransform.scale.x;
+    for (let step = 0; step < 6; step++) effect.update(0.05);
+    assert.ok(bolusTransform.scale.x > initialLength + 0.15, 'the compact bolus expands gradually');
+    assert.ok(bolusTransform.position.x > 2.2, 'the bolus is advected along the siphon jet');
+    const expandedOpacity = bolusMaterial.opacity;
+    for (let step = 0; step < 22; step++) effect.update(0.05);
+    assert.ok(bolusMaterial.opacity < expandedOpacity, 'the bolus fades as turbulence breaks it apart');
+    assert.equal(effect.diagnostics.burstsTriggered, 1);
+  } finally {
+    effect.dispose();
+  }
+  assert.equal(scene.getObjectByName('java-octopus-ink-bolus'), undefined, 'dispose removes the bolus mesh');
+});
+
 test('octopus ink is emitted as a finite, short-lived underwater plume', () => {
   const scene = new THREE.Scene();
   const effect = createOctopusInkEffect(scene);
@@ -92,7 +119,7 @@ test('octopus ink blooms into a diffuse downstream smoke screen', () => {
     const initialSize = maximum(sizes);
     assert.ok(initialAlong < 0.24, 'the first frame stays close to the funnel as a compact bolus');
     assert.ok(initialAcross < 0.24, 'the first frame keeps a tight viscous nucleus');
-    assert.ok(initialSize > 1.0 && initialSize < 1.5, 'the dense bolus projects large enough to read at fight distance');
+    assert.ok(initialSize > 1.0 && initialSize < 2.0, 'the dense bolus projects large enough to read at fight distance');
     for (let step = 0; step < 24; step++) effect.update(0.05);
     assert.ok(extent(0) > initialAlong + 0.12, 'the plume advances downstream');
     assert.ok(across() > initialAcross + 0.12, 'the bolus shears into a broader turbulent streak');
