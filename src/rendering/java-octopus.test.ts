@@ -21,7 +21,16 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     assert.ok(headMaterial.color.r > .75, 'red skin remains bright enough after sRGB conversion');
     assert.ok(headMaterial.color.r > headMaterial.color.g * 5, 'skin pigment stays strongly red');
     assert.ok(headMaterial.emissive.r > headMaterial.emissive.g * 6, 'subtle pigment compensation emits red rather than cyan');
-    assert.ok(headMaterial.emissiveIntensity >= .27, 'red pigment remains readable at the neutral swim state');
+    assert.ok(headMaterial.emissiveIntensity >= .17, 'red pigment remains readable without making the body glow');
+    assert.ok(headMaterial.bumpMap instanceof THREE.Texture, 'skin has a subtle physical surface relief map');
+    assert.ok(headMaterial.bumpScale >= .01 && headMaterial.bumpScale <= .025, 'micro-relief remains subtle at fight distance');
+    const iris = octopus.group.getObjectByName('eye-iris');
+    assert.ok(iris instanceof THREE.Mesh, 'the visible eye has a separate warm iris');
+    const pupil = octopus.group.getObjectByName('eye-pupil');
+    assert.ok(pupil instanceof THREE.Mesh, 'the eye keeps a distinct horizontal pupil');
+    const suckers = octopus.group.getObjectByName('sucker-cups');
+    assert.ok(suckers instanceof THREE.InstancedMesh);
+    assert.equal(suckers.count, 160, 'mobile quality keeps two visible rows along all eight arms');
     const pigmentImage = headMaterial.map?.image as { data?: Uint8Array } | undefined;
     const pigmentPixels = pigmentImage?.data;
     if (!pigmentPixels || pigmentPixels.length === 0) {
@@ -52,22 +61,24 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     assert.ok(positionAttribute, 'arm geometry exposes a position buffer');
     assert.ok(uvAttribute, 'procedural skin texture has UVs on the arms');
     assert.equal(uvAttribute.count, positionAttribute.count, 'every arm vertex has a texture coordinate');
-    const radialStride = Math.round(positionAttribute.count / 13);
-    const rootCenter = (armName: string) => {
+    const radialStride = Math.round(positionAttribute.count / 15);
+    const centerAt = (armName: string, ring: number) => {
       const mesh = octopus.group.getObjectByName(armName);
       if (!(mesh instanceof THREE.Mesh)) throw new Error(`${armName} mesh is missing`);
       const ringPosition = mesh.geometry.getAttribute('position');
       if (!ringPosition) throw new Error(`${armName} position buffer is missing`);
       const data = ringPosition.array as Float32Array;
-      const count = Math.round(ringPosition.count / 13);
+      const stride = Math.round(ringPosition.count / 15);
       const result = new THREE.Vector3();
-      for (let index = 0; index < count; index++) {
-        result.x += data[index * 3] ?? 0;
-        result.y += data[index * 3 + 1] ?? 0;
-        result.z += data[index * 3 + 2] ?? 0;
+      for (let index = 0; index < stride; index++) {
+        const offset = (ring * stride + index) * 3;
+        result.x += data[offset] ?? 0;
+        result.y += data[offset + 1] ?? 0;
+        result.z += data[offset + 2] ?? 0;
       }
-      return result.multiplyScalar(1 / count);
+      return result.multiplyScalar(1 / stride);
     };
+    const rootCenter = (armName: string) => centerAt(armName, 0);
     const rootCenters = Array.from({ length: 8 }, (_, index) => rootCenter(`arm-${index + 1}`));
     for (let first = 0; first < rootCenters.length; first++) {
       for (let second = first + 1; second < rootCenters.length; second++) {
@@ -77,7 +88,7 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     const uvValues = uvAttribute.array;
     assert.ok(Math.min(...uvValues) <= 0 && Math.max(...uvValues) >= 1, 'the seam wraps cleanly across the arm texture');
     const positions = positionAttribute.array as Float32Array;
-    for (let ring = 0; ring <= 12; ring++) {
+    for (let ring = 0; ring <= 14; ring++) {
       const first = ring * radialStride * 3;
       const last = (ring * radialStride + radialStride - 1) * 3;
       const firstPoint = new THREE.Vector3(positions[first] ?? 0, positions[first + 1] ?? 0, positions[first + 2] ?? 0);
@@ -87,9 +98,18 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     const resting = Array.from(positions);
     octopus.update(1, { power: 1, effort: 1, tetherLoad: 0.8 });
     assert.notDeepEqual(Array.from(positions), resting, 'arms react to the jet and tension instead of freezing');
+    const armStart = centerAt('arm-1', 0);
+    const armEnd = centerAt('arm-1', 14);
+    let maximumChordDeviation = 0;
+    for (let ring = 1; ring < 14; ring++) {
+      const center = centerAt('arm-1', ring);
+      const straightPoint = armStart.clone().lerp(armEnd, ring / 14);
+      maximumChordDeviation = Math.max(maximumChordDeviation, center.distanceTo(straightPoint));
+    }
+    assert.ok(maximumChordDeviation > .16, 'the arm develops a visible localized bend instead of staying needle-straight');
     const tipCenter = (data: Float32Array) => {
       const result = new THREE.Vector3();
-      const start = 12 * radialStride;
+      const start = 14 * radialStride;
       for (let index = start; index < start + radialStride; index++) {
         result.x += data[index * 3] ?? 0;
         result.y += data[index * 3 + 1] ?? 0;
@@ -105,7 +125,7 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
       return total / count;
     };
     const tip = tipCenter(positions);
-    assert.ok(ringRadius(positions, tip, 12 * radialStride, radialStride) < .015, 'arm ends taper to soft points');
+    assert.ok(ringRadius(positions, tip, 14 * radialStride, radialStride) < .015, 'arm ends taper to soft points');
   } finally {
     octopus.dispose();
   }
