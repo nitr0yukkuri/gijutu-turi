@@ -13,12 +13,18 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     assert.equal(point.direction, direction);
     assert.ok([origin.x, origin.y, origin.z, direction.x, direction.y, direction.z].every(Number.isFinite));
     assert.ok(direction.x > 0.9, 'siphon exhaust points backward from the head');
+
     const head = octopus.group.getObjectByName('head');
-    assert.ok(head.material.color.r > head.material.color.g * 1.5, 'skin pigment remains visibly red');
+    assert.ok(head instanceof THREE.Mesh, 'octopus head mesh exists');
+    const headMaterial = Array.isArray(head.material) ? head.material[0] : head.material;
+    assert.ok(headMaterial instanceof THREE.MeshStandardMaterial, 'head uses a lit surface material');
+    assert.ok(headMaterial.color.r > headMaterial.color.g * 1.5, 'skin pigment remains visibly red');
+
     const arm = octopus.group.getObjectByName('arm-1');
+    assert.ok(arm instanceof THREE.Mesh, 'animated arm mesh exists');
     const positions = arm.geometry.attributes.position.array;
     const resting = Array.from(positions);
-    octopus.update(1, { bodyPhase: 2.4, power: 1, effort: 1, tetherLoad: 0.8 });
+    octopus.update(1, { power: 1, effort: 1, tetherLoad: 0.8 });
     assert.notDeepEqual(Array.from(positions), resting, 'arms react to the jet and tension instead of freezing');
   } finally {
     octopus.dispose();
