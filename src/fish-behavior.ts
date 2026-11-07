@@ -467,6 +467,8 @@ const K8S_LEVIATHAN_PROFILE: FishFightProfile = {
   modeAt: k8sModeAt,
 };
 
+export const JAVA_OCTOPUS_FIRST_DEFENSIVE_SURGE_SECONDS = 1.55;
+
 const JAVA_OCTOPUS_MODE_AT = (fightTime: number, finale: number): { mode: FishFightMode; school: number } => {
   if (finale >= 0) {
     if (finale < .72) return { mode: "warning", school: 1 };
@@ -475,7 +477,8 @@ const JAVA_OCTOPUS_MODE_AT = (fightTime: number, finale: number): { mode: FishFi
   }
   if (fightTime < .8) return { mode: "surge", school: 1 };
   if (fightTime < 1.05) return { mode: "warning", school: 1 };
-  const pulse = fightTime >= 3.1 && (fightTime - 3.1) % 5.4 < 1.05;
+  const pulse = fightTime >= JAVA_OCTOPUS_FIRST_DEFENSIVE_SURGE_SECONDS
+    && (fightTime - JAVA_OCTOPUS_FIRST_DEFENSIVE_SURGE_SECONDS) % 5.4 < 1.05;
   return { mode: pulse ? "surge" : "rest", school: 1 };
 };
 

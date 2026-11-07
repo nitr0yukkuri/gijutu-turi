@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as THREE from '../../vendor/three.module.js';
-import { createOctopusInkEffect, shouldReleaseJavaOctopusInk } from './octopus-ink.js';
+import { JAVA_OCTOPUS_INK_RELEASE_SECONDS, createOctopusInkEffect, shouldReleaseJavaOctopusInk } from './octopus-ink.js';
 
 test('octopus ink shows a compact bolus before it expands and disperses', () => {
   const scene = new THREE.Scene();
@@ -137,8 +137,8 @@ test('Java octopus waits for its first post-opening surge before releasing ink',
   assert.equal(shouldReleaseJavaOctopusInk('surge', 0), false, 'the opening burst keeps the octopus visible');
   assert.equal(shouldReleaseJavaOctopusInk('surge', .79), false, 'ink does not cover the first 0.8-second burst');
   assert.equal(shouldReleaseJavaOctopusInk('warning', 1), false, 'a warning turn does not release ink');
-  assert.equal(shouldReleaseJavaOctopusInk('rest', 3.09), false, 'the fish has a clear recovery window');
-  assert.equal(shouldReleaseJavaOctopusInk('surge', 3.09), false, 'the ink cue waits for the scheduled escape surge');
-  assert.equal(shouldReleaseJavaOctopusInk('surge', 3.1), true, 'the first deliberate escape surge can release ink');
+  assert.equal(shouldReleaseJavaOctopusInk('rest', JAVA_OCTOPUS_INK_RELEASE_SECONDS), false, 'rest never releases ink');
+  assert.equal(shouldReleaseJavaOctopusInk('surge', JAVA_OCTOPUS_INK_RELEASE_SECONDS - 0.01), false, 'the opening surge does not release ink');
+  assert.equal(shouldReleaseJavaOctopusInk('surge', JAVA_OCTOPUS_INK_RELEASE_SECONDS), true, 'the first defensive surge releases ink');
   assert.equal(shouldReleaseJavaOctopusInk('surge', Number.NaN), false, 'invalid presentation time cannot trigger ink');
 });

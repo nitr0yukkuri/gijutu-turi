@@ -1,5 +1,6 @@
 // @ts-nocheck -- procedural GPU particles at the vendored Three.js boundary.
 import * as THREE from '../../vendor/three.module.js';
+import { JAVA_OCTOPUS_FIRST_DEFENSIVE_SURGE_SECONDS } from '../fish-behavior.js';
 
 const PARTICLES_PER_BURST = 512;
 const MAX_BURSTS = 1;
@@ -7,7 +8,7 @@ const PARTICLE_CAPACITY = PARTICLES_PER_BURST * MAX_BURSTS;
 const PARTICLE_LIFETIME = 4.8;
 
 // Let the octopus's body read before its first deliberate escape surge releases ink.
-export const JAVA_OCTOPUS_INK_RELEASE_SECONDS = 3.1;
+export const JAVA_OCTOPUS_INK_RELEASE_SECONDS = JAVA_OCTOPUS_FIRST_DEFENSIVE_SURGE_SECONDS;
 export const shouldReleaseJavaOctopusInk = (mode, fightTime) =>
   mode === 'surge' && Number.isFinite(fightTime) && fightTime >= JAVA_OCTOPUS_INK_RELEASE_SECONDS;
 
