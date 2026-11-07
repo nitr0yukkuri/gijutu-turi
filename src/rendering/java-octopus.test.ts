@@ -21,7 +21,7 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     assert.ok(headMaterial.color.r > .75, 'red skin remains bright enough after sRGB conversion');
     assert.ok(headMaterial.color.r > headMaterial.color.g * 5, 'skin pigment stays strongly red');
     assert.ok(headMaterial.emissive.r > headMaterial.emissive.g * 6, 'subtle pigment compensation emits red rather than cyan');
-    assert.ok(headMaterial.emissiveIntensity >= .22, 'red pigment remains readable at the neutral swim state');
+    assert.ok(headMaterial.emissiveIntensity >= .27, 'red pigment remains readable at the neutral swim state');
     const pigmentImage = headMaterial.map?.image as { data?: Uint8Array } | undefined;
     const pigmentPixels = pigmentImage?.data;
     if (!pigmentPixels || pigmentPixels.length === 0) {
@@ -29,8 +29,12 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     }
     assert.equal(headMaterial.map?.format, THREE.RGBAFormat, 'sRGB skin texture uses a supported RGBA format');
     assert.equal(pigmentPixels.length, 128 * 128 * 4, 'skin texture data uses four bytes per pixel');
+    let darkestPigment = 255;
+    let lightestPigment = 0;
     for (let offset = 0; offset < pigmentPixels.length; offset += 4) {
       const red = pigmentPixels[offset] ?? 0;
+      darkestPigment = Math.min(darkestPigment, red);
+      lightestPigment = Math.max(lightestPigment, red);
       const green = pigmentPixels[offset + 1] ?? 0;
       const blue = pigmentPixels[offset + 2] ?? 0;
       assert.equal(pigmentPixels[offset + 3], 255, 'skin texture pixels remain fully opaque');
@@ -39,15 +43,55 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
         'the neutral texture modulates pigment without muting its red hue',
       );
     }
+    assert.ok(lightestPigment - darkestPigment >= 70, 'skin mottle has enough contrast to read at fight distance');
 
     const arm = octopus.group.getObjectByName('arm-1');
     assert.ok(arm instanceof THREE.Mesh, 'animated arm mesh exists');
     const positionAttribute = arm.geometry.attributes.position;
+    const uvAttribute = arm.geometry.attributes.uv;
     assert.ok(positionAttribute, 'arm geometry exposes a position buffer');
+    assert.ok(uvAttribute, 'procedural skin texture has UVs on the arms');
+    assert.equal(uvAttribute.count, positionAttribute.count, 'every arm vertex has a texture coordinate');
+    const radialStride = Math.round(positionAttribute.count / 13);
+    const rootCenter = (mesh) => {
+      const data = mesh.geometry.attributes.position.array;
+      const count = Math.round(mesh.geometry.attributes.position.count / 13);
+      const result = new THREE.Vector3();
+      for (let index = 0; index < count; index++) {
+        result.x += data[index * 3];
+        result.y += data[index * 3 + 1];
+        result.z += data[index * 3 + 2];
+      }
+      return result.multiplyScalar(1 / count);
+    };
+    const rootOne = rootCenter(arm);
+    const rootTwo = rootCenter(octopus.group.getObjectByName('arm-2'));
+    assert.ok(rootOne.distanceTo(rootTwo) > .08, 'the eight arms emerge around a crown instead of one shared point');
+    const uvValues = uvAttribute.array;
+    assert.ok(Math.min(...uvValues) <= 0 && Math.max(...uvValues) >= 1, 'the seam wraps cleanly across the arm texture');
     const positions = positionAttribute.array;
     const resting = Array.from(positions);
     octopus.update(1, { power: 1, effort: 1, tetherLoad: 0.8 });
     assert.notDeepEqual(Array.from(positions), resting, 'arms react to the jet and tension instead of freezing');
+    const tipCenter = (data) => {
+      const result = new THREE.Vector3();
+      const start = 12 * radialStride;
+      for (let index = start; index < start + radialStride; index++) {
+        result.x += data[index * 3];
+        result.y += data[index * 3 + 1];
+        result.z += data[index * 3 + 2];
+      }
+      return result.multiplyScalar(1 / radialStride);
+    };
+    const ringRadius = (data, center, start, count) => {
+      let total = 0;
+      for (let index = start; index < start + count; index++) {
+        total += new THREE.Vector3(data[index * 3], data[index * 3 + 1], data[index * 3 + 2]).distanceTo(center);
+      }
+      return total / count;
+    };
+    const tip = tipCenter(positions);
+    assert.ok(ringRadius(positions, tip, 12 * radialStride, radialStride) < .015, 'arm ends taper to soft points');
   } finally {
     octopus.dispose();
   }
