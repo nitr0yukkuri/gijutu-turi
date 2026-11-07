@@ -53,7 +53,7 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     assert.ok(uvAttribute, 'procedural skin texture has UVs on the arms');
     assert.equal(uvAttribute.count, positionAttribute.count, 'every arm vertex has a texture coordinate');
     const radialStride = Math.round(positionAttribute.count / 13);
-    const rootCenter = (mesh) => {
+    const rootCenter = (mesh: THREE.Mesh) => {
       const data = mesh.geometry.attributes.position.array;
       const count = Math.round(mesh.geometry.attributes.position.count / 13);
       const result = new THREE.Vector3();
@@ -64,16 +64,29 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
       }
       return result.multiplyScalar(1 / count);
     };
-    const rootOne = rootCenter(arm);
-    const rootTwo = rootCenter(octopus.group.getObjectByName('arm-2'));
-    assert.ok(rootOne.distanceTo(rootTwo) > .08, 'the eight arms emerge around a crown instead of one shared point');
+    const armMeshes = Array.from({ length: 8 }, (_, index) => octopus.group.getObjectByName(`arm-${index + 1}`))
+      .filter((mesh): mesh is THREE.Mesh => mesh instanceof THREE.Mesh);
+    assert.equal(armMeshes.length, 8, 'all eight arms are modeled separately');
+    const rootCenters = armMeshes.map(rootCenter);
+    for (let first = 0; first < rootCenters.length; first++) {
+      for (let second = first + 1; second < rootCenters.length; second++) {
+        assert.ok(rootCenters[first]!.distanceTo(rootCenters[second]!) > .06, 'each arm emerges from a distinct point around the crown');
+      }
+    }
     const uvValues = uvAttribute.array;
     assert.ok(Math.min(...uvValues) <= 0 && Math.max(...uvValues) >= 1, 'the seam wraps cleanly across the arm texture');
     const positions = positionAttribute.array;
+    for (let ring = 0; ring <= 12; ring++) {
+      const first = ring * radialStride * 3;
+      const last = (ring * radialStride + radialStride - 1) * 3;
+      const firstPoint = new THREE.Vector3(positions[first], positions[first + 1], positions[first + 2]);
+      const lastPoint = new THREE.Vector3(positions[last], positions[last + 1], positions[last + 2]);
+      assert.ok(firstPoint.distanceTo(lastPoint) < .00001, 'the UV seam closes without an open split');
+    }
     const resting = Array.from(positions);
     octopus.update(1, { power: 1, effort: 1, tetherLoad: 0.8 });
     assert.notDeepEqual(Array.from(positions), resting, 'arms react to the jet and tension instead of freezing');
-    const tipCenter = (data) => {
+    const tipCenter = (data: Float32Array) => {
       const result = new THREE.Vector3();
       const start = 12 * radialStride;
       for (let index = start; index < start + radialStride; index++) {
@@ -83,7 +96,7 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
       }
       return result.multiplyScalar(1 / radialStride);
     };
-    const ringRadius = (data, center, start, count) => {
+    const ringRadius = (data: Float32Array, center: THREE.Vector3, start: number, count: number) => {
       let total = 0;
       for (let index = start; index < start + count; index++) {
         total += new THREE.Vector3(data[index * 3], data[index * 3 + 1], data[index * 3 + 2]).distanceTo(center);
