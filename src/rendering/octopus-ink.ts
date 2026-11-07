@@ -1,7 +1,7 @@
 // @ts-nocheck -- procedural GPU particles at the vendored Three.js boundary.
 import * as THREE from '../../vendor/three.module.js';
 
-const PARTICLES_PER_BURST = 144;
+const PARTICLES_PER_BURST = 384;
 const MAX_BURSTS = 1;
 const PARTICLE_CAPACITY = PARTICLES_PER_BURST * MAX_BURSTS;
 const PARTICLE_LIFETIME = 4.8;
@@ -34,14 +34,15 @@ varying vec3 vTint;
 void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   float angle = atan(p.y, p.x);
-  float rim = 1.0
-    + 0.11 * sin(angle * 3.0 + vSeed * 6.283)
-    + 0.06 * sin(angle * 7.0 - vSeed * 8.1)
-    + 0.035 * sin(angle * 11.0 + vSeed * 3.7);
-  float radius = length(p) * rim;
-  float softEdge = 1.0 - smoothstep(0.48, 1.0, radius);
-  float denseCore = 0.58 + 0.42 * (1.0 - smoothstep(0.0, 0.78, length(p)));
-  float alpha = vAlpha * softEdge * denseCore;
+  float radius = length(p);
+  float rimNoise = 0.075 * sin(angle * 3.0 + vSeed * 6.283)
+    + 0.045 * sin(angle * 7.0 - vSeed * 8.1)
+    + 0.025 * sin(angle * 11.0 + vSeed * 3.7);
+  float irregularRadius = radius + rimNoise * smoothstep(0.22, 1.0, radius);
+  float softVolume = exp(-4.2 * radius * radius);
+  float brokenEdge = 1.0 - smoothstep(0.72, 1.08, irregularRadius);
+  float marbling = 0.84 + 0.16 * sin(p.x * 8.0 + vSeed * 7.0) * sin(p.y * 7.0 - vSeed * 4.0);
+  float alpha = vAlpha * softVolume * mix(0.82, 1.0, brokenEdge) * marbling;
   if (alpha < 0.004) discard;
   gl_FragColor = vec4(vTint, alpha);
   #include <tonemapping_fragment>
@@ -109,36 +110,38 @@ export function createOctopusInkEffect(scene) {
   const setParticle = (index, origin, seed, ordinal) => {
     // Keep a small, dense nucleus while distributing most ink into an
     // elongated, low-density smoke screen behind the fleeing animal.
-    const core = ordinal < 12;
-    const middle = ordinal >= 12 && ordinal < 64;
-    const radial = Math.sqrt(random01(seed + 1.3)) * (core ? 0.12 : middle ? 0.4 : 0.72);
+    // Octopus ink first leaves the funnel as a compact, viscous bolus. The
+    // surrounding particles spread into current-aligned streaks over time.
+    const core = ordinal < 48;
+    const middle = ordinal >= 48 && ordinal < 208;
+    const radial = Math.sqrt(random01(seed + 1.3)) * (core ? 0.055 : middle ? 0.16 : 0.28);
     const angle = random01(seed + 2.7) * Math.PI * 2;
     const radialSide = Math.cos(angle);
     const radialUp = Math.sin(angle);
-    const axial = random01(seed + 3.9) * (core ? 0.06 : middle ? 0.42 : 0.98);
+    const axial = random01(seed + 3.9) * (core ? 0.035 : middle ? 0.18 : 0.42);
     const particle = particles[index];
     particle.position.copy(origin)
       .addScaledVector(forward, axial)
       .addScaledVector(side, radial * radialSide)
       .addScaledVector(up, radial * radialUp);
-    const outward = core ? 0.1 : middle ? 0.28 : 0.52 + random01(seed + 5.1) * 0.18;
-    const lateralNoise = (random01(seed + 6.4) - 0.5) * 0.12;
-    const verticalNoise = (random01(seed + 7.8) - 0.5) * 0.1;
-    particle.velocity.copy(forward).multiplyScalar(core ? 0.22 : middle ? 0.42 + random01(seed + 8.9) * 0.18 : 0.62 + random01(seed + 9.7) * 0.24)
+    const outward = core ? 0.08 : middle ? 0.2 : 0.34 + random01(seed + 5.1) * 0.1;
+    const lateralNoise = (random01(seed + 6.4) - 0.5) * 0.055;
+    const verticalNoise = (random01(seed + 7.8) - 0.5) * 0.045;
+    particle.velocity.copy(forward).multiplyScalar(core ? 0.72 : middle ? 0.9 + random01(seed + 8.9) * 0.22 : 1.12 + random01(seed + 9.7) * 0.28)
       .addScaledVector(side, radialSide * outward + lateralNoise)
       .addScaledVector(up, radialUp * outward + verticalNoise);
     particle.age = 0;
-    particle.lifetime = 3.8 + random01(seed + 10.1) * 1.0;
+    particle.lifetime = 4.6 + random01(seed + 10.1) * 1.2;
     particle.seed = random01(seed + 11.2);
     particle.baseSize = core
-      ? 0.18 + random01(seed + 12.5) * 0.1
-      : middle ? 0.11 + random01(seed + 12.5) * 0.08 : 0.07 + random01(seed + 12.5) * 0.08;
+      ? 0.42 + random01(seed + 12.5) * 0.18
+      : middle ? 0.3 + random01(seed + 12.5) * 0.12 : 0.23 + random01(seed + 12.5) * 0.12;
     particle.baseAlpha = core
-      ? 0.52 + random01(seed + 13.6) * 0.14
-      : middle ? 0.25 + random01(seed + 13.6) * 0.13 : 0.11 + random01(seed + 13.6) * 0.13;
+      ? 0.11 + random01(seed + 13.6) * 0.045
+      : middle ? 0.045 + random01(seed + 13.6) * 0.025 : 0.018 + random01(seed + 13.6) * 0.02;
 
-    const tint = new THREE.Color(core ? 0x130e0c : middle ? 0x211714 : 0x30231f);
-    tint.lerp(new THREE.Color(0x493630), random01(seed + 14.7) * (core ? 0.05 : 0.12));
+    const tint = new THREE.Color(core ? 0x100b08 : middle ? 0x211511 : 0x382720);
+    tint.lerp(new THREE.Color(0x63483b), random01(seed + 14.7) * (core ? 0.04 : 0.16));
     const offset = index * 3;
     tints[offset] = tint.r;
     tints[offset + 1] = tint.g;
@@ -165,7 +168,7 @@ export function createOctopusInkEffect(scene) {
       positions[offset] = particle.position.x;
       positions[offset + 1] = particle.position.y;
       positions[offset + 2] = particle.position.z;
-      sizes[index] = particle.baseSize * 0.66;
+      sizes[index] = particle.baseSize * 0.7;
       alphas[index] = 0;
     }
     burstCount++;
@@ -200,13 +203,16 @@ export function createOctopusInkEffect(scene) {
       }
       const age = particle.age;
       const progress = age / particle.lifetime;
-      particle.velocity.x += Math.sin(age * 1.7 + particle.seed * 9.0) * 0.11 * dt;
-      particle.velocity.y += (Math.cos(age * 1.3 + particle.seed * 7.0) * 0.085 + 0.012) * dt;
-      particle.velocity.z += Math.cos(age * 1.9 + particle.seed * 11.0) * 0.12 * dt;
+      const position = particle.position;
+      // Neighboring particles share a slow, spatially correlated eddy field;
+      // this shears the bolus into soft streaks instead of vibrating as grit.
+      particle.velocity.x += (Math.sin(position.y * 1.45 + age * 1.3) - Math.cos(position.z * 1.05 - age * 0.9)) * 0.09 * dt;
+      particle.velocity.y += (Math.sin(position.z * 1.15 + age * 0.8) + 0.08) * 0.06 * dt;
+      particle.velocity.z += (Math.cos(position.x * 1.35 + age * 1.1) - Math.sin(position.y * 0.95 - age)) * 0.09 * dt;
       particle.position.addScaledVector(particle.velocity, dt);
-      particle.velocity.multiplyScalar(Math.exp(-0.28 * dt));
-      alphas[index] = particle.baseAlpha * smoothstep(0, 0.08, age) * (1 - smoothstep(0.58, 1, progress)) / (1 + progress * 0.55);
-      sizes[index] = particle.baseSize * (0.66 + progress * 2.0);
+      particle.velocity.multiplyScalar(Math.exp(-0.34 * dt));
+      alphas[index] = particle.baseAlpha * smoothstep(0, 0.12, age) * (1 - smoothstep(0.48, 1, progress)) / (1 + progress * 0.7);
+      sizes[index] = particle.baseSize * (0.7 + progress * 1.25);
       const offset = index * 3;
       positions[offset] = particle.position.x;
       positions[offset + 1] = particle.position.y;
