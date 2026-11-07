@@ -255,7 +255,6 @@ export function createOctopusInkEffect(scene) {
       positions[offset] = particle.position.x;
       positions[offset + 1] = particle.position.y;
       positions[offset + 2] = particle.position.z;
-      visible++;
     }
     activeParticles = active;
     points.visible = active > 0;
@@ -276,7 +275,7 @@ export function createOctopusInkEffect(scene) {
       activeParticles = 0;
       points.visible = false;
       for (const particle of particles) {
-        particle.age = particle.lifetime;
+        particle.age = particle.lifetime + particle.releaseDelay;
         particle.position.set(0, 0, 0);
       }
       alphas.fill(0);
