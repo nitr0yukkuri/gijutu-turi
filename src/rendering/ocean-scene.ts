@@ -652,6 +652,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const fishModelStore=createOceanFishModels(scene,waterUniforms,createFishOrientationScratch);
   const {fightFish,dockerWhale,cssFish,rustFish,jsEel,javaOctopus,fightModelFor,requestFightModel}=fishModelStore;
   const cssFishProfile=getFishFightProfile('css-001');
+  let javaFightScaleBlend=0;
   const liveFishScale=(fishId,phase)=>{
     const fighting=phase==='fighting';
     let baseScale=fighting ? .84 : .66;
@@ -660,7 +661,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     else if(fishId==='css-001')baseScale=fighting ? .74 : .55;
     else if(fishId==='rust-001')baseScale=fighting ? .80 : .63;
     else if(fishId==='js-001')baseScale=fighting ? .78 : .61;
-    else if(fishId==='java-001')baseScale=fighting ? JAVA_OCTOPUS_FIGHT_SCALE : .78;
+    else if(fishId==='java-001')baseScale=THREE.MathUtils.lerp(.78,JAVA_OCTOPUS_FIGHT_SCALE,javaFightScaleBlend);
     return fishScaleForResponsiveCamera(baseScale,camera.fov,portraitBlend);
   };
   const catchFishScale=(fishId)=>fishScaleForResponsiveCamera(catchFraming(fishId,camera.aspect,camera.fov).baseScale,camera.fov,portraitBlend);
@@ -930,6 +931,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if(overlayOpen&&now-lastRenderedFrame<1000/30)return;
     const dt=Math.min(.05,(now-(lastFrame||now))/1000);lastFrame=now;time+=dt*(reduced?.15:1);
     lastRenderedFrame=now;
+    javaFightScaleBlend=THREE.MathUtils.damp(javaFightScaleBlend,state.fishId==='java-001'&&state.phase==='fighting'?1:0,5.8,dt);
     uniforms.uTime.value=time;
     const weatherBlend=1-Math.exp(-dt*.32);
     weatherUniforms.uWeatherCloud.value=THREE.MathUtils.lerp(weatherUniforms.uWeatherCloud.value,weatherTarget.cloudCover,weatherBlend);
