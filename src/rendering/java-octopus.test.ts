@@ -27,10 +27,13 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     if (!pigmentPixels || pigmentPixels.length === 0) {
       throw new Error('skin retains a procedural chromatophore texture');
     }
-    for (let offset = 0; offset < pigmentPixels.length; offset += 3) {
+    assert.equal(headMaterial.map?.format, THREE.RGBAFormat, 'sRGB skin texture uses a supported RGBA format');
+    assert.equal(pigmentPixels.length, 128 * 128 * 4, 'skin texture data uses four bytes per pixel');
+    for (let offset = 0; offset < pigmentPixels.length; offset += 4) {
       const red = pigmentPixels[offset] ?? 0;
       const green = pigmentPixels[offset + 1] ?? 0;
       const blue = pigmentPixels[offset + 2] ?? 0;
+      assert.equal(pigmentPixels[offset + 3], 255, 'skin texture pixels remain fully opaque');
       assert.ok(
         Math.max(red, green, blue) - Math.min(red, green, blue) <= 1,
         'the neutral texture modulates pigment without muting its red hue',

@@ -11,7 +11,7 @@ const smoothstep = (edge0, edge1, value) => {
 
 function createSkinMottle() {
   const size = 128;
-  const pixels = new Uint8Array(size * size * 3);
+  const pixels = new Uint8Array(size * size * 4);
   const hash = (x, y) => {
     const value = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
     return (value - Math.floor(value)) * 2 - 1;
@@ -36,13 +36,14 @@ function createSkinMottle() {
       // Keep the procedural map neutral so it modulates skin relief without
       // multiplying away the red pigment carried by the material itself.
       const value = clamp(Math.round(226 + pigment * 20 + paleMottle * 8 - chromatophorePatch * 18), 186, 255);
-      const offset = (y * size + x) * 3;
+      const offset = (y * size + x) * 4;
       pixels[offset] = value;
       pixels[offset + 1] = value;
       pixels[offset + 2] = value;
+      pixels[offset + 3] = 255;
     }
   }
-  const texture = new THREE.DataTexture(pixels, size, size, THREE.RGBFormat, THREE.UnsignedByteType);
+  const texture = new THREE.DataTexture(pixels, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;

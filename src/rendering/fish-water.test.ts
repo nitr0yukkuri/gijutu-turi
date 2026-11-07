@@ -98,10 +98,10 @@ for (const [species, profile] of [
       'each live species uses the shared equivalent wave-normal calculation');
     assert.doesNotMatch(shader.fragmentShader,/heightAt\(p\.xz-vec2\(eps,0\.0\)/,
       'fish normals do not repeat full wave-height evaluation at every offset');
-    assert.match(material.customProgramCacheKey(),profile===DOCKER_WHALE_WATER_PROFILE? /underwater-docker-consistent-v1/ : profile===JAVA_OCTOPUS_WATER_PROFILE? /underwater-java-octopus-v2/ : /underwater-consistent-v2/,
+    assert.match(material.customProgramCacheKey(),profile===DOCKER_WHALE_WATER_PROFILE? /underwater-docker-consistent-v1/ : profile===JAVA_OCTOPUS_WATER_PROFILE? /underwater-java-octopus-v3/ : /underwater-consistent-v2/,
       'changed shader source has a versioned program-cache key');
     if (profile === JAVA_OCTOPUS_WATER_PROFILE) {
-      assert.match(shader.fragmentShader, /extinction\.r=max\(extinction\.r,0\.40\)/,
+      assert.match(shader.fragmentShader, /extinction\.r=max\(extinction\.r,0.50\)/,
         'Java red pigment keeps a bounded perceptual floor while distance and depth coverage still fade it');
     } else {
       assert.doesNotMatch(shader.fragmentShader, /extinction\.r=max/,
@@ -126,7 +126,7 @@ test('Java octopus red pigment floor is limited to body skin', () => {
     return shader.fragmentShader;
   };
 
-  assert.match(shaderFor('body'), /extinction\.r=max\(extinction\.r,0\.40\)/,
+  assert.match(shaderFor('body'), /extinction\.r=max\(extinction\.r,0.50\)/,
     'the main skin retains the Java octopus pigment floor');
   assert.doesNotMatch(shaderFor('detail'), /extinction\.r=max/,
     'eyes, suckers, and pale details keep ordinary underwater attenuation');
