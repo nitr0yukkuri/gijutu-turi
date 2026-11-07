@@ -31,7 +31,7 @@ void main() {
   vec3 viewVelocity = (modelViewMatrix * vec4(aVelocity, 0.0)).xyz;
   float projectedSpeed = length(viewVelocity.xy);
   vFlowDirection = projectedSpeed > 0.001 ? viewVelocity.xy / projectedSpeed : vec2(1.0, 0.0);
-  vStretch = clamp(length(aVelocity) * 0.42, 0.0, 0.58);
+  vStretch = clamp(projectedSpeed * 0.42, 0.0, 0.58);
   vAlpha = aAlpha;
   vSeed = aSeed;
   vTint = aTint;
