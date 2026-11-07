@@ -58,7 +58,9 @@ test('octopus ink starts as one dense slug and advects downstream as a single pl
     effect.trigger(new THREE.Vector3(0, -2, 0), new THREE.Vector3(1, 0, 0));
     const points = scene.getObjectByName('java-octopus-ink');
     assert.ok(points instanceof THREE.Points, 'ink plume uses a Points object');
-    const positions = points.geometry.attributes.position.array;
+    const positionAttribute = points.geometry.getAttribute('position');
+    if (!positionAttribute) throw new Error('ink plume has a position attribute');
+    const positions = positionAttribute.array;
     const extent = (axis: 0 | 1 | 2) => {
       let low = Infinity, high = -Infinity;
       for (let index = 0; index < 96; index++) {

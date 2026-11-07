@@ -22,7 +22,9 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     assert.ok(headMaterial.color.r > headMaterial.color.g * 5, 'skin pigment stays strongly red');
     const pigmentImage = headMaterial.map?.image as { data?: Uint8Array } | undefined;
     const pigmentPixels = pigmentImage?.data;
-    assert.ok(pigmentPixels?.length > 0, 'skin retains a procedural chromatophore texture');
+    if (!pigmentPixels || pigmentPixels.length === 0) {
+      throw new Error('skin retains a procedural chromatophore texture');
+    }
     for (let offset = 0; offset < pigmentPixels.length; offset += 3) {
       assert.ok(
         Math.max(pigmentPixels[offset], pigmentPixels[offset + 1], pigmentPixels[offset + 2])
