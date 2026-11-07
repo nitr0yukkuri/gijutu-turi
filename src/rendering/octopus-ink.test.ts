@@ -60,9 +60,15 @@ test('octopus ink blooms into a diffuse downstream smoke screen', () => {
     if (!(points instanceof THREE.Points)) throw new Error('ink plume uses a Points object');
     const positionAttribute = points.geometry.getAttribute('position');
     const sizeAttribute = points.geometry.getAttribute('aPointSize');
-    if (!positionAttribute || !sizeAttribute) throw new Error('ink plume has position and size attributes');
+    const velocityAttribute = points.geometry.getAttribute('aVelocity');
+    if (!positionAttribute || !sizeAttribute || !velocityAttribute) throw new Error('ink plume has position, velocity, and size attributes');
     const positions = positionAttribute.array;
     const sizes = sizeAttribute.array;
+    const material = points.material;
+    if (!(material instanceof THREE.ShaderMaterial)) throw new Error('ink plume uses a procedural shader');
+    assert.match(material.vertexShader, /aVelocity/, 'particle speed orients its streak along the current');
+    assert.match(material.fragmentShader, /vFlowDirection/, 'the plume retains its flow-aligned shape');
+    const velocities = velocityAttribute.array;
     const extent = (axis: 0 | 1 | 2) => {
       let low = Infinity, high = -Infinity;
       for (let index = 0; index < 384; index++) {
@@ -77,15 +83,16 @@ test('octopus ink blooms into a diffuse downstream smoke screen', () => {
     const initialAlong = extent(0);
     const initialAcross = across();
     const initialSize = maximum(sizes);
-    assert.ok(initialAlong > 0.3 && initialAlong < 0.8, 'ink extends downstream from its funnel release');
-    assert.ok(initialAcross > 0.45 && initialAcross < 0.95, 'the released ink has a diffuse cross-section');
-    assert.ok(initialSize < 0.43, 'no oversized particle merges the plume into a single dark slug');
+    assert.ok(initialAlong < 0.16, 'the first frame stays close to the funnel as a compact bolus');
+    assert.ok(initialAcross < 0.16, 'the first frame has a tight viscous core');
+    assert.ok(initialSize < 0.3, 'the bolus remains readable instead of one oversized sprite');
     for (let step = 0; step < 10; step++) effect.update(0.05);
     assert.ok(extent(0) > initialAlong + 0.12, 'the plume advances downstream');
-    assert.ok(across() > initialAcross + 0.12, 'the cloud expands laterally as it mixes');
+    assert.ok(across() > initialAcross + 0.12, 'the bolus shears into a broader turbulent streak');
     assert.ok(maximum(sizes) > initialSize * 1.1, 'particles bloom as the initial bolus disperses');
     assert.equal(effect.diagnostics.burstsTriggered, 1);
     assert.equal(effect.diagnostics.finitePositions, true);
+    assert.ok(velocities.every(Number.isFinite), 'flow direction stays finite for the anisotropic particle shader');
   } finally {
     effect.dispose();
   }
