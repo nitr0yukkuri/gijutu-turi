@@ -83,9 +83,9 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     };
     const rootCenter = (armName: string) => centerAt(armName, 0);
     const flowAxis = new THREE.Vector3(1, .08, 0).normalize();
-    octopus.update(1, { power: .25, effort: .28, bodyPhase: 1.3 });
+    octopus.update(1, { power: .25, effort: .28 });
     const restingTips = Array.from({ length: 8 }, (_, index) => centerAt(`arm-${index + 1}`, 14));
-    octopus.update(1, { power: 1, effort: 1, bodyPhase: 1.3 });
+    octopus.update(1, { power: 1, effort: 1 });
     const jetTips = Array.from({ length: 8 }, (_, index) => centerAt(`arm-${index + 1}`, 14));
     const meanDownstreamShift = jetTips.reduce(
       (total, tip, index) => total + tip.clone().sub(restingTips[index]!).dot(flowAxis),
