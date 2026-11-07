@@ -13,6 +13,9 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     assert.equal(point.direction, direction);
     assert.ok([origin.x, origin.y, origin.z, direction.x, direction.y, direction.z].every(Number.isFinite));
     assert.ok(direction.x > 0.9, 'siphon exhaust points backward from the head');
+    const outletInBody = octopus.group.worldToLocal(origin.clone());
+    const mantleInterior = ((outletInBody.x - .38) / .73) ** 2 + ((outletInBody.y - .045) / .43) ** 2;
+    assert.ok(mantleInterior > 1, 'the ink outlet clears the mantle instead of starting inside the opaque mesh');
 
     const head = octopus.group.getObjectByName('head');
     assert.ok(head instanceof THREE.Mesh, 'octopus head mesh exists');
@@ -79,6 +82,15 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
       return result.multiplyScalar(1 / stride);
     };
     const rootCenter = (armName: string) => centerAt(armName, 0);
+    const flowAxis = new THREE.Vector3(1, .08, 0).normalize();
+    octopus.update(1, { power: .25, effort: .28 });
+    const restingTips = Array.from({ length: 8 }, (_, index) => centerAt(`arm-${index + 1}`, 14));
+    octopus.update(1, { power: 1, effort: 1 });
+    const jetTips = Array.from({ length: 8 }, (_, index) => centerAt(`arm-${index + 1}`, 14));
+    const downstreamShifts = jetTips.map(
+      (tip, index) => tip.clone().sub(restingTips[index]!).dot(flowAxis),
+    );
+    assert.ok(downstreamShifts.every(shift => shift > .2), 'each arm streams toward the siphon wake under jet propulsion');
     const rootCenters = Array.from({ length: 8 }, (_, index) => rootCenter(`arm-${index + 1}`));
     for (let first = 0; first < rootCenters.length; first++) {
       for (let second = first + 1; second < rootCenters.length; second++) {
