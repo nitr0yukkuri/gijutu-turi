@@ -1,7 +1,7 @@
 // @ts-nocheck -- procedural GPU particles at the vendored Three.js boundary.
 import * as THREE from '../../vendor/three.module.js';
 
-const PARTICLES_PER_BURST = 384;
+const PARTICLES_PER_BURST = 512;
 const MAX_BURSTS = 1;
 const PARTICLE_CAPACITY = PARTICLES_PER_BURST * MAX_BURSTS;
 const PARTICLE_LIFETIME = 4.8;
@@ -131,43 +131,43 @@ export function createOctopusInkEffect(scene) {
     // The funnel releases one dark bolus first. Its dense center stays
     // together briefly while the less concentrated edge peels into the flow.
     const core = ordinal < 64;
-    const middle = ordinal >= 64 && ordinal < 232;
-    // All material leaves the funnel as one compact bolus. Faster outer
-    // particles peel away later instead of appearing as a cloud immediately.
-    const radial = Math.sqrt(random01(seed + 1.3)) * (core ? 0.012 : middle ? 0.024 : 0.036);
+    const middle = ordinal >= 64 && ordinal < 280;
+    // A dense mucus-bound nucleus leaves first; lighter peripheral ink then
+    // shears into the current instead of forming a static, uniform ball.
+    const radial = Math.sqrt(random01(seed + 1.3)) * (core ? 0.014 : middle ? 0.032 : 0.052);
     const angle = random01(seed + 2.7) * Math.PI * 2;
     const radialSide = Math.cos(angle);
     const radialUp = Math.sin(angle);
-    const axial = random01(seed + 3.9) * (core ? 0.018 : middle ? 0.032 : 0.05);
+    const axial = random01(seed + 3.9) * (core ? 0.014 : middle ? 0.027 : 0.042);
     const particle = particles[index];
     particle.position.copy(origin)
       .addScaledVector(forward, axial)
       .addScaledVector(side, radial * radialSide)
       .addScaledVector(up, radial * radialUp);
-    const outward = core ? 0.025 : middle ? 0.12 : 0.22 + random01(seed + 5.1) * 0.08;
-    const lateralNoise = (random01(seed + 6.4) - 0.5) * 0.025;
-    const verticalNoise = (random01(seed + 7.8) - 0.5) * 0.022;
-    particle.velocity.copy(forward).multiplyScalar(core ? 0.52 : middle ? 0.68 + random01(seed + 8.9) * 0.12 : 0.82 + random01(seed + 9.7) * 0.18)
+    const outward = core ? 0.045 : middle ? 0.24 : 0.48 + random01(seed + 5.1) * 0.32;
+    const lateralNoise = (random01(seed + 6.4) - 0.5) * 0.055;
+    const verticalNoise = (random01(seed + 7.8) - 0.5) * 0.05;
+    particle.velocity.copy(forward).multiplyScalar(core ? 0.62 : middle ? 0.82 + random01(seed + 8.9) * 0.12 : 1.05 + random01(seed + 9.7) * 0.35)
       .addScaledVector(side, radialSide * outward + lateralNoise)
       .addScaledVector(up, radialUp * outward + verticalNoise);
     particle.age = 0;
     particle.releaseDelay = core
-      ? random01(seed + 15.1) * 0.025
+      ? random01(seed + 15.1) * 0.01
       : middle
-        ? 0.09 + random01(seed + 15.1) * 0.13
-        : 0.22 + random01(seed + 15.1) * 0.34;
+        ? 0.045 + random01(seed + 15.1) * 0.075
+        : 0.11 + random01(seed + 15.1) * 0.22;
     particle.lifetime = core
-      ? 2.7 + random01(seed + 10.1) * 0.6
+      ? 1.9 + random01(seed + 10.1) * 0.65
       : middle
-        ? 3.6 + random01(seed + 10.1) * 0.7
-        : 4 + random01(seed + 10.1) * 0.9;
+        ? 2.9 + random01(seed + 10.1) * 0.8
+        : 3.5 + random01(seed + 10.1) * 0.9;
     particle.seed = random01(seed + 11.2);
     particle.baseSize = core
-      ? 0.95 + random01(seed + 12.5) * 0.28
-      : middle ? 0.4 + random01(seed + 12.5) * 0.2 : 0.26 + random01(seed + 12.5) * 0.16;
+      ? 1.3 + random01(seed + 12.5) * 0.34
+      : middle ? 0.62 + random01(seed + 12.5) * 0.3 : 0.4 + random01(seed + 12.5) * 0.22;
     particle.baseAlpha = core
-      ? 0.18 + random01(seed + 13.6) * 0.12
-      : middle ? 0.08 + random01(seed + 13.6) * 0.045 : 0.035 + random01(seed + 13.6) * 0.03;
+      ? 0.25 + random01(seed + 13.6) * 0.09
+      : middle ? 0.1 + random01(seed + 13.6) * 0.06 : 0.04 + random01(seed + 13.6) * 0.05;
 
     const tint = new THREE.Color(core ? 0x100b08 : middle ? 0x211511 : 0x382720);
     tint.lerp(new THREE.Color(0x63483b), random01(seed + 14.7) * (core ? 0.04 : 0.16));
@@ -240,11 +240,12 @@ export function createOctopusInkEffect(scene) {
       const position = particle.position;
       // Neighboring particles share a slow, spatially correlated eddy field;
       // this shears the bolus into soft streaks instead of vibrating as grit.
-      particle.velocity.x += (Math.sin(position.y * 1.45 + age * 1.3) - Math.cos(position.z * 1.05 - age * 0.9)) * 0.09 * dt;
-      particle.velocity.y += (Math.sin(position.z * 1.15 + age * 0.8) + 0.08) * 0.06 * dt;
-      particle.velocity.z += (Math.cos(position.x * 1.35 + age * 1.1) - Math.sin(position.y * 0.95 - age)) * 0.09 * dt;
+      const eddy = Math.sin(position.x * 1.1 + position.z * 1.6 + age * 1.7 + particle.seed * Math.PI * 2);
+      particle.velocity.x += (Math.sin(position.y * 1.45 + age * 1.3) - Math.cos(position.z * 1.05 - age * 0.9)) * 0.14 * dt;
+      particle.velocity.y += (Math.sin(position.z * 1.15 + age * 0.8) + 0.08 + eddy * 0.7) * 0.1 * dt;
+      particle.velocity.z += (Math.cos(position.x * 1.35 + age * 1.1) - Math.sin(position.y * 0.95 - age) - eddy * 0.55) * 0.14 * dt;
       particle.position.addScaledVector(particle.velocity, dt);
-      particle.velocity.multiplyScalar(Math.exp(-0.34 * dt));
+      particle.velocity.multiplyScalar(Math.exp(-0.24 * dt));
       const velocityOffset = index * 3;
       velocities[velocityOffset] = particle.velocity.x;
       velocities[velocityOffset + 1] = particle.velocity.y;
