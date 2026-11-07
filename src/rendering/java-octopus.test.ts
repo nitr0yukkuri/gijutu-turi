@@ -91,6 +91,12 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
       (tip, index) => tip.clone().sub(restingTips[index]!).dot(flowAxis),
     );
     assert.ok(downstreamShifts.every(shift => shift > .2), 'each arm streams toward the siphon wake under jet propulsion');
+    const crownSpread = (tips: THREE.Vector3[]) => tips.reduce((sum, tip) => {
+      const axial = flowAxis.clone().multiplyScalar(tip.dot(flowAxis));
+      return sum + tip.clone().sub(axial).length();
+    }, 0) / tips.length;
+    assert.ok(crownSpread(jetTips) < crownSpread(restingTips) * .72,
+      'the jet folds the crown into a streamlined bundle instead of preserving a radial star');
     const rootCenters = Array.from({ length: 8 }, (_, index) => rootCenter(`arm-${index + 1}`));
     for (let first = 0; first < rootCenters.length; first++) {
       for (let second = first + 1; second < rootCenters.length; second++) {
