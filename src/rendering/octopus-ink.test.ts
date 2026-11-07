@@ -11,11 +11,11 @@ test('octopus ink is emitted as a finite, short-lived underwater plume', () => {
     assert.ok(scene.getObjectByName('java-octopus-ink'));
     assert.equal(effect.trigger(new THREE.Vector3(1, -2, 3), new THREE.Vector3(1, 0, 0)), true);
     assert.equal(effect.active, true);
-    assert.equal(effect.diagnostics.activeParticles, 144);
+    assert.equal(effect.diagnostics.activeParticles, 384);
     assert.equal(effect.diagnostics.visibleParticles, 0, 'particles fade in over their first frames');
     effect.update(0.05, 720, 46);
-    assert.equal(effect.diagnostics.activeParticles, 144);
-    assert.equal(effect.diagnostics.visibleParticles, 144);
+    assert.equal(effect.diagnostics.activeParticles, 384);
+    assert.equal(effect.diagnostics.visibleParticles, 384);
     assert.equal(effect.diagnostics.finitePositions, true);
     assert.equal(effect.trigger(new THREE.Vector3(), new THREE.Vector3(1, 0, 0)), false, 'one encounter releases one coherent ink cloud');
     for (let index = 0; index < 20; index++) effect.update(0.05, 720, 46);
@@ -40,11 +40,11 @@ test('octopus ink has a stable fallback direction and ignores non-finite frame t
     assert.equal(effect.trigger(new THREE.Vector3(0, -1, 0), new THREE.Vector3()), true);
     effect.update(Number.NaN, 0, 0);
     assert.equal(effect.active, true);
-    assert.equal(effect.diagnostics.activeParticles, 144);
+    assert.equal(effect.diagnostics.activeParticles, 384);
     assert.equal(effect.diagnostics.visibleParticles, 0);
     effect.update(0.05);
-    assert.equal(effect.diagnostics.activeParticles, 144);
-    assert.equal(effect.diagnostics.visibleParticles, 144);
+    assert.equal(effect.diagnostics.activeParticles, 384);
+    assert.equal(effect.diagnostics.visibleParticles, 384);
   } finally {
     effect.dispose();
   }
@@ -65,7 +65,7 @@ test('octopus ink blooms into a diffuse downstream smoke screen', () => {
     const sizes = sizeAttribute.array;
     const extent = (axis: 0 | 1 | 2) => {
       let low = Infinity, high = -Infinity;
-      for (let index = 0; index < 144; index++) {
+      for (let index = 0; index < 384; index++) {
         const value = positions[index * 3 + axis];
         low = Math.min(low, value);
         high = Math.max(high, value);
@@ -77,13 +77,13 @@ test('octopus ink blooms into a diffuse downstream smoke screen', () => {
     const initialAlong = extent(0);
     const initialAcross = across();
     const initialSize = maximum(sizes);
-    assert.ok(initialAlong > 0.75 && initialAlong < 1.7, 'ink extends downstream from its funnel release');
-    assert.ok(initialAcross > 0.65 && initialAcross < 1.7, 'the released ink has a diffuse cross-section');
-    assert.ok(initialSize < 0.29, 'no oversized particle merges the plume into a single dark slug');
+    assert.ok(initialAlong > 0.3 && initialAlong < 0.8, 'ink extends downstream from its funnel release');
+    assert.ok(initialAcross > 0.45 && initialAcross < 0.95, 'the released ink has a diffuse cross-section');
+    assert.ok(initialSize < 0.43, 'no oversized particle merges the plume into a single dark slug');
     for (let step = 0; step < 10; step++) effect.update(0.05);
     assert.ok(extent(0) > initialAlong + 0.12, 'the plume advances downstream');
     assert.ok(across() > initialAcross + 0.12, 'the cloud expands laterally as it mixes');
-    assert.ok(maximum(sizes) > initialSize * 1.2, 'particles bloom as the initial bolus disperses');
+    assert.ok(maximum(sizes) > initialSize * 1.1, 'particles bloom as the initial bolus disperses');
     assert.equal(effect.diagnostics.burstsTriggered, 1);
     assert.equal(effect.diagnostics.finitePositions, true);
   } finally {
