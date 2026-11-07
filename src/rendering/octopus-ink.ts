@@ -192,7 +192,7 @@ export function createOctopusInkEffect(scene) {
       positions[offset] = particle.position.x;
       positions[offset + 1] = particle.position.y;
       positions[offset + 2] = particle.position.z;
-      sizes[index] = particle.baseSize * 0.52;
+      sizes[index] = particle.baseSize * 0.48;
       alphas[index] = 0;
     }
     burstCount++;
