@@ -359,8 +359,12 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   const updateArm = (arm, armIndex, bodyPhase, effort, jet, turn, tetherLoad) => {
     const phaseAtArm = bodyPhase * (.27 + arm.waveRate * .06) + arm.phaseOffset;
     const exploration = .5 + .5 * Math.sin(phaseAtArm * .71 + armIndex * 1.3);
-    const direction = arm.animatedDirection.copy(arm.direction);
-    const length = arm.length * (1 - jet * .045) * (1 + .035 * Math.sin(phaseAtArm));
+    // During an escape jet the crown streams toward the siphon wake instead of
+    // holding a permanently radial, star-shaped silhouette.
+    const direction = arm.animatedDirection.copy(arm.direction)
+      .lerp(flowDirection, jet * .32)
+      .normalize();
+    const length = arm.length * (1 - jet * .09) * (1 + .035 * Math.sin(phaseAtArm));
     const positions = arm.geometry.attributes.position.array;
     const centerline = arm.centers;
     for (let segment = 0; segment <= segmentCount; segment++) {
@@ -377,11 +381,12 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
       const lineCurl = tipWeight * clamp(tetherLoad, 0, 1) * arm.tetherSensitivity
         * (.1 + .075 * Math.sin(bodyPhase * .42 + arm.phaseOffset));
       const tipCurl = tipWeight * (arm.tipCurl + Math.sin(phaseAtArm * .53 + arm.bendPhase) * .11) * exploration;
-      const curl = pathWave * (.2 + effort * .08) + secondaryWave * .1 + localizedBend + tipCurl + lineCurl;
-      const sweep = (Math.sin(localPhase * .61 + along * 2.8) * .17 + turn * arm.turnResponse * .1) * along * (1 - jet * .18);
-      const crossWave = (Math.sin(travelingPhase * .72 + arm.bendPhase) * .13
-        + Math.cos(localPhase * .55 + arm.bendPhase) * .05) * along + bendWindow * Math.cos(bendPulse) * .08;
-      const jetTrail = jet * arm.flowDrag * Math.pow(along, 1.65);
+      const curl = pathWave * (.25 + effort * .1) + secondaryWave * .14 + localizedBend + tipCurl + lineCurl;
+      const sweep = (Math.sin(localPhase * .61 + along * 2.8) * .19 + turn * arm.turnResponse * .1) * along * (1 - jet * .5);
+      const crossWave = ((Math.sin(travelingPhase * .72 + arm.bendPhase) * .16
+        + Math.cos(localPhase * .55 + arm.bendPhase) * .06) * along + bendWindow * Math.cos(bendPulse) * .09)
+        * (1 - jet * .38);
+      const jetTrail = jet * (.72 + arm.flowDrag * .42) * Math.pow(along, 1.65);
       const point = centerline[segment];
       point.copy(arm.base)
         .addScaledVector(direction, length * along)
@@ -401,8 +406,10 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
       arm.normal.normalize();
       arm.side.crossVectors(tangent, arm.normal).normalize();
       const along = segment / segmentCount;
-      const musclePulse = Math.sin(bodyPhase * 1.1 - along * 5.5 + arm.phaseOffset) * Math.sin(Math.PI * along) * .035;
-      const radius = (.135 * (1 - along) ** 1.42 + .007) * (1 + musclePulse) * (1 - jet * .04);
+      const musclePulse = Math.sin(bodyPhase * 1.1 - along * 5.5 + arm.phaseOffset) * Math.sin(Math.PI * along) * .055;
+      // A muscular hydrostat shortens and thickens under contraction rather
+      // than shrinking uniformly like an inflatable tube losing volume.
+      const radius = (.135 * (1 - along) ** 1.42 + .007) * (1 + musclePulse + jet * .055);
       const center = centerline[segment];
       for (let radialIndex = 0; radialIndex <= radialCount; radialIndex++) {
         const theta = radialIndex / radialCount * Math.PI * 2;
@@ -442,7 +449,7 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
         arm.tangent.subVectors(arm.centers[Math.min(segmentCount, segment + 1)], arm.centers[Math.max(0, segment - 1)]).normalize();
         arm.normal.copy(ventral).addScaledVector(arm.tangent, -ventral.dot(arm.tangent)).normalize();
         arm.side.crossVectors(arm.tangent, arm.normal).normalize();
-        const armSurfaceRadius = (.135 * (1 - along) ** 1.42 + .007) * (1 - jet * .04);
+        const armSurfaceRadius = (.135 * (1 - along) ** 1.42 + .007) * (1 + jet * .055);
         const radius = Math.min(.036 * (1 - along * .48), armSurfaceRadius * .4)
           * (1 + .04 * Math.sin(bodyPhase * .4 + arm.phaseOffset));
         for (const row of [-1, 1]) {
@@ -497,7 +504,9 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     update,
     getInkEjectionPoint(position = new THREE.Vector3(), direction = new THREE.Vector3()) {
       group.updateMatrixWorld(true);
-      position.set(0, .135, 0).applyMatrix4(funnel.matrixWorld);
+      // The funnel sits beneath the mantle. Emit just beyond its ventral
+      // surface so depth-tested ink does not begin hidden inside the body.
+      position.set(.255, -.46, 0).applyMatrix4(group.matrixWorld);
       direction.set(0, 1, 0).transformDirection(funnel.matrixWorld);
       return { position, direction };
     },
