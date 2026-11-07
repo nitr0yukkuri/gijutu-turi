@@ -93,8 +93,9 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     metalness: 0,
     clearcoat: .06,
     clearcoatRoughness: .66,
-    emissive: 0x260402,
-    emissiveIntensity: .055,
+    // A restrained red pigment floor keeps skin readable under blue-green light.
+    emissive: 0x87180e,
+    emissiveIntensity: .22,
   });
   const headSkin = skin;
   const armSkin = skin;
@@ -380,7 +381,7 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
 
     visibleAmount = clamp(visibility, 0, 1);
     if (waterUniforms?.uFishVisibility) waterUniforms.uFishVisibility.value = visibleAmount;
-    skin.emissiveIntensity = .03 + clamp(glow, 0, 1) * .01 + clamp(tetherLoad, 0, 1) * .006;
+    skin.emissiveIntensity = .22 + clamp(glow, 0, 1) * .04 + clamp(tetherLoad, 0, 1) * .025;
   };
 
   update(0, { bodyPhase: phase, power: .25, effort: .28 });
