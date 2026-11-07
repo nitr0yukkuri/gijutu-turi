@@ -117,8 +117,40 @@ export function createOctopusInkEffect(scene) {
   points.name = 'java-octopus-ink';
   points.frustumCulled = false;
   points.visible = false;
-  points.renderOrder = 3;
+  points.renderOrder = 4;
   scene.add(points);
+
+  // The first discharge is a mucus-bound bolus before the surrounding ink shears into a plume.
+  // A small volume mesh keeps that dense nucleus readable at normal fight-camera distances.
+  const bolusGeometry = new THREE.SphereGeometry(1, 24, 16);
+  const bolusPositions = bolusGeometry.attributes.position;
+  const bolusVertex = new THREE.Vector3();
+  for (let vertex = 0; vertex < bolusPositions.count; vertex++) {
+    bolusVertex.fromBufferAttribute(bolusPositions, vertex);
+    const lobe = 1
+      + 0.095 * Math.sin(bolusVertex.x * 4.6 + bolusVertex.y * 3.1)
+        * Math.cos(bolusVertex.z * 4.2 - bolusVertex.x * 2.3)
+      + 0.035 * Math.sin(bolusVertex.y * 10.3 + bolusVertex.z * 8.1);
+    bolusPositions.setXYZ(vertex, bolusVertex.x * lobe, bolusVertex.y * lobe, bolusVertex.z * lobe);
+  }
+  bolusGeometry.attributes.position.needsUpdate = true;
+  bolusGeometry.computeVertexNormals();
+  const bolusMaterial = new THREE.MeshBasicMaterial({
+    color: 0x17100d,
+    transparent: true,
+    opacity: 0,
+    depthTest: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+    blending: THREE.NormalBlending,
+  });
+  const bolus = new THREE.Mesh(bolusGeometry, bolusMaterial);
+  bolus.name = 'java-octopus-ink-bolus';
+  bolus.frustumCulled = false;
+  bolus.renderOrder = 3;
+  bolus.visible = false;
+  scene.add(bolus);
 
   const forward = new THREE.Vector3();
   const reference = new THREE.Vector3();
@@ -126,6 +158,11 @@ export function createOctopusInkEffect(scene) {
   const up = new THREE.Vector3();
   let burstCount = 0;
   let activeParticles = 0;
+  let bolusAge = Number.POSITIVE_INFINITY;
+  const bolusOrigin = new THREE.Vector3();
+  const bolusDirection = new THREE.Vector3(1, 0, 0);
+  const bolusLocalAxis = new THREE.Vector3(1, 0, 0);
+  const bolusRotation = new THREE.Quaternion();
   let disposed = false;
   const setParticle = (index, origin, seed, ordinal) => {
     // The funnel releases one dark bolus first. Its dense center stays
@@ -163,14 +200,14 @@ export function createOctopusInkEffect(scene) {
         : 2.8 + random01(seed + 10.1) * 0.8;
     particle.seed = random01(seed + 11.2);
     particle.baseSize = core
-      ? 1.55 + random01(seed + 12.5) * 0.45
-      : middle ? 0.9 + random01(seed + 12.5) * 0.35 : 0.55 + random01(seed + 12.5) * 0.28;
+      ? 1.85 + random01(seed + 12.5) * 0.55
+      : middle ? 1.15 + random01(seed + 12.5) * 0.42 : 0.82 + random01(seed + 12.5) * 0.34;
     particle.baseAlpha = core
-      ? 0.48 + random01(seed + 13.6) * 0.16
-      : middle ? 0.17 + random01(seed + 13.6) * 0.1 : 0.06 + random01(seed + 13.6) * 0.06;
+      ? 0.62 + random01(seed + 13.6) * 0.16
+      : middle ? 0.25 + random01(seed + 13.6) * 0.12 : 0.1 + random01(seed + 13.6) * 0.08;
 
-    const tint = new THREE.Color(core ? 0x100b08 : middle ? 0x211511 : 0x382720);
-    tint.lerp(new THREE.Color(0x63483b), random01(seed + 14.7) * (core ? 0.04 : 0.16));
+    const tint = new THREE.Color(core ? 0x100b08 : middle ? 0x30211b : 0x51463e);
+    tint.lerp(new THREE.Color(0x76655a), random01(seed + 14.7) * (core ? 0.04 : 0.18));
     const offset = index * 3;
     tints[offset] = tint.r;
     tints[offset + 1] = tint.g;
@@ -191,6 +228,15 @@ export function createOctopusInkEffect(scene) {
     if (Math.abs(forward.dot(reference)) > 0.92) reference.set(0, 0, 1);
     side.crossVectors(forward, reference).normalize();
     up.crossVectors(side, forward).normalize();
+    bolusAge = 0;
+    bolusOrigin.copy(origin);
+    bolusDirection.copy(forward);
+    bolusRotation.setFromUnitVectors(bolusLocalAxis, bolusDirection);
+    bolus.position.copy(bolusOrigin).addScaledVector(bolusDirection, 0.12);
+    bolus.quaternion.copy(bolusRotation);
+    bolus.scale.set(0.24, 0.17, 0.15);
+    bolusMaterial.opacity = 0.82;
+    bolus.visible = true;
     const first = burstCount * PARTICLES_PER_BURST;
     for (let ordinal = 0; ordinal < PARTICLES_PER_BURST; ordinal++) {
       const index = first + ordinal;
@@ -221,6 +267,21 @@ export function createOctopusInkEffect(scene) {
     const projectionScale = Math.max(1, drawingBufferHeight)
       / (2 * Math.tan(THREE.MathUtils.degToRad(verticalFovDegrees) * 0.5));
     material.uniforms.uProjectionScale.value = projectionScale;
+    if (Number.isFinite(bolusAge)) {
+      bolusAge += dt;
+      const expansion = smoothstep(0.04, 0.62, bolusAge);
+      const fade = smoothstep(0.92, 1.9, bolusAge);
+      bolus.position.copy(bolusOrigin)
+        .addScaledVector(bolusDirection, 0.12 + Math.min(bolusAge, 1.1) * 0.42);
+      bolus.scale.set(
+        0.24 + expansion * 0.56,
+        0.17 + expansion * 0.35,
+        0.15 + expansion * 0.3,
+      );
+      bolusMaterial.opacity = 0.82 * (1 - fade);
+      bolus.visible = bolusMaterial.opacity > 0.005;
+    }
+
     let active = 0;
     for (let index = 0; index < particles.length; index++) {
       const particle = particles[index];
@@ -274,6 +335,10 @@ export function createOctopusInkEffect(scene) {
       if (disposed) return;
       burstCount = 0;
       activeParticles = 0;
+      bolusAge = Number.POSITIVE_INFINITY;
+      bolus.visible = false;
+      bolusMaterial.opacity = 0;
+      bolus.position.set(0, 0, 0);
       points.visible = false;
       for (const particle of particles) {
         particle.age = particle.lifetime + particle.releaseDelay;
@@ -296,8 +361,11 @@ export function createOctopusInkEffect(scene) {
       disposed = true;
       activeParticles = 0;
       scene.remove(points);
+      scene.remove(bolus);
       geometry.dispose();
       material.dispose();
+      bolusGeometry.dispose();
+      bolusMaterial.dispose();
     },
   };
 }
