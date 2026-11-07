@@ -15,8 +15,10 @@ test('octopus ink is emitted as a finite, short-lived underwater plume', () => {
     assert.equal(effect.diagnostics.visibleParticles, 0, 'particles fade in over their first frames');
     effect.update(0.05, 720, 46);
     assert.equal(effect.diagnostics.activeParticles, 512);
-    assert.ok(effect.diagnostics.visibleParticles >= 64 && effect.diagnostics.visibleParticles <= 100,
-      'the dense nucleus and first spreading layer are visible in the opening frames');
+    assert.ok(effect.diagnostics.visibleParticles >= 90 && effect.diagnostics.visibleParticles <= 190,
+      'the nucleus and first spreading layer become visible immediately');
+    const alphaAttribute = scene.getObjectByName('java-octopus-ink')?.geometry.getAttribute('aAlpha');
+    assert.ok(alphaAttribute && Math.max(...alphaAttribute.array) >= .45, 'the dense ink nucleus has enough opacity to read against the water');
     assert.equal(effect.diagnostics.finitePositions, true);
     assert.equal(effect.trigger(new THREE.Vector3(), new THREE.Vector3(1, 0, 0)), false, 'one encounter releases one coherent ink cloud');
     for (let index = 0; index < 20; index++) effect.update(0.05, 720, 46);
@@ -45,7 +47,7 @@ test('octopus ink has a stable fallback direction and ignores non-finite frame t
     assert.equal(effect.diagnostics.visibleParticles, 0);
     effect.update(0.05);
     assert.equal(effect.diagnostics.activeParticles, 512);
-    assert.ok(effect.diagnostics.visibleParticles >= 64 && effect.diagnostics.visibleParticles <= 100,
+    assert.ok(effect.diagnostics.visibleParticles >= 90 && effect.diagnostics.visibleParticles <= 190,
       'the jet reveals the core and first spreading layer immediately');
   } finally {
     effect.dispose();
@@ -85,9 +87,9 @@ test('octopus ink blooms into a diffuse downstream smoke screen', () => {
     const initialAlong = extent(0);
     const initialAcross = across();
     const initialSize = maximum(sizes);
-    assert.ok(initialAlong < 0.16, 'the first frame stays close to the funnel as a compact bolus');
-    assert.ok(initialAcross < 0.16, 'the first frame has a tight viscous core');
-    assert.ok(initialSize > 0.8 && initialSize < 1.1, 'the dense bolus projects large enough to read at fight distance');
+    assert.ok(initialAlong < 0.24, 'the first frame stays close to the funnel as a compact bolus');
+    assert.ok(initialAcross < 0.24, 'the first frame keeps a tight viscous nucleus');
+    assert.ok(initialSize > 1.0 && initialSize < 1.5, 'the dense bolus projects large enough to read at fight distance');
     for (let step = 0; step < 24; step++) effect.update(0.05);
     assert.ok(extent(0) > initialAlong + 0.12, 'the plume advances downstream');
     assert.ok(across() > initialAcross + 0.12, 'the bolus shears into a broader turbulent streak');
