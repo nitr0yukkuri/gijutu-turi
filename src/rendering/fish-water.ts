@@ -239,8 +239,8 @@ export const JAVA_OCTOPUS_WATER_PROFILE: FishWaterProfile = {
   floor: .38, surface: .42, clearDepth: 3.0, falloff: .22, near: 40, far: 92,
   rangeLoss: .64, fin: .92, light: .38, detail: .28,
   cargo: .36,
-  redPigmentFloor: .50,
-  bodyLightMin: .78, bodyLightMax: .90, finLight: .68, lightPartLight: .82, detailPartLight: .34, cargoPartLight: .28,
+  redPigmentFloor: .60,
+  bodyLightMin: .82, bodyLightMax: .94, finLight: .74, lightPartLight: .84, detailPartLight: .36, cargoPartLight: .28,
 };
 
 const FIN_VIEW_BLEND_START = -.22;
