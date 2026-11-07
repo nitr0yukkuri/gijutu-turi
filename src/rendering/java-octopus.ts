@@ -30,13 +30,16 @@ function createSkinMottle() {
       const broad = noise(x / 34, y / 29);
       const patch = noise(x / 13 + 7, y / 16 - 3);
       const fine = noise(x / 3.5, y / 3.5);
-      const pigment = broad * .4 + patch * .45 + fine * .15;
+      const pigment = broad * .38 + patch * .47 + fine * .15;
       const paleMottle = smoothstep(.18, .72, noise(x / 19 + 21, y / 22 - 8));
-      const red = clamp(Math.round(215 + pigment * 22 + paleMottle * 5), 176, 248);
+      const chromatophorePatch = smoothstep(.2, .78, noise(x / 8 + 14, y / 11 + 4));
+      // Keep the procedural map neutral so it modulates skin relief without
+      // multiplying away the red pigment carried by the material itself.
+      const value = clamp(Math.round(226 + pigment * 20 + paleMottle * 8 - chromatophorePatch * 18), 186, 255);
       const offset = (y * size + x) * 3;
-      pixels[offset] = red;
-      pixels[offset + 1] = clamp(Math.round(red - 10 - paleMottle * 8), 145, 239);
-      pixels[offset + 2] = clamp(Math.round(red - 19 - paleMottle * 11), 132, 230);
+      pixels[offset] = value;
+      pixels[offset + 1] = value;
+      pixels[offset + 2] = value;
     }
   }
   const texture = new THREE.DataTexture(pixels, size, size, THREE.RGBFormat, THREE.UnsignedByteType);
@@ -81,10 +84,10 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   const geometries = new Set();
   const materials = new Set();
   const skinMottle = createSkinMottle();
-  const normalSkinColor = new THREE.Color(0xd5503c);
-  const stressSkinColor = new THREE.Color(0xf46646);
+  const normalSkinColor = new THREE.Color(0xf05d46);
+  const stressSkinColor = new THREE.Color(0xff886f);
   const skin = new THREE.MeshPhysicalMaterial({
-    color: 0xd5503c,
+    color: 0xf05d46,
     map: skinMottle,
     roughness: .68,
     metalness: 0,
@@ -102,7 +105,7 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     map: skinMottle,
   });
   const webSkin = new THREE.MeshPhysicalMaterial({
-    color: 0xd97a68,
+    color: 0xe97864,
     map: skinMottle,
     roughness: .7,
     clearcoat: .035,
@@ -377,7 +380,7 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
 
     visibleAmount = clamp(visibility, 0, 1);
     if (waterUniforms?.uFishVisibility) waterUniforms.uFishVisibility.value = visibleAmount;
-    skin.emissiveIntensity = .025 + clamp(glow, 0, 1) * .008 + clamp(tetherLoad, 0, 1) * .003;
+    skin.emissiveIntensity = .03 + clamp(glow, 0, 1) * .01 + clamp(tetherLoad, 0, 1) * .006;
   };
 
   update(0, { bodyPhase: phase, power: .25, effort: .28 });
