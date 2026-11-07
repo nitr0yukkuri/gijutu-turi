@@ -11,14 +11,15 @@ test('octopus ink shows a compact bolus before it expands and disperses', () => 
     if (!(bolus instanceof THREE.Mesh)) throw new Error('a visible ink bolus mesh is present');
     const bolusMaterial = bolus.material;
     if (!(bolusMaterial instanceof THREE.MeshBasicMaterial)) throw new Error('the bolus uses a stable dark material');
+    const bolusTransform = bolus as unknown as { scale: { x: number }; position: { x: number } };
     assert.equal(bolus.visible, false);
     assert.equal(effect.trigger(new THREE.Vector3(2, -2, 4), new THREE.Vector3(1, 0, 0)), true);
     assert.equal(bolus.visible, true, 'the dense discharge appears with the particle plume');
     assert.ok(bolusMaterial.opacity >= 0.8, 'the initial bolus has strong contrast against dark water');
-    const initialLength = bolus.scale.x;
+    const initialLength = bolusTransform.scale.x;
     for (let step = 0; step < 6; step++) effect.update(0.05);
-    assert.ok(bolus.scale.x > initialLength + 0.15, 'the compact bolus expands gradually');
-    assert.ok(bolus.position.x > 2.2, 'the bolus is advected along the siphon jet');
+    assert.ok(bolusTransform.scale.x > initialLength + 0.15, 'the compact bolus expands gradually');
+    assert.ok(bolusTransform.position.x > 2.2, 'the bolus is advected along the siphon jet');
     const expandedOpacity = bolusMaterial.opacity;
     for (let step = 0; step < 22; step++) effect.update(0.05);
     assert.ok(bolusMaterial.opacity < expandedOpacity, 'the bolus fades as turbulence breaks it apart');
