@@ -130,44 +130,44 @@ export function createOctopusInkEffect(scene) {
   const setParticle = (index, origin, seed, ordinal) => {
     // The funnel releases one dark bolus first. Its dense center stays
     // together briefly while the less concentrated edge peels into the flow.
-    const core = ordinal < 64;
-    const middle = ordinal >= 64 && ordinal < 280;
+    const core = ordinal < 96;
+    const middle = ordinal >= 96 && ordinal < 320;
     // A dense mucus-bound nucleus leaves first; lighter peripheral ink then
     // shears into the current instead of forming a static, uniform ball.
-    const radial = Math.sqrt(random01(seed + 1.3)) * (core ? 0.014 : middle ? 0.032 : 0.052);
+    const radial = Math.sqrt(random01(seed + 1.3)) * (core ? 0.022 : middle ? 0.052 : 0.086);
     const angle = random01(seed + 2.7) * Math.PI * 2;
     const radialSide = Math.cos(angle);
     const radialUp = Math.sin(angle);
-    const axial = random01(seed + 3.9) * (core ? 0.014 : middle ? 0.027 : 0.042);
+    const axial = random01(seed + 3.9) * (core ? 0.03 : middle ? 0.045 : 0.065);
     const particle = particles[index];
     particle.position.copy(origin)
       .addScaledVector(forward, axial)
       .addScaledVector(side, radial * radialSide)
       .addScaledVector(up, radial * radialUp);
-    const outward = core ? 0.045 : middle ? 0.24 : 0.48 + random01(seed + 5.1) * 0.32;
+    const outward = core ? 0.08 : middle ? 0.34 : 0.62 + random01(seed + 5.1) * 0.36;
     const lateralNoise = (random01(seed + 6.4) - 0.5) * 0.055;
     const verticalNoise = (random01(seed + 7.8) - 0.5) * 0.05;
-    particle.velocity.copy(forward).multiplyScalar(core ? 0.62 : middle ? 0.82 + random01(seed + 8.9) * 0.12 : 1.05 + random01(seed + 9.7) * 0.35)
+    particle.velocity.copy(forward).multiplyScalar(core ? 0.42 : middle ? 0.78 + random01(seed + 8.9) * 0.16 : 1.05 + random01(seed + 9.7) * 0.35)
       .addScaledVector(side, radialSide * outward + lateralNoise)
       .addScaledVector(up, radialUp * outward + verticalNoise);
     particle.age = 0;
     particle.releaseDelay = core
-      ? random01(seed + 15.1) * 0.01
+      ? random01(seed + 15.1) * 0.015
       : middle
-        ? 0.045 + random01(seed + 15.1) * 0.075
-        : 0.11 + random01(seed + 15.1) * 0.22;
+        ? 0.025 + random01(seed + 15.1) * 0.075
+        : 0.08 + random01(seed + 15.1) * 0.18;
     particle.lifetime = core
-      ? 1.9 + random01(seed + 10.1) * 0.65
+      ? 1.35 + random01(seed + 10.1) * 0.55
       : middle
-        ? 2.9 + random01(seed + 10.1) * 0.8
-        : 3.5 + random01(seed + 10.1) * 0.9;
+        ? 2.25 + random01(seed + 10.1) * 0.65
+        : 2.8 + random01(seed + 10.1) * 0.8;
     particle.seed = random01(seed + 11.2);
     particle.baseSize = core
-      ? 1.3 + random01(seed + 12.5) * 0.34
-      : middle ? 0.62 + random01(seed + 12.5) * 0.3 : 0.4 + random01(seed + 12.5) * 0.22;
+      ? 1.55 + random01(seed + 12.5) * 0.45
+      : middle ? 0.9 + random01(seed + 12.5) * 0.35 : 0.55 + random01(seed + 12.5) * 0.28;
     particle.baseAlpha = core
-      ? 0.25 + random01(seed + 13.6) * 0.09
-      : middle ? 0.1 + random01(seed + 13.6) * 0.06 : 0.04 + random01(seed + 13.6) * 0.05;
+      ? 0.48 + random01(seed + 13.6) * 0.16
+      : middle ? 0.17 + random01(seed + 13.6) * 0.1 : 0.06 + random01(seed + 13.6) * 0.06;
 
     const tint = new THREE.Color(core ? 0x100b08 : middle ? 0x211511 : 0x382720);
     tint.lerp(new THREE.Color(0x63483b), random01(seed + 14.7) * (core ? 0.04 : 0.16));
@@ -200,7 +200,7 @@ export function createOctopusInkEffect(scene) {
       positions[offset] = particle.position.x;
       positions[offset + 1] = particle.position.y;
       positions[offset + 2] = particle.position.z;
-      sizes[index] = particle.baseSize * 0.62;
+      sizes[index] = particle.baseSize * 0.72;
       alphas[index] = 0;
     }
     burstCount++;
