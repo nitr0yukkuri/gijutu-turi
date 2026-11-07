@@ -89,6 +89,7 @@ export function createOctopusInkEffect(scene) {
     velocity: new THREE.Vector3(),
     age: PARTICLE_LIFETIME,
     lifetime: PARTICLE_LIFETIME,
+    releaseDelay: 0,
     baseSize: 0,
     baseAlpha: 0,
     seed: 0,
@@ -127,12 +128,10 @@ export function createOctopusInkEffect(scene) {
   let activeParticles = 0;
   let disposed = false;
   const setParticle = (index, origin, seed, ordinal) => {
-    // Keep a small, dense nucleus while distributing most ink into an
-    // elongated, low-density smoke screen behind the fleeing animal.
-    // Octopus ink first leaves the funnel as a compact, viscous bolus. The
-    // surrounding particles spread into current-aligned streaks over time.
-    const core = ordinal < 48;
-    const middle = ordinal >= 48 && ordinal < 208;
+    // The funnel releases one dark bolus first. Its dense center stays
+    // together briefly while the less concentrated edge peels into the flow.
+    const core = ordinal < 64;
+    const middle = ordinal >= 64 && ordinal < 232;
     // All material leaves the funnel as one compact bolus. Faster outer
     // particles peel away later instead of appearing as a cloud immediately.
     const radial = Math.sqrt(random01(seed + 1.3)) * (core ? 0.012 : middle ? 0.024 : 0.036);
@@ -152,14 +151,23 @@ export function createOctopusInkEffect(scene) {
       .addScaledVector(side, radialSide * outward + lateralNoise)
       .addScaledVector(up, radialUp * outward + verticalNoise);
     particle.age = 0;
-    particle.lifetime = 4.6 + random01(seed + 10.1) * 1.2;
+    particle.releaseDelay = core
+      ? random01(seed + 15.1) * 0.025
+      : middle
+        ? 0.09 + random01(seed + 15.1) * 0.13
+        : 0.22 + random01(seed + 15.1) * 0.34;
+    particle.lifetime = core
+      ? 2.7 + random01(seed + 10.1) * 0.6
+      : middle
+        ? 3.6 + random01(seed + 10.1) * 0.7
+        : 4 + random01(seed + 10.1) * 0.9;
     particle.seed = random01(seed + 11.2);
     particle.baseSize = core
-      ? 0.42 + random01(seed + 12.5) * 0.18
-      : middle ? 0.3 + random01(seed + 12.5) * 0.12 : 0.23 + random01(seed + 12.5) * 0.12;
+      ? 0.95 + random01(seed + 12.5) * 0.28
+      : middle ? 0.4 + random01(seed + 12.5) * 0.2 : 0.26 + random01(seed + 12.5) * 0.16;
     particle.baseAlpha = core
-      ? 0.16 + random01(seed + 13.6) * 0.055
-      : middle ? 0.075 + random01(seed + 13.6) * 0.03 : 0.025 + random01(seed + 13.6) * 0.02;
+      ? 0.18 + random01(seed + 13.6) * 0.12
+      : middle ? 0.08 + random01(seed + 13.6) * 0.045 : 0.035 + random01(seed + 13.6) * 0.03;
 
     const tint = new THREE.Color(core ? 0x100b08 : middle ? 0x211511 : 0x382720);
     tint.lerp(new THREE.Color(0x63483b), random01(seed + 14.7) * (core ? 0.04 : 0.16));
@@ -192,7 +200,7 @@ export function createOctopusInkEffect(scene) {
       positions[offset] = particle.position.x;
       positions[offset + 1] = particle.position.y;
       positions[offset + 2] = particle.position.z;
-      sizes[index] = particle.baseSize * 0.48;
+      sizes[index] = particle.baseSize * 0.62;
       alphas[index] = 0;
     }
     burstCount++;
@@ -213,20 +221,21 @@ export function createOctopusInkEffect(scene) {
     const projectionScale = Math.max(1, drawingBufferHeight)
       / (2 * Math.tan(THREE.MathUtils.degToRad(verticalFovDegrees) * 0.5));
     material.uniforms.uProjectionScale.value = projectionScale;
-    let visible = 0;
+    let active = 0;
     for (let index = 0; index < particles.length; index++) {
       const particle = particles[index];
-      if (particle.age >= particle.lifetime) {
+      const expiration = particle.releaseDelay + particle.lifetime;
+      if (particle.age >= expiration) {
         alphas[index] = 0;
         continue;
       }
-      particle.age += dt;
-      if (particle.age >= particle.lifetime) {
-        particle.age = particle.lifetime;
+      particle.age = Math.min(expiration, particle.age + dt);
+      active++;
+      const age = particle.age - particle.releaseDelay;
+      if (age <= 0) {
         alphas[index] = 0;
         continue;
       }
-      const age = particle.age;
       const progress = age / particle.lifetime;
       const position = particle.position;
       // Neighboring particles share a slow, spatially correlated eddy field;
@@ -240,17 +249,16 @@ export function createOctopusInkEffect(scene) {
       velocities[velocityOffset] = particle.velocity.x;
       velocities[velocityOffset + 1] = particle.velocity.y;
       velocities[velocityOffset + 2] = particle.velocity.z;
-      alphas[index] = particle.baseAlpha * smoothstep(0, 0.12, age) * (1 - smoothstep(0.48, 1, progress)) / (1 + progress * 0.7);
+      alphas[index] = particle.baseAlpha * smoothstep(0, 0.055, age) * (1 - smoothstep(0.48, 1, progress)) / (1 + progress * 0.7);
       sizes[index] = particle.baseSize * (0.7 + progress * 1.25);
       const offset = index * 3;
       positions[offset] = particle.position.x;
       positions[offset + 1] = particle.position.y;
       positions[offset + 2] = particle.position.z;
-      visible++;
     }
-    activeParticles = visible;
-    points.visible = visible > 0;
-    if (visible > 0) {
+    activeParticles = active;
+    points.visible = active > 0;
+    if (active > 0) {
       geometry.attributes.position.needsUpdate = true;
       geometry.attributes.aPointSize.needsUpdate = true;
       geometry.attributes.aVelocity.needsUpdate = true;
@@ -267,7 +275,7 @@ export function createOctopusInkEffect(scene) {
       activeParticles = 0;
       points.visible = false;
       for (const particle of particles) {
-        particle.age = particle.lifetime;
+        particle.age = particle.lifetime + particle.releaseDelay;
         particle.position.set(0, 0, 0);
       }
       alphas.fill(0);
