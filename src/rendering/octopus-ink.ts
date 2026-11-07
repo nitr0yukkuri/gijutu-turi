@@ -6,6 +6,11 @@ const MAX_BURSTS = 1;
 const PARTICLE_CAPACITY = PARTICLES_PER_BURST * MAX_BURSTS;
 const PARTICLE_LIFETIME = 4.8;
 
+// Let the octopus's body read before its first deliberate escape surge releases ink.
+export const JAVA_OCTOPUS_INK_RELEASE_SECONDS = 3.1;
+export const shouldReleaseJavaOctopusInk = (mode, fightTime) =>
+  mode === 'surge' && Number.isFinite(fightTime) && fightTime >= JAVA_OCTOPUS_INK_RELEASE_SECONDS;
+
 const vertexShader = `
 attribute float aPointSize;
 attribute float aAlpha;
