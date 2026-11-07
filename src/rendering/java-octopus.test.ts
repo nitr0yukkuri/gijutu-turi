@@ -26,9 +26,11 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
       throw new Error('skin retains a procedural chromatophore texture');
     }
     for (let offset = 0; offset < pigmentPixels.length; offset += 3) {
+      const red = pigmentPixels[offset] ?? 0;
+      const green = pigmentPixels[offset + 1] ?? 0;
+      const blue = pigmentPixels[offset + 2] ?? 0;
       assert.ok(
-        Math.max(pigmentPixels[offset], pigmentPixels[offset + 1], pigmentPixels[offset + 2])
-          - Math.min(pigmentPixels[offset], pigmentPixels[offset + 1], pigmentPixels[offset + 2]) <= 1,
+        Math.max(red, green, blue) - Math.min(red, green, blue) <= 1,
         'the neutral texture modulates pigment without muting its red hue',
       );
     }
