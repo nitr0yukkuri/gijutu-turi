@@ -87,11 +87,10 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     const restingTips = Array.from({ length: 8 }, (_, index) => centerAt(`arm-${index + 1}`, 14));
     octopus.update(1, { power: 1, effort: 1 });
     const jetTips = Array.from({ length: 8 }, (_, index) => centerAt(`arm-${index + 1}`, 14));
-    const meanDownstreamShift = jetTips.reduce(
-      (total, tip, index) => total + tip.clone().sub(restingTips[index]!).dot(flowAxis),
-      0,
-    ) / jetTips.length;
-    assert.ok(meanDownstreamShift > .3, 'all arms streamline toward the siphon wake under jet propulsion');
+    const downstreamShifts = jetTips.map(
+      (tip, index) => tip.clone().sub(restingTips[index]!).dot(flowAxis),
+    );
+    assert.ok(downstreamShifts.every(shift => shift > .2), 'each arm streams toward the siphon wake under jet propulsion');
     const rootCenters = Array.from({ length: 8 }, (_, index) => rootCenter(`arm-${index + 1}`));
     for (let first = 0; first < rootCenters.length; first++) {
       for (let second = first + 1; second < rootCenters.length; second++) {
