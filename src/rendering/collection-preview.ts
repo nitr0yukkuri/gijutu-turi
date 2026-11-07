@@ -76,14 +76,28 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
   scene.environmentIntensity = .25;
   studio.dispose();
   pmrem.dispose();
-  scene.add(new THREE.HemisphereLight(0xc6e9fb, 0x062441, .9));
-  const key = new THREE.DirectionalLight(0xa3e6ff, 1.65);
+  const octopusPreviewLight = isJavaOctopus;
+  scene.add(new THREE.HemisphereLight(
+    octopusPreviewLight ? 0xffd8c9 : 0xc6e9fb,
+    0x062441,
+    octopusPreviewLight ? 1.25 : .9,
+  ));
+  const key = new THREE.DirectionalLight(
+    octopusPreviewLight ? 0xffad91 : 0xa3e6ff,
+    octopusPreviewLight ? 2.35 : 1.65,
+  );
   key.position.set(-3, 5, 5);
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0x178cbf, 4.2);
+  const rim = new THREE.DirectionalLight(
+    octopusPreviewLight ? 0x6c969e : 0x178cbf,
+    octopusPreviewLight ? 1.25 : 4.2,
+  );
   rim.position.set(2, 3, -5);
   scene.add(rim);
-  const fill = new THREE.DirectionalLight(0x3d74c2, 1.2);
+  const fill = new THREE.DirectionalLight(
+    octopusPreviewLight ? 0xd88370 : 0x3d74c2,
+    octopusPreviewLight ? .9 : 1.2,
+  );
   fill.position.set(-2, -2, 3);
   scene.add(fill);
 
