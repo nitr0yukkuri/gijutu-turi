@@ -33,6 +33,10 @@ import type { WeatherVisualState } from '../weather-contract.js';
 // Keep the escape result on screen while the camera returns to the normal view.
 const ESCAPE_FADE_MS = 420;
 
+// The octopus has a wide, low-contrast silhouette; give its fight pose a closer frame.
+const JAVA_OCTOPUS_FIGHT_SCALE = 1.65;
+const JAVA_OCTOPUS_FIGHT_FOCUS_BLEND = .72;
+
 // Preserve the dorsal-up axis when heading crosses +X. A shortest-arc
 // rotation from -X alone can roll a pitched fish onto its back at that turn.
 const createFishOrientationScratch=()=>({
@@ -648,7 +652,18 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const fishModelStore=createOceanFishModels(scene,waterUniforms,createFishOrientationScratch);
   const {fightFish,dockerWhale,cssFish,rustFish,jsEel,javaOctopus,fightModelFor,requestFightModel}=fishModelStore;
   const cssFishProfile=getFishFightProfile('css-001');
-  const liveFishScale=(fishId,phase)=>fishScaleForResponsiveCamera(fishId==='whale-001'?.42:fishId==='k8s-001'?(phase==='fighting'?1.02:.76):fishId==='css-001'?(phase==='fighting'?.74:.55):fishId==='rust-001'?(phase==='fighting'?.80:.63):fishId==='js-001'?(phase==='fighting'?.78:.61):fishId==='java-001'?(phase==='fighting'?1.02:.78):(phase==='fighting'?.84:.66),camera.fov,portraitBlend);
+  let javaFightScaleBlend=0;
+  const liveFishScale=(fishId,phase)=>{
+    const fighting=phase==='fighting';
+    let baseScale=fighting ? .84 : .66;
+    if(fishId==='whale-001')baseScale=.42;
+    else if(fishId==='k8s-001')baseScale=fighting ? 1.02 : .76;
+    else if(fishId==='css-001')baseScale=fighting ? .74 : .55;
+    else if(fishId==='rust-001')baseScale=fighting ? .80 : .63;
+    else if(fishId==='js-001')baseScale=fighting ? .78 : .61;
+    else if(fishId==='java-001')baseScale=THREE.MathUtils.lerp(.78,JAVA_OCTOPUS_FIGHT_SCALE,javaFightScaleBlend);
+    return fishScaleForResponsiveCamera(baseScale,camera.fov,portraitBlend);
+  };
   const catchFishScale=(fishId)=>fishScaleForResponsiveCamera(catchFraming(fishId,camera.aspect,camera.fov).baseScale,camera.fov,portraitBlend);
   // The submerged line ends at the same undeformed nose anchor as the model.
   const mouth=new THREE.Vector3(),lineEntry=new THREE.Vector3(),curvePoint=new THREE.Vector3();
@@ -916,6 +931,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if(overlayOpen&&now-lastRenderedFrame<1000/30)return;
     const dt=Math.min(.05,(now-(lastFrame||now))/1000);lastFrame=now;time+=dt*(reduced?.15:1);
     lastRenderedFrame=now;
+    javaFightScaleBlend=THREE.MathUtils.damp(javaFightScaleBlend,state.fishId==='java-001'&&state.phase==='fighting'?1:0,5.8,dt);
     uniforms.uTime.value=time;
     const weatherBlend=1-Math.exp(-dt*.32);
     weatherUniforms.uWeatherCloud.value=THREE.MathUtils.lerp(weatherUniforms.uWeatherCloud.value,weatherTarget.cloudCover,weatherBlend);
@@ -982,7 +998,12 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       THREE.MathUtils.lerp(normalCameraZ,breachCameraZ,breachCameraBlend),
     );
     camera.position.addScaledVector(whaleCameraOffset,seaCameraBlend);
-    const normalFocusBlend=state.phase==='fighting'&&(state.fishId==='whale-001'||state.fishId==='k8s-001'||state.fishId==='rust-001'||state.fishId==='js-001')?.62:state.phase==='fighting'?.48:.28;
+    let normalFocusBlend=.28;
+    if(state.phase==='fighting'){
+      normalFocusBlend=.48;
+      if(state.fishId==='java-001')normalFocusBlend=JAVA_OCTOPUS_FIGHT_FOCUS_BLEND;
+      else if(state.fishId==='whale-001'||state.fishId==='k8s-001'||state.fishId==='rust-001'||state.fishId==='js-001')normalFocusBlend=.62;
+    }
     const focusBlend=THREE.MathUtils.lerp(normalFocusBlend,1,surfaceLunge);
     const fishFocusX=followsFish?THREE.MathUtils.lerp(state.aim*.18,visibleFish.position.x,focusBlend):state.aim*.18;
     const fishFocusZ=followsFish?THREE.MathUtils.lerp(-35,visibleFish.position.z,focusBlend):-35;
