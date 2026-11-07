@@ -33,9 +33,9 @@ import type { WeatherVisualState } from '../weather-contract.js';
 // Keep the escape result on screen while the camera returns to the normal view.
 const ESCAPE_FADE_MS = 420;
 
-// The octopus has a wide, low-contrast silhouette; give its fight pose a closer frame.
-const JAVA_OCTOPUS_FIGHT_SCALE = 1.65;
-const JAVA_OCTOPUS_FIGHT_FOCUS_BLEND = .72;
+// Keep the broad eight-arm silhouette large and centered while preserving the shared fight camera.
+const JAVA_OCTOPUS_FIGHT_SCALE = 2.15;
+const JAVA_OCTOPUS_FIGHT_FOCUS_BLEND = .86;
 
 // Preserve the dorsal-up axis when heading crosses +X. A shortest-arc
 // rotation from -X alone can roll a pitched fish onto its back at that turn.

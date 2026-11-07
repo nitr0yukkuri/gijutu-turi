@@ -16,15 +16,22 @@ attribute float aPointSize;
 attribute float aAlpha;
 attribute float aSeed;
 attribute vec3 aTint;
+attribute vec3 aVelocity;
 uniform float uProjectionScale;
 varying float vAlpha;
 varying float vSeed;
 varying vec3 vTint;
+varying vec2 vFlowDirection;
+varying float vStretch;
 
 void main() {
   vec4 viewPosition = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * viewPosition;
   gl_PointSize = max(1.0, aPointSize * uProjectionScale / max(0.2, -viewPosition.z));
+  vec3 viewVelocity = (modelViewMatrix * vec4(aVelocity, 0.0)).xyz;
+  float projectedSpeed = length(viewVelocity.xy);
+  vFlowDirection = projectedSpeed > 0.001 ? viewVelocity.xy / projectedSpeed : vec2(1.0, 0.0);
+  vStretch = clamp(projectedSpeed * 0.42, 0.0, 0.58);
   vAlpha = aAlpha;
   vSeed = aSeed;
   vTint = aTint;
@@ -35,9 +42,14 @@ const fragmentShader = `
 varying float vAlpha;
 varying float vSeed;
 varying vec3 vTint;
+varying vec2 vFlowDirection;
+varying float vStretch;
 
 void main() {
-  vec2 p = gl_PointCoord * 2.0 - 1.0;
+  vec2 spritePoint = gl_PointCoord * 2.0 - 1.0;
+  vec2 flow = normalize(vFlowDirection);
+  vec2 crossFlow = vec2(-flow.y, flow.x);
+  vec2 p = vec2(dot(spritePoint, flow) / (1.0 + vStretch), dot(spritePoint, crossFlow) * (1.0 + vStretch));
   float angle = atan(p.y, p.x);
   float radius = length(p);
   float rimNoise = 0.075 * sin(angle * 3.0 + vSeed * 6.283)
@@ -71,6 +83,7 @@ export function createOctopusInkEffect(scene) {
   const alphas = new Float32Array(PARTICLE_CAPACITY);
   const seeds = new Float32Array(PARTICLE_CAPACITY);
   const tints = new Float32Array(PARTICLE_CAPACITY * 3);
+  const velocities = new Float32Array(PARTICLE_CAPACITY * 3);
   const particles = Array.from({ length: PARTICLE_CAPACITY }, () => ({
     position: new THREE.Vector3(),
     velocity: new THREE.Vector3(),
@@ -86,6 +99,7 @@ export function createOctopusInkEffect(scene) {
   geometry.setAttribute('aAlpha', new THREE.BufferAttribute(alphas, 1).setUsage(THREE.DynamicDrawUsage));
   geometry.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
   geometry.setAttribute('aTint', new THREE.BufferAttribute(tints, 3));
+  geometry.setAttribute('aVelocity', new THREE.BufferAttribute(velocities, 3).setUsage(THREE.DynamicDrawUsage));
   geometry.setDrawRange(0, PARTICLE_CAPACITY);
 
   const material = new THREE.ShaderMaterial({
@@ -119,20 +133,22 @@ export function createOctopusInkEffect(scene) {
     // surrounding particles spread into current-aligned streaks over time.
     const core = ordinal < 48;
     const middle = ordinal >= 48 && ordinal < 208;
-    const radial = Math.sqrt(random01(seed + 1.3)) * (core ? 0.055 : middle ? 0.16 : 0.28);
+    // All material leaves the funnel as one compact bolus. Faster outer
+    // particles peel away later instead of appearing as a cloud immediately.
+    const radial = Math.sqrt(random01(seed + 1.3)) * (core ? 0.012 : middle ? 0.024 : 0.036);
     const angle = random01(seed + 2.7) * Math.PI * 2;
     const radialSide = Math.cos(angle);
     const radialUp = Math.sin(angle);
-    const axial = random01(seed + 3.9) * (core ? 0.035 : middle ? 0.18 : 0.42);
+    const axial = random01(seed + 3.9) * (core ? 0.018 : middle ? 0.032 : 0.05);
     const particle = particles[index];
     particle.position.copy(origin)
       .addScaledVector(forward, axial)
       .addScaledVector(side, radial * radialSide)
       .addScaledVector(up, radial * radialUp);
-    const outward = core ? 0.08 : middle ? 0.2 : 0.34 + random01(seed + 5.1) * 0.1;
-    const lateralNoise = (random01(seed + 6.4) - 0.5) * 0.055;
-    const verticalNoise = (random01(seed + 7.8) - 0.5) * 0.045;
-    particle.velocity.copy(forward).multiplyScalar(core ? 0.72 : middle ? 0.9 + random01(seed + 8.9) * 0.22 : 1.12 + random01(seed + 9.7) * 0.28)
+    const outward = core ? 0.025 : middle ? 0.12 : 0.22 + random01(seed + 5.1) * 0.08;
+    const lateralNoise = (random01(seed + 6.4) - 0.5) * 0.025;
+    const verticalNoise = (random01(seed + 7.8) - 0.5) * 0.022;
+    particle.velocity.copy(forward).multiplyScalar(core ? 0.52 : middle ? 0.68 + random01(seed + 8.9) * 0.12 : 0.82 + random01(seed + 9.7) * 0.18)
       .addScaledVector(side, radialSide * outward + lateralNoise)
       .addScaledVector(up, radialUp * outward + verticalNoise);
     particle.age = 0;
@@ -142,8 +158,8 @@ export function createOctopusInkEffect(scene) {
       ? 0.42 + random01(seed + 12.5) * 0.18
       : middle ? 0.3 + random01(seed + 12.5) * 0.12 : 0.23 + random01(seed + 12.5) * 0.12;
     particle.baseAlpha = core
-      ? 0.11 + random01(seed + 13.6) * 0.045
-      : middle ? 0.045 + random01(seed + 13.6) * 0.025 : 0.018 + random01(seed + 13.6) * 0.02;
+      ? 0.16 + random01(seed + 13.6) * 0.055
+      : middle ? 0.075 + random01(seed + 13.6) * 0.03 : 0.025 + random01(seed + 13.6) * 0.02;
 
     const tint = new THREE.Color(core ? 0x100b08 : middle ? 0x211511 : 0x382720);
     tint.lerp(new THREE.Color(0x63483b), random01(seed + 14.7) * (core ? 0.04 : 0.16));
@@ -151,6 +167,9 @@ export function createOctopusInkEffect(scene) {
     tints[offset] = tint.r;
     tints[offset + 1] = tint.g;
     tints[offset + 2] = tint.b;
+    velocities[offset] = particle.velocity.x;
+    velocities[offset + 1] = particle.velocity.y;
+    velocities[offset + 2] = particle.velocity.z;
     seeds[index] = particle.seed;
     return particle;
   };
@@ -173,7 +192,7 @@ export function createOctopusInkEffect(scene) {
       positions[offset] = particle.position.x;
       positions[offset + 1] = particle.position.y;
       positions[offset + 2] = particle.position.z;
-      sizes[index] = particle.baseSize * 0.7;
+      sizes[index] = particle.baseSize * 0.48;
       alphas[index] = 0;
     }
     burstCount++;
@@ -183,6 +202,7 @@ export function createOctopusInkEffect(scene) {
     geometry.attributes.aPointSize.needsUpdate = true;
     geometry.attributes.aAlpha.needsUpdate = true;
     geometry.attributes.aTint.needsUpdate = true;
+    geometry.attributes.aVelocity.needsUpdate = true;
     geometry.attributes.aSeed.needsUpdate = true;
     return true;
   };
@@ -216,6 +236,10 @@ export function createOctopusInkEffect(scene) {
       particle.velocity.z += (Math.cos(position.x * 1.35 + age * 1.1) - Math.sin(position.y * 0.95 - age)) * 0.09 * dt;
       particle.position.addScaledVector(particle.velocity, dt);
       particle.velocity.multiplyScalar(Math.exp(-0.34 * dt));
+      const velocityOffset = index * 3;
+      velocities[velocityOffset] = particle.velocity.x;
+      velocities[velocityOffset + 1] = particle.velocity.y;
+      velocities[velocityOffset + 2] = particle.velocity.z;
       alphas[index] = particle.baseAlpha * smoothstep(0, 0.12, age) * (1 - smoothstep(0.48, 1, progress)) / (1 + progress * 0.7);
       sizes[index] = particle.baseSize * (0.7 + progress * 1.25);
       const offset = index * 3;
@@ -229,6 +253,7 @@ export function createOctopusInkEffect(scene) {
     if (visible > 0) {
       geometry.attributes.position.needsUpdate = true;
       geometry.attributes.aPointSize.needsUpdate = true;
+      geometry.attributes.aVelocity.needsUpdate = true;
     }
     geometry.attributes.aAlpha.needsUpdate = true;
   };
@@ -246,7 +271,9 @@ export function createOctopusInkEffect(scene) {
         particle.position.set(0, 0, 0);
       }
       alphas.fill(0);
+      velocities.fill(0);
       geometry.attributes.position.needsUpdate = true;
+      geometry.attributes.aVelocity.needsUpdate = true;
       geometry.attributes.aAlpha.needsUpdate = true;
     },
     get active() {
