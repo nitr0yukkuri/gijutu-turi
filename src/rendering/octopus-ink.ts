@@ -4,6 +4,7 @@ import * as THREE from '../../vendor/three.module.js';
 const PARTICLES_PER_BURST = 48;
 const MAX_BURSTS = 2;
 const PARTICLE_CAPACITY = PARTICLES_PER_BURST * MAX_BURSTS;
+const PARTICLE_LIFETIME = 4.8;
 
 const vertexShader = `
 attribute float aPointSize;
