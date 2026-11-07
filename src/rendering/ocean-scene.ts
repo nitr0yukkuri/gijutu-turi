@@ -722,7 +722,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const tackleStore=new TackleStateStore();
   let time=0,lastFrame=0,lastRenderedFrame=0,overlayOpen=false,fightTackleForeground=false,landedRevision=-1,splashAt=-100,rodStrokeAt=-100,sprayPower=1,rippleIndex=0,charge=0,chargeAim=0,lastWake=0,lastStroke=0,reelPhase=0;
   let marlinSurfaceExposed=false;
-  let javaInkWasSurging=false,javaInkBursts=0;
+  let javaInkBursts=0;
   const javaInkOrigin=new THREE.Vector3(),javaInkDirection=new THREE.Vector3();
   let serverOffset=0,cameraProgress=0,frame,catchOrigin=null,displayedWave=null,displayedGlow=.65,displayedSwim=null,displayedLoad=0,displayedRodLoad=0,displayedFishVisibility=0,escapeStartVisibility=0,hookImpactAt=-100;
   let dockerRodSurgeAt=-100,wasDockerSurging=false,displayedDockerSurgeLoad=0;
@@ -815,7 +815,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     const previousPhase=state.phase,changed=next.revision!==state.revision;
     if(next.phase==='fighting'&&previousPhase!=='fighting'){
       k8sFirstBreachPlayed=false;
-      javaInkWasSurging=false;javaInkBursts=0;octopusInk.reset();
+      javaInkBursts=0;octopusInk.reset();
     }
     if(next.phase==='escaped'&&previousPhase!=='escaped'){
       // A newly connected display may receive the escaped snapshot without
@@ -1251,7 +1251,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         activeFightFish.update(time,{power:THREE.MathUtils.lerp(wave.amplitude/.3,rustCatch?.22:.15,ease),glow:THREE.MathUtils.lerp(catchOrigin?.glow??.65,1,ease),bodyPhase:wave.phase+elapsed*wave.frequency*Math.PI*2,bodyFrequency:wave.frequency,bodyWavelength:wave.wavelength,amplitude:THREE.MathUtils.lerp(wave.amplitude,rustCatch?.055:.03,ease),turn:(catchOrigin?.swim?.turn||0)*(1-ease),effort:THREE.MathUtils.lerp(catchOrigin?.swim?.effort||.2,rustCatch?.24:.15,ease),tetherLoad:(catchOrigin?.load||0)*(1-ease),visibility:renderedFishVisibility,styleDelta:dt});
       }else{
         // Keep Go and K8s warning cues tied to their active fight modes.
-        const visualMode=state.fishId==='k8s-001'||state.fishId==='rust-001'?renderedMode:state.mode;
+        const visualMode=state.fishId==='k8s-001'||state.fishId==='rust-001'||state.fishId==='java-001'?renderedMode:state.mode;
         const urgent=visualMode==='surge'||visualMode==='split'||(visualMode==='warning'&&(state.fishId==='fish-001'||state.fishId==='k8s-001'));
         activeFightFish.group.position.set(fish.position.x,fish.position.y,fish.position.z);
         if(surfaceLunge>0){
@@ -1270,15 +1270,10 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         const renderedPower=THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1);
         const renderedEffort=escapePresentation?1:fish.swim?.effort||.2;
         activeFightFish.update(time,{power:javaJetSurge?Math.max(renderedPower,.92):renderedPower,glow:state.fishId==='whale-001'||state.fishId==='rust-001'?displayedGlow*.76:state.fishId==='js-001'?displayedGlow*.78:displayedGlow,bodyPhase:fish.bodyWave.phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,amplitude:fish.bodyWave.amplitude,turn:fish.swim?.turn||0,effort:javaJetSurge?Math.max(renderedEffort,.9):renderedEffort,tetherLoad:cues.load,cargoMoment:state.fishId==='whale-001'&&state.phase==='fighting'&&state.mode==='surge',visibility:renderedFishVisibility,styleDelta:dt});
-        if(state.fishId==='java-001'&&state.phase==='fighting'&&currentJavaOctopus?.group.visible){
-          const isInkSurge=shouldReleaseJavaOctopusInk(visualMode,renderedFightTime);
-          if(isInkSurge&&!javaInkWasSurging&&javaInkBursts<1){
-            currentJavaOctopus.getInkEjectionPoint(javaInkOrigin,javaInkDirection);
-            if(octopusInk.trigger(javaInkOrigin,javaInkDirection))javaInkBursts++;
-          }
-          javaInkWasSurging=isInkSurge;
-        }else if(state.fishId!=='java-001'||state.phase!=='fighting'){
-          javaInkWasSurging=false;
+        if(state.fishId==='java-001'&&state.phase==='fighting'&&currentJavaOctopus?.group.visible
+          &&shouldReleaseJavaOctopusInk(renderedMode,renderedFightTime)&&javaInkBursts<1){
+          currentJavaOctopus.getInkEjectionPoint(javaInkOrigin,javaInkDirection);
+          if(octopusInk.trigger(javaInkOrigin,javaInkDirection))javaInkBursts++;
         }
         if(cssFishTrailActive)rememberCssFishPose(now,fish);
       }
