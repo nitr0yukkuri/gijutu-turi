@@ -15,7 +15,7 @@ test('octopus ink is emitted as a finite, short-lived underwater plume', () => {
     assert.equal(effect.diagnostics.visibleParticles, 0, 'particles fade in over their first frames');
     effect.update(0.05, 720, 46);
     assert.equal(effect.diagnostics.activeParticles, 144);
-    assert.equal(effect.diagnostics.visibleParticles, 96);
+    assert.equal(effect.diagnostics.visibleParticles, 144);
     assert.equal(effect.diagnostics.finitePositions, true);
     assert.equal(effect.trigger(new THREE.Vector3(), new THREE.Vector3(1, 0, 0)), false, 'one encounter releases one coherent ink cloud');
     for (let index = 0; index < 20; index++) effect.update(0.05, 720, 46);
@@ -44,7 +44,7 @@ test('octopus ink has a stable fallback direction and ignores non-finite frame t
     assert.equal(effect.diagnostics.visibleParticles, 0);
     effect.update(0.05);
     assert.equal(effect.diagnostics.activeParticles, 144);
-    assert.equal(effect.diagnostics.visibleParticles, 96);
+    assert.equal(effect.diagnostics.visibleParticles, 144);
   } finally {
     effect.dispose();
   }
