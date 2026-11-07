@@ -1,6 +1,6 @@
 // @ts-nocheck -- imperative geometry animation at the vendored Three.js boundary.
 import * as THREE from '../../vendor/three.module.js';
-import { applyFishWater, DEFAULT_FISH_WATER_PROFILE } from './fish-water.js';
+import { applyFishWater, JAVA_OCTOPUS_WATER_PROFILE } from './fish-water.js';
 
 const ARM_COUNT = 8;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -81,28 +81,28 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   const geometries = new Set();
   const materials = new Set();
   const skinMottle = createSkinMottle();
-  const normalSkinColor = new THREE.Color(0x9b5948);
-  const stressSkinColor = new THREE.Color(0x794238);
+  const normalSkinColor = new THREE.Color(0xd5503c);
+  const stressSkinColor = new THREE.Color(0xf46646);
   const skin = new THREE.MeshPhysicalMaterial({
-    color: 0x9b5948,
+    color: 0xd5503c,
     map: skinMottle,
     roughness: .68,
     metalness: 0,
     clearcoat: .06,
     clearcoatRoughness: .66,
-    emissive: 0x1a0d08,
-    emissiveIntensity: .045,
+    emissive: 0x260402,
+    emissiveIntensity: .055,
   });
   const headSkin = skin;
   const armSkin = skin;
   const paleSkin = new THREE.MeshPhysicalMaterial({
-    color: 0xc58b73,
+    color: 0xe9a08a,
     roughness: .65,
     clearcoat: .04,
     map: skinMottle,
   });
   const webSkin = new THREE.MeshPhysicalMaterial({
-    color: 0xb87863,
+    color: 0xd97a68,
     map: skinMottle,
     roughness: .7,
     clearcoat: .035,
@@ -141,12 +141,12 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   group.add(funnel);
   const funnelGeo = new THREE.CylinderGeometry(.075, .14, .27, lowDetail ? 10 : 16, 1, true);
   const funnelOuter = addMesh(funnelGeo, paleSkin, funnel, 'siphon-wall');
-  funnelOuter.position.x = .015;
+  funnelOuter.position.y = .015;
   const funnelRim = addMesh(new THREE.TorusGeometry(.083, .015, 7, lowDetail ? 12 : 20), paleSkin, funnel, 'siphon-rim');
   funnelRim.rotation.x = -Math.PI / 2;
-  funnelRim.position.x = .14;
+  funnelRim.position.y = .14;
   addMesh(new THREE.ConeGeometry(.072, .19, lowDetail ? 10 : 16, 1, true), funnelInner, funnel, 'siphon-interior')
-    .position.x = .035;
+    .position.y = .035;
 
   // Two lateral eyes with a forward-facing bias and glossy pupils.
   const eyes = [];
@@ -254,10 +254,10 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     [suckerMaterial, 'detail'], [funnelInner, 'detail'], [beakMaterial, 'detail'],
   ];
   if (waterUniforms) {
-    for (const [material, part] of waterMaterials) applyFishWater(material, waterUniforms, part, DEFAULT_FISH_WATER_PROFILE);
+    for (const [material, part] of waterMaterials) applyFishWater(material, waterUniforms, part, JAVA_OCTOPUS_WATER_PROFILE);
   }
 
-  const updateArm = (arm, armIndex, bodyPhase, effort, jet, turn) => {
+  const updateArm = (arm, armIndex, bodyPhase, effort, jet, turn, tetherLoad) => {
     const phaseAtArm = bodyPhase * (.19 + armIndex % 3 * .025) + arm.phaseOffset;
     const exploration = .5 + .5 * Math.sin(phaseAtArm * .71 + armIndex * 1.3);
     const direction = arm.animatedDirection.copy(arm.direction).lerp(flowDirection, jet * (.78 + .08 * exploration)).normalize();
@@ -272,8 +272,9 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
       const probing = Math.sin(travelingPhase + armIndex * .31);
       const tipWeight = smoothstep(.68, 1, along);
       const restingCurl = Math.sin(arm.phaseOffset * 1.17) * .16;
+      const lineCurl = tipWeight * clamp(tetherLoad, 0, 1) * (.065 + .035 * Math.sin(bodyPhase * .42 + arm.phaseOffset));
       const curl = (probing * .14 + Math.sin(travelingPhase * .61 + armIndex) * .045) * along
-        + tipWeight * (restingCurl + Math.sin(bodyPhase * .31 + arm.phaseOffset) * .12) * exploration;
+        + tipWeight * (restingCurl + Math.sin(bodyPhase * .31 + arm.phaseOffset) * .12) * exploration + lineCurl;
       const sweep = (Math.sin(localPhase * .46 + along * 2.7) * .13 + turn * .09) * along * (1 - jet * .55);
       const point = centerline[segment];
       point.copy(armStart)
@@ -357,17 +358,19 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     const phaseNow = Number.isFinite(bodyPhase) ? bodyPhase : time * bodyFrequency * Math.PI * 2 + phase;
     const exertion = clamp(effort, 0, 1);
     const propulsion = clamp(power, 0, 1);
-    const jet = smoothstep(.62, .96, exertion) * smoothstep(.18, .72, propulsion);
+    const jet = smoothstep(.50, .88, exertion) * smoothstep(.14, .66, propulsion);
     const steering = clamp(turn, -1, 1);
-    const stress = Math.max(jet, clamp(tetherLoad, 0, 1) * .18);
-    skin.color.copy(normalSkinColor).lerp(stressSkinColor, stress * .16);
-    skin.roughness = .68 - stress * .025;
-    for (let index = 0; index < arms.length; index++) updateArm(arms[index], index, phaseNow, exertion, jet, steering);
+    const chromatophore = clamp(Math.max(jet * .78, clamp(tetherLoad, 0, 1) * .62), 0, 1);
+    skin.color.copy(normalSkinColor).lerp(stressSkinColor, chromatophore * .72);
+    skin.roughness = .68 - chromatophore * .055;
+    for (let index = 0; index < arms.length; index++) updateArm(arms[index], index, phaseNow, exertion, jet, steering, tetherLoad);
     updateWeb();
     updateSuckers(phaseNow, exertion, jet);
 
     const breathing = Math.sin(phaseNow * .46) * (.024 + exertion * .01);
-    mantle.scale.set(.73 * (1 + breathing), .43 * (1 + breathing), .4 * (1 + breathing));
+    // A jet pulse compresses the mantle along its length before the funnel
+    // drives the body backward; lateral volume stays soft and organic.
+    mantle.scale.set(.73 * (1 + breathing - jet * .045), .43 * (1 + breathing + jet * .035), .4 * (1 + breathing + jet * .035));
     head.rotation.z = Math.sin(phaseNow * .16) * .025 + steering * .035;
     funnel.rotation.z = -Math.PI / 2 - .14 + jet * .18 + steering * .04;
     for (let index = 0; index < eyes.length; index++) eyes[index].rotation.y = (index ? -1 : 1) * (jet * .08 + steering * .035);
@@ -381,6 +384,12 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   return {
     group,
     update,
+    getInkEjectionPoint(position = new THREE.Vector3(), direction = new THREE.Vector3()) {
+      group.updateMatrixWorld(true);
+      position.set(0, .135, 0).applyMatrix4(funnel.matrixWorld);
+      direction.set(0, 1, 0).transformDirection(funnel.matrixWorld);
+      return { position, direction };
+    },
     get stats() {
       const triangles = [...geometries].reduce((sum, geometry) => sum + (geometry.index ? geometry.index.count : geometry.attributes.position?.count ?? 0) / 3, 0);
       return { meshes: group.children.length, triangles };
