@@ -95,6 +95,7 @@ export function createOctopusInkEffect(scene) {
   const points = new THREE.Points(geometry, material);
   points.name = 'java-octopus-ink';
   points.frustumCulled = false;
+  points.visible = false;
   points.renderOrder = 3;
   scene.add(points);
 
@@ -165,6 +166,7 @@ export function createOctopusInkEffect(scene) {
     }
     burstCount++;
     activeParticles = burstCount * PARTICLES_PER_BURST;
+    points.visible = true;
     geometry.attributes.position.needsUpdate = true;
     geometry.attributes.aPointSize.needsUpdate = true;
     geometry.attributes.aAlpha.needsUpdate = true;
@@ -208,6 +210,7 @@ export function createOctopusInkEffect(scene) {
       visible++;
     }
     activeParticles = visible;
+    points.visible = visible > 0;
     if (visible > 0) {
       geometry.attributes.position.needsUpdate = true;
       geometry.attributes.aPointSize.needsUpdate = true;
@@ -222,6 +225,7 @@ export function createOctopusInkEffect(scene) {
       if (disposed) return;
       burstCount = 0;
       activeParticles = 0;
+      points.visible = false;
       for (const particle of particles) {
         particle.age = particle.lifetime;
         particle.position.set(0, 0, 0);
