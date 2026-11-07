@@ -11,10 +11,10 @@ test('octopus ink is emitted as a finite, short-lived underwater plume', () => {
     assert.ok(scene.getObjectByName('java-octopus-ink'));
     assert.equal(effect.trigger(new THREE.Vector3(1, -2, 3), new THREE.Vector3(1, 0, 0)), true);
     assert.equal(effect.active, true);
-    assert.equal(effect.diagnostics.activeParticles, 96);
+    assert.equal(effect.diagnostics.activeParticles, 144);
     assert.equal(effect.diagnostics.visibleParticles, 0, 'particles fade in over their first frames');
     effect.update(0.05, 720, 46);
-    assert.equal(effect.diagnostics.activeParticles, 96);
+    assert.equal(effect.diagnostics.activeParticles, 144);
     assert.equal(effect.diagnostics.visibleParticles, 96);
     assert.equal(effect.diagnostics.finitePositions, true);
     assert.equal(effect.trigger(new THREE.Vector3(), new THREE.Vector3(1, 0, 0)), false, 'one encounter releases one coherent ink cloud');
@@ -40,10 +40,10 @@ test('octopus ink has a stable fallback direction and ignores non-finite frame t
     assert.equal(effect.trigger(new THREE.Vector3(0, -1, 0), new THREE.Vector3()), true);
     effect.update(Number.NaN, 0, 0);
     assert.equal(effect.active, true);
-    assert.equal(effect.diagnostics.activeParticles, 96);
+    assert.equal(effect.diagnostics.activeParticles, 144);
     assert.equal(effect.diagnostics.visibleParticles, 0);
     effect.update(0.05);
-    assert.equal(effect.diagnostics.activeParticles, 96);
+    assert.equal(effect.diagnostics.activeParticles, 144);
     assert.equal(effect.diagnostics.visibleParticles, 96);
   } finally {
     effect.dispose();
@@ -51,31 +51,38 @@ test('octopus ink has a stable fallback direction and ignores non-finite frame t
 });
 
 
-test('octopus ink starts as one dense slug and advects downstream as a single plume', () => {
+test('octopus ink blooms into a diffuse downstream smoke screen', () => {
   const scene = new THREE.Scene();
   const effect = createOctopusInkEffect(scene);
   try {
     effect.trigger(new THREE.Vector3(0, -2, 0), new THREE.Vector3(1, 0, 0));
     const points = scene.getObjectByName('java-octopus-ink');
     assert.ok(points instanceof THREE.Points, 'ink plume uses a Points object');
-    const positionAttribute = points.geometry.getAttribute('position');
-    if (!positionAttribute) throw new Error('ink plume has a position attribute');
-    const positions = positionAttribute.array;
+    const positions = points.geometry.getAttribute('position').array;
+    const sizes = points.geometry.getAttribute('aPointSize').array;
     const extent = (axis: 0 | 1 | 2) => {
       let low = Infinity, high = -Infinity;
-      for (let index = 0; index < 96; index++) {
+      for (let index = 0; index < 144; index++) {
         const value = positions[index * 3 + axis];
         low = Math.min(low, value);
         high = Math.max(high, value);
       }
       return high - low;
     };
-    const initialX = extent(0);
-    assert.ok(initialX > 0.2 && initialX < 0.6, 'the release has a short downstream tail');
-    assert.ok(extent(1) < 0.32 && extent(2) < 0.32, 'the initial cloud stays tightly joined across its width');
+    const across = () => Math.max(extent(1), extent(2));
+    const maximum = (values: Float32Array) => Math.max(...values);
+    const initialAlong = extent(0);
+    const initialAcross = across();
+    const initialSize = maximum(sizes);
+    assert.ok(initialAlong > 0.75 && initialAlong < 1.7, 'ink extends downstream from its funnel release');
+    assert.ok(initialAcross > 0.65 && initialAcross < 1.7, 'the released ink has a diffuse cross-section');
+    assert.ok(initialSize < 0.29, 'no oversized particle merges the plume into a single dark slug');
     for (let step = 0; step < 10; step++) effect.update(0.05);
-    assert.ok(extent(0) > initialX + 0.06, 'the plume advances and stretches downstream');
+    assert.ok(extent(0) > initialAlong + 0.12, 'the plume advances downstream');
+    assert.ok(across() > initialAcross + 0.12, 'the cloud expands laterally as it mixes');
+    assert.ok(maximum(sizes) > initialSize * 1.2, 'particles bloom as the initial bolus disperses');
     assert.equal(effect.diagnostics.burstsTriggered, 1);
+    assert.equal(effect.diagnostics.finitePositions, true);
   } finally {
     effect.dispose();
   }
