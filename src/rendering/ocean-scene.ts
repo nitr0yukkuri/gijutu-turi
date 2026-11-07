@@ -21,7 +21,7 @@ import { K8S_SURFACE_BODY_PROBES, k8sSurfaceWakeStrength, updateK8sSurfaceExposu
 import { OceanPresentationTimeline } from '../ocean-presentation-timeline.js';
 import { copyFishMotion as copyFish, interpolateFishPresentationState } from './fish-presentation-state.js';
 import { createOceanFishModels } from './ocean-fish-models.js';
-import { createOctopusInkEffect } from './octopus-ink.js';
+import { createOctopusInkEffect, shouldReleaseJavaOctopusInk } from './octopus-ink.js';
 import { createRiverEnvironment } from './river-environment.js';
 import { riverChannelGLSL } from './river-channel.js';
 import { RIVER_BANK_VIEW, riverBankViewGLSL } from './river-bank-view.js';
@@ -1271,12 +1271,12 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         const renderedEffort=escapePresentation?1:fish.swim?.effort||.2;
         activeFightFish.update(time,{power:javaJetSurge?Math.max(renderedPower,.92):renderedPower,glow:state.fishId==='whale-001'||state.fishId==='rust-001'?displayedGlow*.76:state.fishId==='js-001'?displayedGlow*.78:displayedGlow,bodyPhase:fish.bodyWave.phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,amplitude:fish.bodyWave.amplitude,turn:fish.swim?.turn||0,effort:javaJetSurge?Math.max(renderedEffort,.9):renderedEffort,tetherLoad:cues.load,cargoMoment:state.fishId==='whale-001'&&state.phase==='fighting'&&state.mode==='surge',visibility:renderedFishVisibility,styleDelta:dt});
         if(state.fishId==='java-001'&&state.phase==='fighting'&&currentJavaOctopus?.group.visible){
-          const isSurging=visualMode==='surge';
-          if(isSurging&&!javaInkWasSurging&&javaInkBursts<1){
+          const isInkSurge=shouldReleaseJavaOctopusInk(visualMode,renderedFightTime);
+          if(isInkSurge&&!javaInkWasSurging&&javaInkBursts<1){
             currentJavaOctopus.getInkEjectionPoint(javaInkOrigin,javaInkDirection);
             if(octopusInk.trigger(javaInkOrigin,javaInkDirection))javaInkBursts++;
           }
-          javaInkWasSurging=isSurging;
+          javaInkWasSurging=isInkSurge;
         }else if(state.fishId!=='java-001'||state.phase!=='fighting'){
           javaInkWasSurging=false;
         }
