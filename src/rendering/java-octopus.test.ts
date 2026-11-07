@@ -22,7 +22,9 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
 
     const arm = octopus.group.getObjectByName('arm-1');
     assert.ok(arm instanceof THREE.Mesh, 'animated arm mesh exists');
-    const positions = arm.geometry.attributes.position.array;
+    const positionAttribute = arm.geometry.attributes.position;
+    assert.ok(positionAttribute, 'arm geometry exposes a position buffer');
+    const positions = positionAttribute.array;
     const resting = Array.from(positions);
     octopus.update(1, { power: 1, effort: 1, tetherLoad: 0.8 });
     assert.notDeepEqual(Array.from(positions), resting, 'arms react to the jet and tension instead of freezing');
