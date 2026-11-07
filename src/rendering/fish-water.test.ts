@@ -126,8 +126,8 @@ test('Java octopus red pigment floor is limited to body skin', () => {
     return shader.fragmentShader;
   };
 
-  assert.match(shaderFor('body'), /extinction\\.r=max\\(extinction\\.r,0\\.40\\)/,
+  assert.match(shaderFor('body'), /extinction\.r=max\(extinction\.r,0\.40\)/,
     'the main skin retains the Java octopus pigment floor');
-  assert.doesNotMatch(shaderFor('detail'), /extinction\\.r=max/,
+  assert.doesNotMatch(shaderFor('detail'), /extinction\.r=max/,
     'eyes, suckers, and pale details keep ordinary underwater attenuation');
 });
