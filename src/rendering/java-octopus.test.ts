@@ -91,16 +91,16 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
       const result = new THREE.Vector3();
       const start = 12 * radialStride;
       for (let index = start; index < start + radialStride; index++) {
-        result.x += data[index * 3];
-        result.y += data[index * 3 + 1];
-        result.z += data[index * 3 + 2];
+        result.x += data[index * 3] ?? 0;
+        result.y += data[index * 3 + 1] ?? 0;
+        result.z += data[index * 3 + 2] ?? 0;
       }
       return result.multiplyScalar(1 / radialStride);
     };
     const ringRadius = (data: Float32Array, center: THREE.Vector3, start: number, count: number) => {
       let total = 0;
       for (let index = start; index < start + count; index++) {
-        total += new THREE.Vector3(data[index * 3], data[index * 3 + 1], data[index * 3 + 2]).distanceTo(center);
+        total += new THREE.Vector3(data[index * 3] ?? 0, data[index * 3 + 1] ?? 0, data[index * 3 + 2] ?? 0).distanceTo(center);
       }
       return total / count;
     };
