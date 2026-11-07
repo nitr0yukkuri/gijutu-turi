@@ -20,6 +20,7 @@ test('octopus ink is emitted as a finite, short-lived underwater plume', () => {
     const inkObject = scene.getObjectByName('java-octopus-ink');
     if (!(inkObject instanceof THREE.Points)) throw new Error('ink plume is present as a points object');
     const alphaAttribute = inkObject.geometry.getAttribute('aAlpha');
+    if (!alphaAttribute) throw new Error('ink particles expose their alpha attribute');
     assert.ok(Math.max(...alphaAttribute.array) >= .45, 'the dense ink nucleus has enough opacity to read against the water');
     assert.equal(effect.diagnostics.finitePositions, true);
     assert.equal(effect.trigger(new THREE.Vector3(), new THREE.Vector3(1, 0, 0)), false, 'one encounter releases one coherent ink cloud');
