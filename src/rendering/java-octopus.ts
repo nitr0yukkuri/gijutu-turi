@@ -103,6 +103,13 @@ function createMantleGeometry(lowDetail) {
 export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = null } = {}) {
   const group = new THREE.Group();
   group.name = 'java-octopus';
+  const habitatUniforms = waterUniforms
+    ? {
+        ...waterUniforms,
+        uFishCenter: { value: group.position },
+        uFishVisibility: { value: 1 },
+      }
+    : null;
   const lowDetail = detail === 'low';
   const segmentCount = lowDetail ? 12 : 20;
   const radialCount = lowDetail ? 6 : 8;
@@ -285,8 +292,8 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     [skin, 'body'], [webSkin, 'body'], [paleSkin, 'detail'], [eyeWhite, 'detail'], [pupilMaterial, 'detail'],
     [suckerMaterial, 'detail'], [funnelInner, 'detail'], [beakMaterial, 'detail'],
   ];
-  if (waterUniforms) {
-    for (const [material, part] of waterMaterials) applyFishWater(material, waterUniforms, part, JAVA_OCTOPUS_WATER_PROFILE);
+  if (habitatUniforms) {
+    for (const [material, part] of waterMaterials) applyFishWater(material, habitatUniforms, part, JAVA_OCTOPUS_WATER_PROFILE);
   }
 
   const updateArm = (arm, armIndex, bodyPhase, effort, jet, turn, tetherLoad) => {
@@ -409,7 +416,7 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     for (let index = 0; index < eyes.length; index++) eyes[index].rotation.y = (index ? -1 : 1) * (jet * .08 + steering * .035);
 
     visibleAmount = clamp(visibility, 0, 1);
-    if (waterUniforms?.uFishVisibility) waterUniforms.uFishVisibility.value = visibleAmount;
+    if (habitatUniforms?.uFishVisibility) habitatUniforms.uFishVisibility.value = visibleAmount;
     skin.emissiveIntensity = .27 + clamp(glow, 0, 1) * .05 + clamp(tetherLoad, 0, 1) * .03;
   };
 
