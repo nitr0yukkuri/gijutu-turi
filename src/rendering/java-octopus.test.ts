@@ -20,7 +20,8 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     assert.ok(headMaterial instanceof THREE.MeshStandardMaterial, 'head uses a lit surface material');
     assert.ok(headMaterial.color.r > .75, 'red skin remains bright enough after sRGB conversion');
     assert.ok(headMaterial.color.r > headMaterial.color.g * 5, 'skin pigment stays strongly red');
-    const pigmentPixels = headMaterial.map?.image?.data;
+    const pigmentImage = headMaterial.map?.image as { data?: Uint8Array } | undefined;
+    const pigmentPixels = pigmentImage?.data;
     assert.ok(pigmentPixels?.length > 0, 'skin retains a procedural chromatophore texture');
     for (let offset = 0; offset < pigmentPixels.length; offset += 3) {
       assert.ok(
