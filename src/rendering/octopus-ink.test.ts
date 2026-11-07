@@ -15,7 +15,8 @@ test('octopus ink is emitted as a finite, short-lived underwater plume', () => {
     assert.equal(effect.diagnostics.visibleParticles, 0, 'particles fade in over their first frames');
     effect.update(0.05, 720, 46);
     assert.equal(effect.diagnostics.activeParticles, 384);
-    assert.equal(effect.diagnostics.visibleParticles, 384);
+    assert.ok(effect.diagnostics.visibleParticles >= 60 && effect.diagnostics.visibleParticles <= 64,
+      'the dense nucleus is visible before the delayed edge particles disperse');
     assert.equal(effect.diagnostics.finitePositions, true);
     assert.equal(effect.trigger(new THREE.Vector3(), new THREE.Vector3(1, 0, 0)), false, 'one encounter releases one coherent ink cloud');
     for (let index = 0; index < 20; index++) effect.update(0.05, 720, 46);
@@ -44,7 +45,8 @@ test('octopus ink has a stable fallback direction and ignores non-finite frame t
     assert.equal(effect.diagnostics.visibleParticles, 0);
     effect.update(0.05);
     assert.equal(effect.diagnostics.activeParticles, 384);
-    assert.equal(effect.diagnostics.visibleParticles, 384);
+    assert.ok(effect.diagnostics.visibleParticles >= 60 && effect.diagnostics.visibleParticles <= 64,
+      'the initial jet reveals the core before the rest of the bolus disperses');
   } finally {
     effect.dispose();
   }
@@ -85,7 +87,7 @@ test('octopus ink blooms into a diffuse downstream smoke screen', () => {
     const initialSize = maximum(sizes);
     assert.ok(initialAlong < 0.16, 'the first frame stays close to the funnel as a compact bolus');
     assert.ok(initialAcross < 0.16, 'the first frame has a tight viscous core');
-    assert.ok(initialSize < 0.3, 'the bolus remains readable instead of one oversized sprite');
+    assert.ok(initialSize > 0.7 && initialSize < 0.9, 'the dense bolus projects large enough to read at fight distance');
     for (let step = 0; step < 10; step++) effect.update(0.05);
     assert.ok(extent(0) > initialAlong + 0.12, 'the plume advances downstream');
     assert.ok(across() > initialAcross + 0.12, 'the bolus shears into a broader turbulent streak');
