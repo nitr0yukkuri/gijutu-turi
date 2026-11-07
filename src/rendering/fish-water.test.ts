@@ -111,3 +111,23 @@ for (const [species, profile] of [
       'fight state cannot alter water optics or fish opacity');
   });
 }
+
+
+test('Java octopus red pigment floor is limited to body skin', () => {
+  const shaderFor = (part: 'body' | 'detail') => {
+    const material = {
+      toneMapped: true,
+      onBeforeCompile(_shader: any) {},
+      customProgramCacheKey: () => `java-octopus-${part}`,
+    };
+    applyFishWater(material, { uFishVisibility: { value: 1 } }, part, JAVA_OCTOPUS_WATER_PROFILE);
+    const shader = { uniforms: {}, vertexShader: '', fragmentShader: '#include <tonemapping_fragment>' };
+    material.onBeforeCompile(shader);
+    return shader.fragmentShader;
+  };
+
+  assert.match(shaderFor('body'), /extinction\\.r=max\\(extinction\\.r,0\\.40\\)/,
+    'the main skin retains the Java octopus pigment floor');
+  assert.doesNotMatch(shaderFor('detail'), /extinction\\.r=max/,
+    'eyes, suckers, and pale details keep ordinary underwater attenuation');
+});

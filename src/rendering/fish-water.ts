@@ -267,7 +267,7 @@ export function fishWaterCoverage(depth,distance,transmission,part='body',profil
     *(1-d*d*(3-2*d)*profile.rangeLoss)*({body:1,fin:profile.fin,light:profile.light,detail:profile.detail,line:0,cargo:profile.cargo}[part]??1);
 }
 
-const opticsFor = (profile: FishWaterProfile) => {
+const opticsFor = (profile: FishWaterProfile, part: string) => {
 const normal = `float hx,hz;
   waterWaveDifference(p.xz,eps,hx,hz);
   hx+=rippleOnlyHeight(p.xz-vec2(eps,0.0))-rippleOnlyHeight(p.xz+vec2(eps,0.0));
@@ -310,7 +310,7 @@ vec3 throughWater(vec3 fishColor) {
   // Separate direct extinction from the existing water background. These
   // per-world-unit coefficients are a visual water preset, not measured data.
   vec3 extinction=exp(-vec3(.58,.22,.17)*path);
-  ${profile.redPigmentFloor === undefined ? '' : 'extinction.r=max(extinction.r,' + profile.redPigmentFloor.toFixed(2) + ');'}
+  ${part !== 'body' || profile.redPigmentFloor === undefined ? '' : 'extinction.r=max(extinction.r,' + profile.redPigmentFloor.toFixed(2) + ');'}
   float haze=1.0-exp(-max(t,0.0)*.006);
   float vignette=1.0-smoothstep(.3,.95,length((screenUv-.5)*vec2(.75,1.0)))*.18;
   // Keep a readable anatomical mass, not just emissive dots. The visibility
@@ -348,7 +348,7 @@ export function applyFishWater(material, waterUniforms, part='detail', profile=D
     // Fins have a custom shader; other parts use Three's project chunk.
     shader.vertexShader=shader.vertexShader.replace('gl_Position=projectionMatrix*mv;',
       'gl_Position=fishWaterProjection(p);');
-     shader.fragmentShader=surface+waterNormalDifferenceGLSL+opticsFor(profile)+'\n'+shader.fragmentShader;
+     shader.fragmentShader=surface+waterNormalDifferenceGLSL+opticsFor(profile,part)+'\n'+shader.fragmentShader;
     shader.fragmentShader=shader.fragmentShader.replace('#include <tonemapping_fragment>',
       `gl_FragColor.rgb=throughWater(gl_FragColor.rgb);
       ${originallyToneMapped?'':'vec3 fishBeforeTone=gl_FragColor.rgb;'}
