@@ -8,6 +8,16 @@ const smoothstep = (edge0, edge1, value) => {
   const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
   return t * t * (3 - 2 * t);
 };
+const TAU = Math.PI * 2;
+
+// Octopus arm swimming uses a fast power stroke and slower, lower-force recovery.
+const scullingStroke = (phase) => {
+  const cycle = ((phase % TAU) + TAU) % TAU;
+  const powerStroke = TAU * 0.31;
+  if (cycle < powerStroke) return Math.sin(cycle / powerStroke * Math.PI);
+  const recovery = (cycle - powerStroke) / (TAU - powerStroke);
+  return -0.42 * Math.sin(recovery * Math.PI);
+};
 
 function createSkinMottle() {
   const size = 128;
@@ -281,13 +291,16 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
       base,
       curveAxis,
       secondaryAxis: new THREE.Vector3().crossVectors(direction, curveAxis).normalize(),
-      phaseOffset: index * 2.399,
+      // Paired arms share a broad stroke rhythm, with a small phase offset
+      // between the pair to keep the crown from moving like one rigid fan.
+      phaseOffset: Math.floor(index / 2) * Math.PI / 2 + (index % 2) * .14,
       bendPhase: index * 1.73 + .41,
       bendLocation: .31 + index % 4 * .11,
       waveRate: .78 + index % 4 * .11,
-      tipCurl: (index % 2 === 0 ? 1 : -1) * (.2 + index % 4 * .025),
+      tipCurl: (index % 2 === 0 ? 1 : -1) * (.34 + index % 4 * .04),
       turnResponse: index % 2 === 0 ? 1 : .62,
       tetherSensitivity: .72 + index % 4 * .16,
+      gripBias: index % 2 === 0 ? .46 : -.22,
       flowDrag: .48 + index % 3 * .11,
       length: armLengths[index],
       animatedDirection: new THREE.Vector3(),
@@ -361,10 +374,13 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     const exploration = .5 + .5 * Math.sin(phaseAtArm * .71 + armIndex * 1.3);
     // During an escape jet the crown streams toward the siphon wake instead of
     // holding a permanently radial, star-shaped silhouette.
+    // Keep the relaxed crown softly gathered; during a jet escape the eight
+    // arms stream together toward the siphon wake instead of forming a star.
+    const crownFold = .18 + jet * .62;
     const direction = arm.animatedDirection.copy(arm.direction)
-      .lerp(flowDirection, jet * .32)
+      .lerp(flowDirection, crownFold)
       .normalize();
-    const length = arm.length * (1 - jet * .09) * (1 + .035 * Math.sin(phaseAtArm));
+    const length = arm.length * (1 - jet * .15) * (1 + .035 * Math.sin(phaseAtArm));
     const positions = arm.geometry.attributes.position.array;
     const centerline = arm.centers;
     for (let segment = 0; segment <= segmentCount; segment++) {
@@ -375,17 +391,20 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
       const tipWeight = smoothstep(.58, 1, along);
       const bendWindow = Math.exp(-(((along - arm.bendLocation) / .17) ** 2));
       const bendPulse = Math.sin(phaseAtArm * .71 + arm.bendPhase);
-      const pathWave = (Math.sin(travelingPhase + arm.bendPhase * .3) - Math.sin(arm.phaseOffset + arm.bendPhase * .3)) * along;
+      const pathWave = (scullingStroke(travelingPhase + arm.bendPhase * .3)
+        - scullingStroke(arm.phaseOffset + arm.bendPhase * .3)) * along;
       const secondaryWave = Math.sin(localPhase - along * 1.8) * along;
-      const localizedBend = bendWindow * bendPulse * (.18 + effort * .12);
+      const localizedBend = bendWindow * bendPulse * (.22 + effort * .16 + clamp(tetherLoad, 0, 1) * .12);
+      // One arm in each pair curls more firmly around the line while its mate
+      // braces outward, keeping the hooked crown asymmetric and alive.
       const lineCurl = tipWeight * clamp(tetherLoad, 0, 1) * arm.tetherSensitivity
-        * (.1 + .075 * Math.sin(bodyPhase * .42 + arm.phaseOffset));
+        * (arm.gripBias * .48 + .08 * Math.sin(bodyPhase * .42 + arm.phaseOffset));
       const tipCurl = tipWeight * (arm.tipCurl + Math.sin(phaseAtArm * .53 + arm.bendPhase) * .11) * exploration;
       const curl = pathWave * (.25 + effort * .1) + secondaryWave * .14 + localizedBend + tipCurl + lineCurl;
-      const sweep = (Math.sin(localPhase * .61 + along * 2.8) * .19 + turn * arm.turnResponse * .1) * along * (1 - jet * .5);
+      const sweep = (Math.sin(localPhase * .61 + along * 2.8) * .19 + turn * arm.turnResponse * .1) * along * (1 - jet * .72);
       const crossWave = ((Math.sin(travelingPhase * .72 + arm.bendPhase) * .16
         + Math.cos(localPhase * .55 + arm.bendPhase) * .06) * along + bendWindow * Math.cos(bendPulse) * .09)
-        * (1 - jet * .38);
+        * (1 - jet * .68);
       const jetTrail = jet * (.72 + arm.flowDrag * .42) * Math.pow(along, 1.65);
       const point = centerline[segment];
       point.copy(arm.base)

@@ -34,8 +34,8 @@ import type { WeatherVisualState } from '../weather-contract.js';
 const ESCAPE_FADE_MS = 420;
 
 // Keep the broad eight-arm silhouette large and centered while preserving the shared fight camera.
-const JAVA_OCTOPUS_FIGHT_SCALE = 2.15;
-const JAVA_OCTOPUS_FIGHT_FOCUS_BLEND = .86;
+const JAVA_OCTOPUS_FIGHT_SCALE = 3.0;
+const JAVA_OCTOPUS_FIGHT_FOCUS_BLEND = .93;
 
 // Preserve the dorsal-up axis when heading crosses +X. A shortest-arc
 // rotation from -X alone can roll a pitched fish onto its back at that turn.
