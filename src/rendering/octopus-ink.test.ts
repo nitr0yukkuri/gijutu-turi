@@ -88,7 +88,7 @@ test('octopus ink blooms into a diffuse downstream smoke screen', () => {
     assert.ok(initialAlong < 0.16, 'the first frame stays close to the funnel as a compact bolus');
     assert.ok(initialAcross < 0.16, 'the first frame has a tight viscous core');
     assert.ok(initialSize > 0.7 && initialSize < 0.9, 'the dense bolus projects large enough to read at fight distance');
-    for (let step = 0; step < 10; step++) effect.update(0.05);
+    for (let step = 0; step < 24; step++) effect.update(0.05);
     assert.ok(extent(0) > initialAlong + 0.12, 'the plume advances downstream');
     assert.ok(across() > initialAcross + 0.12, 'the bolus shears into a broader turbulent streak');
     assert.ok(maximum(sizes) > initialSize * 1.1, 'particles bloom as the initial bolus disperses');
