@@ -82,11 +82,28 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
       return result.multiplyScalar(1 / stride);
     };
     const rootCenter = (armName: string) => centerAt(armName, 0);
+    const highestArmWorldY = () => {
+      let highest = Number.NEGATIVE_INFINITY;
+      for (let armIndex = 0; armIndex < 8; armIndex++) {
+        const mesh = octopus.group.getObjectByName(`arm-${armIndex + 1}`);
+        if (!(mesh instanceof THREE.Mesh)) throw new Error(`arm-${armIndex + 1} mesh is missing`);
+        const data = mesh.geometry.getAttribute('position')?.array as Float32Array | undefined;
+        if (!data) throw new Error('arm mesh has a position buffer');
+        for (let offset = 1; offset < data.length; offset += 3) highest = Math.max(highest, data[offset] ?? 0);
+      }
+      // Java octopus fight framing uses a 2.15 model scale; its first surge
+      // holds the body near 1.8 m below the sea surface.
+      return -1.8 + highest * 2.15;
+    };
     const flowAxis = new THREE.Vector3(1, .08, 0).normalize();
     octopus.update(1, { power: .25, effort: .28 });
     const restingTips = Array.from({ length: 8 }, (_, index) => centerAt(`arm-${index + 1}`, 14));
+    const restingArmTop = highestArmWorldY();
     octopus.update(1, { power: 1, effort: 1 });
     const jetTips = Array.from({ length: 8 }, (_, index) => centerAt(`arm-${index + 1}`, 14));
+    const jetArmTop = highestArmWorldY();
+    assert.ok(restingArmTop < -.25, 'the enlarged resting arm fan stays below the sea surface');
+    assert.ok(jetArmTop < -.25, 'jetting arms stay submerged at the Java octopus fight scale');
     const downstreamShifts = jetTips.map(
       (tip, index) => tip.clone().sub(restingTips[index]!).dot(flowAxis),
     );

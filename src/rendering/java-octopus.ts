@@ -258,17 +258,19 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   beak.rotation.z = Math.PI / 2;
   beak.scale.set(.75, 1, .72);
 
+  // Keep the arms in the submerged lateral/downward fan. The previous upper
+  // pair rose above the water when the shared fight camera scaled the animal.
   const armDirections = [
-    [-1.15, -.12, .98], [-.95, .68, .72], [-.82, 1.0, .08], [-1.05, .72, -.78],
-    [-1.24, .12, -.98], [-1.02, -.68, -.75], [-.86, -.98, -.1], [-1.08, -.7, .76],
+    [-1.16, -.46, .98], [-1.02, -.22, .82], [-.90, -.05, .48], [-1.08, .035, .20],
+    [-1.24, -.46, -.98], [-1.02, -.22, -.82], [-.90, -.05, -.48], [-1.08, .035, -.20],
   ];
   const armLengths = [3.12, 3.48, 3.72, 3.38, 3.08, 3.4, 3.78, 3.24];
   const arms = armDirections.map((values, index) => {
     const direction = new THREE.Vector3(...values).normalize();
     const armAzimuth = Math.atan2(direction.z, direction.y);
     const base = new THREE.Vector3(-.53, -.075 + Math.cos(armAzimuth) * .14, Math.sin(armAzimuth) * .17);
-    const curveAxis = new THREE.Vector3().crossVectors(direction, new THREE.Vector3(0, 0, 1));
-    if (curveAxis.lengthSq() < .001) curveAxis.set(0, 1, 0);
+    const curveAxis = new THREE.Vector3().crossVectors(direction, new THREE.Vector3(0, 1, 0));
+    if (curveAxis.lengthSq() < .001) curveAxis.set(0, 0, 1);
     curveAxis.normalize();
     const geometry = createArmGeometry(segmentCount, radialCount);
     geometries.add(geometry);
@@ -344,7 +346,9 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   const ventral = new THREE.Vector3(0, -1, 0);
   const suckerAxis = new THREE.Vector3(0, 1, 0);
   const flowDirection = new THREE.Vector3(1, .08, 0);
-  const armReference = new THREE.Vector3(0, 0, 1);
+  // Use local water-up as the tube frame reference. The primary arm wave then
+  // bends laterally, while its smaller secondary wave moves mostly downward.
+  const armReference = new THREE.Vector3(0, 1, 0);
   let disposed = false;
   let visibleAmount = 1;
 
@@ -362,9 +366,15 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     // During an escape jet the crown streams toward the siphon wake instead of
     // holding a permanently radial, star-shaped silhouette.
     const direction = arm.animatedDirection.copy(arm.direction)
-      .lerp(flowDirection, jet * .32)
+      .lerp(flowDirection, jet * .58)
       .normalize();
-    const length = arm.length * (1 - jet * .09) * (1 + .035 * Math.sin(phaseAtArm));
+    // Rotate the bending frame with the swept arm. A fixed vertical bend axis
+    // made the upper arms rise out of the water during a fast jet.
+    const curveAxis = arm.curveAxis.crossVectors(direction, armReference);
+    if (curveAxis.lengthSq() < .001) curveAxis.set(0, 0, 1);
+    else curveAxis.normalize();
+    const secondaryAxis = arm.secondaryAxis.crossVectors(direction, curveAxis).normalize();
+    const length = arm.length * (1 - jet * .07) * (1 + .035 * Math.sin(phaseAtArm));
     const positions = arm.geometry.attributes.position.array;
     const centerline = arm.centers;
     for (let segment = 0; segment <= segmentCount; segment++) {
