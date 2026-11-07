@@ -18,7 +18,17 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     assert.ok(head instanceof THREE.Mesh, 'octopus head mesh exists');
     const headMaterial = Array.isArray(head.material) ? head.material[0] : head.material;
     assert.ok(headMaterial instanceof THREE.MeshStandardMaterial, 'head uses a lit surface material');
-    assert.ok(headMaterial.color.r > headMaterial.color.g * 1.5, 'skin pigment remains visibly red');
+    assert.ok(headMaterial.color.r > .75, 'red skin remains bright enough after sRGB conversion');
+    assert.ok(headMaterial.color.r > headMaterial.color.g * 5, 'skin pigment stays strongly red');
+    const pigmentPixels = headMaterial.map?.image?.data;
+    assert.ok(pigmentPixels?.length > 0, 'skin retains a procedural chromatophore texture');
+    for (let offset = 0; offset < pigmentPixels.length; offset += 3) {
+      assert.ok(
+        Math.max(pigmentPixels[offset], pigmentPixels[offset + 1], pigmentPixels[offset + 2])
+          - Math.min(pigmentPixels[offset], pigmentPixels[offset + 1], pigmentPixels[offset + 2]) <= 1,
+        'the neutral texture modulates pigment without muting its red hue',
+      );
+    }
 
     const arm = octopus.group.getObjectByName('arm-1');
     assert.ok(arm instanceof THREE.Mesh, 'animated arm mesh exists');

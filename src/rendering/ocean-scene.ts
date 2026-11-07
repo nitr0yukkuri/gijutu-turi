@@ -648,7 +648,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const fishModelStore=createOceanFishModels(scene,waterUniforms,createFishOrientationScratch);
   const {fightFish,dockerWhale,cssFish,rustFish,jsEel,javaOctopus,fightModelFor,requestFightModel}=fishModelStore;
   const cssFishProfile=getFishFightProfile('css-001');
-  const liveFishScale=(fishId,phase)=>fishScaleForResponsiveCamera(fishId==='whale-001'?.42:fishId==='k8s-001'?(phase==='fighting'?1.02:.76):fishId==='css-001'?(phase==='fighting'?.74:.55):fishId==='rust-001'?(phase==='fighting'?.80:.63):fishId==='js-001'?(phase==='fighting'?.78:.61):fishId==='java-001'?(phase==='fighting'?.82:.68):(phase==='fighting'?.84:.66),camera.fov,portraitBlend);
+  const liveFishScale=(fishId,phase)=>fishScaleForResponsiveCamera(fishId==='whale-001'?.42:fishId==='k8s-001'?(phase==='fighting'?1.02:.76):fishId==='css-001'?(phase==='fighting'?.74:.55):fishId==='rust-001'?(phase==='fighting'?.80:.63):fishId==='js-001'?(phase==='fighting'?.78:.61):fishId==='java-001'?(phase==='fighting'?1.02:.78):(phase==='fighting'?.84:.66),camera.fov,portraitBlend);
   const catchFishScale=(fishId)=>fishScaleForResponsiveCamera(catchFraming(fishId,camera.aspect,camera.fov).baseScale,camera.fov,portraitBlend);
   // The submerged line ends at the same undeformed nose anchor as the model.
   const mouth=new THREE.Vector3(),lineEntry=new THREE.Vector3(),curvePoint=new THREE.Vector3();
@@ -1251,7 +1251,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         activeFightFish.update(time,{power:javaJetSurge?Math.max(renderedPower,.92):renderedPower,glow:state.fishId==='whale-001'||state.fishId==='rust-001'?displayedGlow*.76:state.fishId==='js-001'?displayedGlow*.78:displayedGlow,bodyPhase:fish.bodyWave.phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,amplitude:fish.bodyWave.amplitude,turn:fish.swim?.turn||0,effort:javaJetSurge?Math.max(renderedEffort,.9):renderedEffort,tetherLoad:cues.load,cargoMoment:state.fishId==='whale-001'&&state.phase==='fighting'&&state.mode==='surge',visibility:renderedFishVisibility,styleDelta:dt});
         if(state.fishId==='java-001'&&state.phase==='fighting'&&currentJavaOctopus?.group.visible){
           const isSurging=visualMode==='surge';
-          if(isSurging&&!javaInkWasSurging&&javaInkBursts<2){
+          if(isSurging&&!javaInkWasSurging&&javaInkBursts<1){
             currentJavaOctopus.getInkEjectionPoint(javaInkOrigin,javaInkDirection);
             if(octopusInk.trigger(javaInkOrigin,javaInkDirection))javaInkBursts++;
           }

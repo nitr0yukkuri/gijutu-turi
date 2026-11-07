@@ -185,6 +185,8 @@ export type FishWaterProfile = Readonly<{
   detail: number;
   /** Cargo is separate from anatomy details so it stays readable in motion. */
   cargo: number;
+  /** Perceptual red-pigment floor for species that must remain identifiable underwater. */
+  redPigmentFloor?: number;
   bodyLightMin: number;
   bodyLightMax: number;
   finLight: number;
@@ -237,7 +239,8 @@ export const JAVA_OCTOPUS_WATER_PROFILE: FishWaterProfile = {
   floor: .38, surface: .42, clearDepth: 3.0, falloff: .22, near: 40, far: 92,
   rangeLoss: .64, fin: .92, light: .38, detail: .28,
   cargo: .36,
-  bodyLightMin: .62, bodyLightMax: .76, finLight: .52, lightPartLight: .72, detailPartLight: .24, cargoPartLight: .28,
+  redPigmentFloor: .40,
+  bodyLightMin: .72, bodyLightMax: .86, finLight: .64, lightPartLight: .78, detailPartLight: .34, cargoPartLight: .28,
 };
 
 const FIN_VIEW_BLEND_START = -.22;
@@ -307,6 +310,7 @@ vec3 throughWater(vec3 fishColor) {
   // Separate direct extinction from the existing water background. These
   // per-world-unit coefficients are a visual water preset, not measured data.
   vec3 extinction=exp(-vec3(.58,.22,.17)*path);
+  ${profile.redPigmentFloor === undefined ? '' : 'extinction.r=max(extinction.r,' + profile.redPigmentFloor.toFixed(2) + ');'}
   float haze=1.0-exp(-max(t,0.0)*.006);
   float vignette=1.0-smoothstep(.3,.95,length((screenUv-.5)*vec2(.75,1.0)))*.18;
   // Keep a readable anatomical mass, not just emissive dots. The visibility
@@ -331,7 +335,7 @@ vec3 throughWater(vec3 fishColor) {
 export function applyFishWater(material, waterUniforms, part='detail', profile=DEFAULT_FISH_WATER_PROFILE, finSide=0) {
   const compile=material.onBeforeCompile;
   const cacheKey=material.customProgramCacheKey();
-  const underwaterVersion=profile===DOCKER_WHALE_WATER_PROFILE?'underwater-docker-consistent-v1':profile===JAVA_OCTOPUS_WATER_PROFILE?'underwater-java-octopus-v1':'underwater-consistent-v2';
+  const underwaterVersion=profile===DOCKER_WHALE_WATER_PROFILE?'underwater-docker-consistent-v1':profile===JAVA_OCTOPUS_WATER_PROFILE?'underwater-java-octopus-v2':'underwater-consistent-v2';
   const originallyToneMapped=material.toneMapped;
   material.onBeforeCompile=shader=>{
     compile.call(material,shader);

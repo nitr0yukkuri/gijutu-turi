@@ -98,8 +98,15 @@ for (const [species, profile] of [
       'each live species uses the shared equivalent wave-normal calculation');
     assert.doesNotMatch(shader.fragmentShader,/heightAt\(p\.xz-vec2\(eps,0\.0\)/,
       'fish normals do not repeat full wave-height evaluation at every offset');
-    assert.match(material.customProgramCacheKey(),profile===DOCKER_WHALE_WATER_PROFILE? /underwater-docker-consistent-v1/ : profile===JAVA_OCTOPUS_WATER_PROFILE? /underwater-java-octopus-v1/ : /underwater-consistent-v2/,
+    assert.match(material.customProgramCacheKey(),profile===DOCKER_WHALE_WATER_PROFILE? /underwater-docker-consistent-v1/ : profile===JAVA_OCTOPUS_WATER_PROFILE? /underwater-java-octopus-v2/ : /underwater-consistent-v2/,
       'changed shader source has a versioned program-cache key');
+    if (profile === JAVA_OCTOPUS_WATER_PROFILE) {
+      assert.match(shader.fragmentShader, /extinction\.r=max\(extinction\.r,0\.40\)/,
+        'Java red pigment keeps a bounded perceptual floor while distance and depth coverage still fade it');
+    } else {
+      assert.doesNotMatch(shader.fragmentShader, /extinction\.r=max/,
+        'other species keep the shared water extinction unchanged');
+    }
     assert.doesNotMatch(shader.fragmentShader, /uFishCombat|combatPigmentBlend|fightSubmerged|combatAnatomy|combatDetail/,
       'fight state cannot alter water optics or fish opacity');
   });

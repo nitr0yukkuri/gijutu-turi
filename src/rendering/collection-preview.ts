@@ -114,7 +114,8 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
     composer.setSize(width, height);
     camera.aspect = width / height;
     const halfFov = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    const distance = Math.max(size.y / 2 / halfFov, size.x / 2 / (halfFov * camera.aspect)) * 1.3 + size.z / 2;
+    const frameMargin = isJavaOctopus ? 1.15 : 1.3;
+    const distance = Math.max(size.y / 2 / halfFov, size.x / 2 / (halfFov * camera.aspect)) * frameMargin + size.z / 2;
     camera.position.set(center.x, center.y + .1, Math.max(distance, 4));
     camera.lookAt(center);
     camera.updateProjectionMatrix();
