@@ -742,6 +742,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const warmedFishShaderIds=new Set();
   const cameraLookTarget=new THREE.Vector3(0,-3.8,-35);
   const cameraLookDesired=new THREE.Vector3();
+  const cameraViewDirection=new THREE.Vector3(),cameraViewTarget=new THREE.Vector3();
+  let viewYaw=0,targetViewYaw=0;
   const whaleCameraOffset=new THREE.Vector3(),whaleCameraDesiredOffset=new THREE.Vector3();
   const viewHeading=new THREE.Vector3(),viewSide=new THREE.Vector3();
   const whaleWakeHeading=new THREE.Vector3(),whaleWakeSide=new THREE.Vector3(),whaleWakePoint=new THREE.Vector3();
@@ -870,6 +872,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     landedRevision=state.revision;launchSplash(target.x,target.z,1);onLand();
   };
   const setCharge=(amount,aim=0)=>{charge=amount;chargeAim=aim;};
+  const setViewYaw=(yaw:number)=>{targetViewYaw=THREE.MathUtils.clamp(yaw,-.44,.44);};
   const aimScreen=(aim=0,strength=.65)=>{
     const projected=new THREE.Vector3(aim*7,0,-castDistanceForStrength(strength)).project(camera);
     return {x:(projected.x*.5+.5)*mount.clientWidth,y:(-.5*projected.y+.5)*mount.clientHeight};
@@ -1024,7 +1027,10 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     const breachFocusY=visibleFish?visibleFish.position.y+.65:normalFocusY;
     cameraLookDesired.set(focusX,THREE.MathUtils.lerp(normalFocusY,breachFocusY,surfaceLunge),focusZ);
     cameraLookTarget.lerp(cameraLookDesired,1-Math.exp(-dt*(whaleView||leviathanView?3.35+surfaceLunge*3:7)));
-    camera.lookAt(cameraLookTarget);
+    viewYaw=THREE.MathUtils.damp(viewYaw,targetViewYaw,8,dt);
+    cameraViewDirection.subVectors(cameraLookTarget,camera.position).applyAxisAngle(camera.up,viewYaw);
+    cameraViewTarget.copy(camera.position).add(cameraViewDirection);
+    camera.lookAt(cameraViewTarget);
     camera.updateMatrixWorld();
     if(state.phase==='fighting'&&visibleFish)target.set(visibleFish.position.x,0,visibleFish.position.z);
     const castAge=(Date.now()+serverOffset-state.castAt)/1000;
@@ -1608,5 +1614,5 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   };
 
   frame=requestAnimationFrame(render);
-    return {setState,setCharge,setWaterway,setWeather,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){sceneDisposed=true;octopusInk.dispose();riverEnvironment?.dispose();emptyRiverReflection.dispose();cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fishModelStore.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
+    return {setState,setCharge,setWaterway,setWeather,setViewYaw,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){sceneDisposed=true;octopusInk.dispose();riverEnvironment?.dispose();emptyRiverReflection.dispose();cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fishModelStore.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
 }

@@ -34,6 +34,7 @@ export type OceanSceneController = {
   setState: (state: OceanState, serverNow?: number) => void;
   setWaterway: (waterway: Waterway) => void;
   setWeather: (weather: WeatherVisualState) => void;
+  setViewYaw: (yaw: number) => void;
   rodStroke?: () => void;
   setCharge: (amount: number, aim?: number) => void;
   aimScreen: (aim?: number, strength?: number) => { x: number; y: number };

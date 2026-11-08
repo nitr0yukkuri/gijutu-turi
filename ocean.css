@@ -263,3 +263,20 @@ body[data-phase=caught] .catch-ui h1{font-size:clamp(40px,6vw,72px);line-height:
 @media(max-height:640px){.phone[data-fight=true]{padding-top:max(12px,env(safe-area-inset-top));padding-bottom:max(12px,env(safe-area-inset-bottom))}.phone[data-fight=true] .phone-connection{margin-top:5px;padding:5px 10px}.phone[data-fight=true] .phone-instruction{margin-top:7px}.phone[data-fight=true] h1{font-size:20px;line-height:1.35;margin:5px 0}.phone[data-fight=true] .phone-instruction>p:last-child{margin:4px 0;font-size:10px}.phone[data-fight=true] .rod-symbol{height:34px;min-height:34px;max-height:34px;margin:0 0 3px}.phone[data-fight=true] .phone-tension{margin:0 0 3px}.phone[data-fight=true] .tension-track{margin:8px 0 6px}.reel-control--phone{width:min(142px,45vw);margin-bottom:4px}.reel-control--phone .reel-control-label{font-size:11px}.reel-control--phone small{margin-top:2px;font-size:9px}.phone-rod-pump{min-height:46px;margin-bottom:0;padding:5px 10px}.phone-rod-pump small{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.reel-control,.reel-control-art,.reel-control-crank{transition:none!important}}
 .phone[data-fight=true][data-sensors=false] #sensor-button{display:block}
+
+
+/* Horizontal camera view control. */
+#ocean canvas { cursor: grab; user-select: none; -webkit-user-select: none; }
+#ocean[data-camera-dragging="true"] canvas { cursor: grabbing; }
+.view-reset-button {
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid rgba(214, 237, 237, .3);
+  border-radius: 4px;
+  background: rgba(18, 61, 73, .65);
+  color: #e1eeee;
+  font-size: 11px;
+  letter-spacing: .02em;
+}
+.view-reset-button:hover { background: rgba(35, 87, 96, .86); border-color: rgba(224, 244, 243, .62); }
+@media (max-width: 600px) { .view-reset-button { min-height: 34px; padding: 6px 8px; font-size: 10px; } }
