@@ -20,7 +20,7 @@ type UsePhoneMotionOptions = {
   showToast: (text: string) => void;
 };
 
-const MOTION_INSTRUCTIONS = "アタリでは下から上へ振って合わせます。戦闘中は画面を自分に向け、遠くから手前へ引くと短く巻きます。";
+const MOTION_INSTRUCTIONS = "投げるときは端末を振ります。アタリでは下から上へ振って合わせます。戦闘中は端末を回すとリールを巻き、画面を自分に向けて手前へ引くと竿を引けます。";
 
 export function usePhoneMotion({ stateRef, onlineRef, reelHeldRef, motionReelRef, cast, send, startReel, stopReel, performPhonePull, showToast }: UsePhoneMotionOptions) {
   const [sensorStatus, setSensorStatus] = useState(MOTION_INSTRUCTIONS);
@@ -41,9 +41,9 @@ export function usePhoneMotion({ stateRef, onlineRef, reelHeldRef, motionReelRef
   const toggleSensor = useCallback(async () => {
     if (sensorsOn) { showToast("釣り竿センサーは有効です。狙って一度振ってください。"); return; }
     try {
-      if (!window.isSecureContext || !window.DeviceMotionEvent) { setSensorStatus("センサーが使えない環境です。下のボタンで投げられます。"); return; }
+      if (!window.isSecureContext || !window.DeviceMotionEvent) { setSensorStatus("センサーが使えない環境です。画面操作で遊べます。"); setSensorButtonLabel("センサーを再試行"); return; }
       const motionApi = window.DeviceMotionEvent as typeof DeviceMotionEvent & { requestPermission?: () => Promise<"granted" | "denied"> };
-      if (typeof motionApi.requestPermission === "function" && await motionApi.requestPermission() !== "granted") { setSensorStatus("センサーは許可されていません。タッチ操作で遊べます。"); return; }
+      if (typeof motionApi.requestPermission === "function" && await motionApi.requestPermission() !== "granted") { setSensorStatus("センサーは許可されていません。タッチ操作で遊べます。"); setSensorButtonLabel("センサーを再試行"); return; }
       sensorSamplesRef.current = 0;
       gravitySampleAtRef.current = 0;
       gravityInitializedRef.current = false;
@@ -166,7 +166,7 @@ export function usePhoneMotion({ stateRef, onlineRef, reelHeldRef, motionReelRef
         }
         else setSensorButtonLabel("モーション操作は有効です");
       }, 2500);
-    } catch { setSensorStatus("センサーを開始できません。タッチで投げられます。"); }
+    } catch { setSensorStatus("センサーを開始できません。画面操作で遊べます。"); setSensorButtonLabel("センサーを再試行"); }
   }, [cast, motionReelRef, onlineRef, performPhonePull, reelHeldRef, send, sensorsOn, showToast, startReel, stateRef, stopReel]);
 
   useEffect(() => () => {

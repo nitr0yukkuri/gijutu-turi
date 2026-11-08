@@ -125,6 +125,25 @@ test("the fishing scene stays within common desktop and phone viewports", async 
   }
 });
 
+test("the standalone phone view exposes motion controls only on narrow screens", async ({ page }) => {
+  await stubCurrentWeather(page);
+  await page.goto("/gofish");
+  await page.waitForFunction(() => document.querySelector<HTMLElement>("#ocean")?.dataset.ready === "true");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const motionButton = page.locator("#mobile-sensor-toggle");
+  await expect(motionButton).toBeVisible();
+  await expect(motionButton).toHaveAttribute("aria-label", "モーション操作を有効にする");
+  await expect(motionButton).toContainText("振って操作");
+  await expect(page.locator("#sensor-button")).toBeHidden();
+  await expect(page.locator(".mobile-sensor-status")).toBeHidden();
+  await motionButton.click();
+  await expect(page.locator(".mobile-sensor-status")).toBeVisible();
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(motionButton).toBeHidden();
+});
+
 test("/complete shows every fish as a read-only showcase without opening game APIs", async ({ page }) => {
   // This route mounts each high-detail catalog preview in turn; software WebGL
   // needs extra time to compile the current species set.
