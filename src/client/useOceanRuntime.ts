@@ -75,6 +75,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
   const [toast, setToast] = useState("");
   const [chargeProgress, setChargeProgress] = useState(0);
   const [reticle, setReticle] = useState<Reticle>(null);
+  const [viewAdjusted, setViewAdjusted] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const soundEnabledRef = useRef(false);
   const [newEncounter, setNewEncounter] = useState(false);
@@ -85,6 +86,8 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
   const [controllerHost, setControllerHost] = useState("");
   const [controllerUrlError, setControllerUrlError] = useState("");
   const sceneRef = useRef<OceanSceneController | null>(null);
+  const viewYawRef = useRef(0);
+  const viewDragRef = useRef(false);
   const waterwayRef = useRef(waterway);
   waterwayRef.current = waterway;
   const weatherRef = useRef(weather);
@@ -161,6 +164,17 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
     setReticle(null);
     sceneRef.current?.setCharge(0);
   }, []);
+
+  const resetView = useCallback(() => {
+    viewYawRef.current = 0;
+    sceneRef.current?.setViewYaw(0);
+    setViewAdjusted(false);
+    const mount = oceanMountRef.current;
+    if (mount) {
+      mount.dataset.viewAdjusted = "false";
+      mount.dataset.cameraDragging = "false";
+    }
+  }, [oceanMountRef]);
 
   const setConnected = useCallback((value: boolean) => {
     setOnline(value);
@@ -528,11 +542,12 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
 
   useEffect(() => {
     const pointerMove = (event: globalThis.PointerEvent) => {
-      if ((event.target as Element | null)?.closest("button,dialog")) return;
+      if (viewDragRef.current || (event.target as Element | null)?.closest("button,dialog")) return;
       aimRef.current = clamp((event.clientX / window.innerWidth - .5) * 1.7, -1, 1);
     };
     const keyDown = (event: KeyboardEvent) => {
       if (document.querySelector("dialog[open]") || document.activeElement?.matches("a,input,textarea")) return;
+      if (event.code === "Escape" && Math.abs(viewYawRef.current) > .001) { event.preventDefault(); resetView(); return; }
       if (event.code === "KeyR" && stateRef.current.phase === "fighting") { event.preventDefault(); startReel(); return; }
       if (event.code !== "Space" || isPhone) return;
       if (document.activeElement?.matches("button") && !document.activeElement?.matches("#cast-button,#fight-button")) return;
@@ -544,7 +559,70 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
     document.addEventListener("pointermove", pointerMove);
     document.addEventListener("keydown", keyDown); document.addEventListener("keyup", keyUp); window.addEventListener("blur", blur);
     return () => { document.removeEventListener("pointermove", pointerMove); document.removeEventListener("keydown", keyDown); document.removeEventListener("keyup", keyUp); window.removeEventListener("blur", blur); };
-  }, [activate, cancelCharge, isPhone, releaseCharge, startCharge, startReel, stopReel]);
+  }, [activate, cancelCharge, isPhone, releaseCharge, resetView, startCharge, startReel, stopReel]);
+
+  useEffect(() => {
+    const mount = oceanMountRef.current;
+    if (!mount) return;
+    let pointerId: number | null = null;
+    let startX = 0;
+    let lastX = 0;
+    let dragging = false;
+    const onPointerDown = (event: globalThis.PointerEvent) => {
+      if (event.pointerType !== "mouse" || event.button !== 0 || event.target !== mount.querySelector("canvas")) return;
+      pointerId = event.pointerId;
+      startX = lastX = event.clientX;
+      dragging = false;
+      (event.target as HTMLCanvasElement).setPointerCapture(event.pointerId);
+      event.preventDefault();
+    };
+    const onPointerMove = (event: globalThis.PointerEvent) => {
+      if (pointerId !== event.pointerId) return;
+      if (!dragging && Math.abs(event.clientX - startX) < 5) { lastX = event.clientX; return; }
+      if (!dragging) {
+        dragging = true;
+        viewDragRef.current = true;
+        mount.dataset.cameraDragging = "true";
+      }
+      const deltaX = event.clientX - lastX;
+      lastX = event.clientX;
+      viewYawRef.current = clamp(viewYawRef.current - deltaX * .0035, -.44, .44);
+      sceneRef.current?.setViewYaw(viewYawRef.current);
+      const adjusted = Math.abs(viewYawRef.current) > .004;
+      setViewAdjusted(adjusted);
+      mount.dataset.viewAdjusted = String(adjusted);
+      event.preventDefault();
+    };
+    const finishDrag = (event: globalThis.PointerEvent) => {
+      if (pointerId !== event.pointerId) return;
+      pointerId = null;
+      dragging = false;
+      viewDragRef.current = false;
+      mount.dataset.cameraDragging = "false";
+    };
+    mount.addEventListener("pointerdown", onPointerDown);
+    mount.addEventListener("pointermove", onPointerMove);
+    mount.addEventListener("pointerup", finishDrag);
+    mount.addEventListener("pointercancel", finishDrag);
+    mount.addEventListener("lostpointercapture", finishDrag);
+    const onWindowBlur = () => {
+      pointerId = null;
+      dragging = false;
+      viewDragRef.current = false;
+      mount.dataset.cameraDragging = "false";
+    };
+    window.addEventListener("blur", onWindowBlur);
+    return () => {
+      mount.removeEventListener("pointerdown", onPointerDown);
+      mount.removeEventListener("pointermove", onPointerMove);
+      mount.removeEventListener("pointerup", finishDrag);
+      mount.removeEventListener("pointercancel", finishDrag);
+      mount.removeEventListener("lostpointercapture", finishDrag);
+      window.removeEventListener("blur", onWindowBlur);
+      viewDragRef.current = false;
+      mount.dataset.cameraDragging = "false";
+    };
+  }, [oceanMountRef]);
 
   useEffect(() => {
     const visibility = () => {
@@ -632,12 +710,12 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
   }, []);
 
   return {
-    state, presentationState, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle,
+    state, presentationState, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle, viewAdjusted,
     soundEnabled, collection, selectedCollectionId, setSelectedCollectionId, controllerUrl, controllerHost, controllerUrlError,
     sensorStatus, sensorButtonLabel, sensorsOn,
     actions: {
       activate, retryCatchSave, cast, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, releaseCharge,
-      startCharge, startReel, stopReel, performPhonePull, toggleSensor, toggleSound, showToast, showFeedback,
+      startCharge, startReel, stopReel, performPhonePull, toggleSensor, toggleSound, showToast, showFeedback, resetView,
     },
   };
 }

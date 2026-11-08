@@ -569,8 +569,8 @@ function FishingApp() {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [mobileSensorStatusVisible, setMobileSensorStatusVisible] = useState(false);
   const runtime = useOceanRuntime({ isPhone, controllerId, initialFishId: fishingRoute.initialFishId, waterway, weather: weatherVisuals, routePath: fishingRoute.path, oceanMountRef, collectionOpen });
-  const { state, presentationState, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle, soundEnabled, collection, selectedCollectionId, controllerUrl, controllerHost, controllerUrlError, sensorStatus, sensorButtonLabel, sensorsOn } = runtime;
-  const { activate, retryCatchSave, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, startReel, stopReel, performPhonePull, toggleSensor, toggleSound, showToast } = runtime.actions;
+  const { state, presentationState, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle, viewAdjusted, soundEnabled, collection, selectedCollectionId, controllerUrl, controllerHost, controllerUrlError, sensorStatus, sensorButtonLabel, sensorsOn } = runtime;
+  const { activate, retryCatchSave, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, startReel, stopReel, performPhonePull, toggleSensor, toggleSound, showToast, resetView } = runtime.actions;
   const fighting = state.phase === "fighting";
   const biting = state.phase === "biting";
   const caughtEntry = collection.entries.find(entry => entry.id === state.fishId);
@@ -676,6 +676,7 @@ function FishingApp() {
             <button type="button" aria-pressed={waterway === "river"} onClick={() => selectWaterway("river")}>川</button>
           </nav>
           <div className="top-actions">
+            {viewAdjusted && <button type="button" className="view-reset-button" title="視点を正面に戻す（Esc）" onClick={resetView}>視点を戻す</button>}
             <button id="mobile-sensor-toggle" className="mobile-sensor-toggle" aria-label={sensorButtonLabel} onClick={() => { setMobileSensorStatusVisible(true); void toggleSensor(); }}><span aria-hidden="true">⌁</span>{mobileSensorLabel}</button>
             <button id="sound-toggle" className="quiet-button" aria-pressed={soundEnabled} aria-label={soundEnabled ? "音をオフにする" : "音をオンにする"} onClick={() => void toggleSound().catch(() => showToast("この環境では音を再生できません。"))}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h4l5-4v12l-5-4H4z" /><path id="sound-wave" d={soundEnabled ? "M17 8q5 4 0 8m3-11q7 7 0 14" : "m17 9 5 6m0-6-5 6"} /></svg></button>
           </div>
@@ -736,6 +737,7 @@ function FishingApp() {
             <li><span>2</span><div><div className="instruction-heading"><strong>合わせる</strong></div><p>ウキが沈み、ボタンが「合わせる」に変わったら押します。</p></div></li>
             <li><span>3</span><div><div className="instruction-heading"><strong>巻く・竿を引く</strong></div><p>魚が走っている間は巻かずに待ちます。落ち着いたら「巻く」を押し、糸の張りが赤くなったらいったん離します。スマホの画面を自分に向け、遠くから手前へ一度引くと短く巻き取れます。連続して巻くときはリールを押すか回します。</p></div></li>
           </ol>
+          <p className="fine-print">水面を左右にドラッグすると視点を変えられます。Escキーまたは「視点を戻す」で正面に戻ります。</p>
           <p className="fine-print">スマホ1台で遊ぶ場合は、スマホでこの画面を開いて「振って操作」を許可してください。投げるときは端末を振り、アタリでは下から上へ振って合わせます。戦闘中は端末を回すと巻き、画面を自分に向けて手前へ引くと竿を引けます。PC画面とつなぐ場合は「スマホを接続」からQRコードを読み取ります。</p>
           <p className="fine-print">天気の背景演出には<a href="https://open-meteo.com/en/docs/jma-api" target="_blank" rel="noreferrer">Open-Meteoの気象庁モデル</a>と<a href="https://open-meteo.com/en/docs/gfs-api" target="_blank" rel="noreferrer">GFSモデル</a>を使用しています（<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>）。</p>
         </div>
