@@ -567,6 +567,7 @@ function FishingApp() {
   const collectionDialogRef = useRef<HTMLDialogElement>(null);
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
+  const [mobileSensorStatusVisible, setMobileSensorStatusVisible] = useState(false);
   const runtime = useOceanRuntime({ isPhone, controllerId, initialFishId: fishingRoute.initialFishId, waterway, weather: weatherVisuals, routePath: fishingRoute.path, oceanMountRef, collectionOpen });
   const { state, presentationState, online, displayConnected, renderFailed, reelHeld, feedback, hookFeedback, rodStrokeRevision, newEncounter, catchSaveStatus, toast, chargeProgress, reticle, soundEnabled, collection, selectedCollectionId, controllerUrl, controllerHost, controllerUrlError, sensorStatus, sensorButtonLabel, sensorsOn } = runtime;
   const { activate, retryCatchSave, cancelCharge, handlePointerDown, handlePointerUp, handlePointerCancel, startReel, stopReel, performPhonePull, toggleSensor, toggleSound, showToast } = runtime.actions;
@@ -609,6 +610,11 @@ function FishingApp() {
     "--k8s-rod-glow": `${12 * k8sLunge}px`,
   } as CSSProperties;
   const phoneCastLabel = state.phase === "idle" ? "タッチで投げる" : fighting ? (reelHeld ? "巻いている — 離すと緩む" : "押して巻く / 離して緩める") : phaseLabels[state.phase];
+  const mobileSensorLabel = sensorButtonLabel === "モーション操作を確認しています"
+    ? "センサー確認中"
+    : sensorButtonLabel === "センサーを再試行"
+      ? "再試行"
+      : sensorsOn ? "振って操作中" : "振って操作";
   const isLocalDevelopment = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
 
   const qrControllerUrl = useMemo(() => {
@@ -670,9 +676,11 @@ function FishingApp() {
             <button type="button" aria-pressed={waterway === "river"} onClick={() => selectWaterway("river")}>川</button>
           </nav>
           <div className="top-actions">
+            <button id="mobile-sensor-toggle" className="mobile-sensor-toggle" aria-label={sensorButtonLabel} onClick={() => { setMobileSensorStatusVisible(true); void toggleSensor(); }}><span aria-hidden="true">⌁</span>{mobileSensorLabel}</button>
             <button id="sound-toggle" className="quiet-button" aria-pressed={soundEnabled} aria-label={soundEnabled ? "音をオフにする" : "音をオンにする"} onClick={() => void toggleSound().catch(() => showToast("この環境では音を再生できません。"))}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h4l5-4v12l-5-4H4z" /><path id="sound-wave" d={soundEnabled ? "M17 8q5 4 0 8m3-11q7 7 0 14" : "m17 9 5 6m0-6-5 6"} /></svg></button>
           </div>
         </header>
+        {mobileSensorStatusVisible && <p className="mobile-sensor-status" role="status">{sensorStatus}</p>}
         <div className={`cast-feedback${feedback.faded ? " is-faded" : ""}`} aria-live="polite" aria-atomic="true"><span id="cast-status">{feedback.text}</span><small id="cast-detail">{feedback.detail}</small></div>
         {distanceReadout.visible && <DistanceReadout id="distance-meter" className="distance-meter" label={distanceReadout.label} value={distanceReadout.value} phase={distancePhase} />}
         <div id="cast-reticle" aria-hidden="true" style={reticle ? { left: reticle.x, top: reticle.y } : undefined} />
@@ -728,7 +736,7 @@ function FishingApp() {
             <li><span>2</span><div><div className="instruction-heading"><strong>合わせる</strong></div><p>ウキが沈み、ボタンが「合わせる」に変わったら押します。</p></div></li>
             <li><span>3</span><div><div className="instruction-heading"><strong>巻く・竿を引く</strong></div><p>魚が走っている間は巻かずに待ちます。落ち着いたら「巻く」を押し、糸の張りが赤くなったらいったん離します。スマホの画面を自分に向け、遠くから手前へ一度引くと短く巻き取れます。連続して巻くときはリールを押すか回します。</p></div></li>
           </ol>
-          <p className="fine-print">スマホを使う場合は「スマホを接続」からQRコードを読み取り、スマホ画面の指示に従ってください。</p>
+          <p className="fine-print">スマホ1台で遊ぶ場合は、スマホでこの画面を開いて「振って操作」を許可してください。投げるときは端末を振り、アタリでは下から上へ振って合わせます。戦闘中は端末を回すと巻き、画面を自分に向けて手前へ引くと竿を引けます。PC画面とつなぐ場合は「スマホを接続」からQRコードを読み取ります。</p>
           <p className="fine-print">天気の背景演出には<a href="https://open-meteo.com/en/docs/jma-api" target="_blank" rel="noreferrer">Open-Meteoの気象庁モデル</a>と<a href="https://open-meteo.com/en/docs/gfs-api" target="_blank" rel="noreferrer">GFSモデル</a>を使用しています（<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>）。</p>
         </div>
       </dialog>

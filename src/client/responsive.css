@@ -1,4 +1,55 @@
 /* Small-screen fixes for modal content and the phone controller. */
+.mobile-sensor-toggle,
+.mobile-sensor-status {
+  display: none;
+}
+
+@media (max-width: 600px), (pointer: coarse) and (max-width: 960px) {
+  .mobile-sensor-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 40px;
+    max-width: min(190px, calc(100vw - 96px));
+    padding: 0 12px;
+    border: 1px solid #c6e3e64a;
+    border-radius: 999px;
+    background: #0c2a37a8;
+    color: #e4f0ed;
+    font-size: 11px;
+    letter-spacing: .02em;
+    white-space: nowrap;
+    touch-action: manipulation;
+    backdrop-filter: blur(8px);
+  }
+
+  .mobile-sensor-toggle span {
+    color: #b9e2cf;
+    font-size: 15px;
+    line-height: 1;
+  }
+
+  .mobile-sensor-status {
+    position: fixed;
+    top: calc(58px + env(safe-area-inset-top));
+    left: max(12px, env(safe-area-inset-left));
+    z-index: 20;
+    display: block;
+    width: min(300px, calc(100vw - 36px));
+    margin: 0;
+    padding: 8px 10px;
+    border: 1px solid #c6e3e626;
+    border-radius: 6px;
+    background: #0c2a37e8;
+    color: #d4e3e2;
+    font-size: 10px;
+    line-height: 1.5;
+    text-align: left;
+    pointer-events: none;
+    backdrop-filter: blur(8px);
+  }
+}
 #help-dialog[open] {
   display: flex;
   flex-direction: column;
