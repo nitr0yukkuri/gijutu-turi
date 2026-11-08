@@ -95,7 +95,7 @@ function reedTexture(){
   });
 }
 
-function makeBank(side,texture){
+function makeBank(side,texture,wettableMaterials=[]){
   const distances=[0,.6,1.7,3.5,6.5,11,18,29,45,70,110],rows=99;
   const positions=[],colors=[],uvs=[],indices=[];
   const grass=new THREE.Color(0xa2b77a),soil=new THREE.Color(0xc1b69c),wet=new THREE.Color(0x899783);
@@ -114,7 +114,9 @@ function makeBank(side,texture){
     if(side<0)indices.push(a,b,c,b,d,c);else indices.push(a,c,b,b,c,d);
   }
   const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));geo.setIndex(indices);geo.computeVertexNormals();
-  return new THREE.Mesh(geo,new THREE.MeshStandardMaterial({map:texture,vertexColors:true,roughness:1,side:THREE.DoubleSide}));
+  const material=new THREE.MeshStandardMaterial({map:texture,vertexColors:true,roughness:1,side:THREE.DoubleSide});
+  wettableMaterials.push({material,color:material.color.clone(),roughness:material.roughness});
+  return new THREE.Mesh(geo,material);
 }
 
 function makeMountain(z,span,height,seed,color,texture){
@@ -148,31 +150,39 @@ function rockGeometry(seed){
   geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geo.computeVertexNormals();return geo;
 }
 
-export function createRiverEnvironment({reducedMotion=false,nightIntensity=0}={}){
+export function createRiverEnvironment({reducedMotion=false,nightIntensity=0,rainIntensity=0}={}){
   let disposed=false;
   const scene=new THREE.Scene();scene.fog=new THREE.FogExp2(0xc4dfe1,.0028);
-  const dayFogColor=new THREE.Color(0xc4dfe1),nightFogColor=new THREE.Color(0x101b2b);
+  const dayFogColor=new THREE.Color(0xc4dfe1),nightFogColor=new THREE.Color(0x101b2b),rainFogColor=new THREE.Color(0x71828a);
   const daySkyLight=new THREE.Color(0xe8f4ff),nightSkyLight=new THREE.Color(0x718bb4);
   const dayGroundLight=new THREE.Color(0x465337),nightGroundLight=new THREE.Color(0x111725);
   const daySunColor=new THREE.Color(0xfff1ca),nightSunColor=new THREE.Color(0x9cb7e0);
-  const foliageMaterials=[];
+  const foliageMaterials=[],wettableMaterials=[];
   const terrain=new THREE.Group();terrain.rotation.y=RIVER_BANK_VIEW.yaw;
   terrain.position.set(RIVER_BANK_VIEW.terrainX,0,RIVER_BANK_VIEW.terrainZ);scene.add(terrain);
   const hemisphere=new THREE.HemisphereLight(daySkyLight,dayGroundLight,2.05);scene.add(hemisphere);
   const sun=new THREE.DirectionalLight(daySunColor,1.7);sun.position.set(-35,60,25);scene.add(sun);
-  let appliedNight=-1;
-  const setNight=value=>{
-    const night=clamp(value,0,1);
-    if(Math.abs(night-appliedNight)<.002)return;
-    appliedNight=night;
-    scene.fog.color.copy(dayFogColor).lerp(nightFogColor,night);
+  let currentNight=0,currentRain=0,appliedNight=-1,appliedRain=-1;
+  const applyWeather=()=>{
+    const night=currentNight,rain=currentRain;
+    if(Math.abs(night-appliedNight)<.002&&Math.abs(rain-appliedRain)<.002)return;
+    appliedNight=night;appliedRain=rain;
+    scene.fog.color.copy(dayFogColor).lerp(nightFogColor,night).lerp(rainFogColor,rain*.14);
     hemisphere.color.copy(daySkyLight).lerp(nightSkyLight,night);
     hemisphere.groundColor.copy(dayGroundLight).lerp(nightGroundLight,night);
-    hemisphere.intensity=2.05+(0.48-2.05)*night;
+    hemisphere.intensity=(2.05+(0.48-2.05)*night)*(1-rain*.08);
     sun.color.copy(daySunColor).lerp(nightSunColor,night);
-    sun.intensity=1.7+(0.14-1.7)*night;
-    for(const material of foliageMaterials)material.color.setRGB(1-.68*night,1-.62*night,1-.38*night);
+    sun.intensity=(1.7+(0.14-1.7)*night)*(1-rain*.12);
+    for(const material of foliageMaterials){
+      material.color.setRGB((1-.68*night)*(1-rain*.1),(1-.62*night)*(1-rain*.12),(1-.38*night)*(1-rain*.14));
+    }
+    for(const entry of wettableMaterials){
+      entry.material.color.copy(entry.color).multiplyScalar(1-rain*.13);
+      entry.material.roughness=entry.roughness*(1-rain*.24);
+    }
   };
+  const setNight=value=>{currentNight=clamp(value,0,1);applyWeather();};
+  const setRain=value=>{currentRain=clamp(value,0,1);applyWeather();};
   const textures=[],time={value:0},random=randomSource(81923),scratch=new THREE.Object3D();
   const loadTexture=(url,color,fallback)=>{
     const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
@@ -192,11 +202,12 @@ export function createRiverEnvironment({reducedMotion=false,nightIntensity=0}={}
   const rockRoughness=loadTexture(new URL('../../assets/river/mossy-rock-roughness.webp',import.meta.url).href,false,'#dddddd');
   const waterNormalTexture=createRiverNormalTexture();textures.push(waterNormalTexture);
   const ground=groundTexture();ground.wrapS=ground.wrapT=THREE.RepeatWrapping;textures.push(ground);
-  terrain.add(makeBank(-1,ground),makeBank(1,ground));
+  terrain.add(makeBank(-1,ground,wettableMaterials),makeBank(1,ground,wettableMaterials));
   const rocks=rockTexture();rocks.wrapS=rocks.wrapT=THREE.RepeatWrapping;rocks.repeat.set(2.5,2.5);textures.push(rocks);
   const forest=forestTexture();forest.wrapS=forest.wrapT=THREE.RepeatWrapping;textures.push(forest);
   terrain.add(makeMountain(-490,1450,175,32,0xa6c2bc,rocks),makeMountain(-310,950,125,18,0xb5c6b4,forest),makeMountain(-196,650,60,7,0xb0c198,forest));
   const rockMaterial=new THREE.MeshStandardMaterial({map:rockColor,normalMap:rockNormal,roughnessMap:rockRoughness,roughness:.96});
+  wettableMaterials.push({material:rockMaterial,color:rockMaterial.color.clone(),roughness:rockMaterial.roughness});
   rockMaterial.onBeforeCompile=shader=>{
     const varyings='varying vec3 vRiverRockWorld;\nvarying vec3 vRiverRockNormal;\n';
     shader.vertexShader=varyings+shader.vertexShader
@@ -266,7 +277,7 @@ normal=normalize(mat3(viewMatrix)*normalize(rockBase+rockDetail*0.6));
     reedMesh.setColorAt(index,new THREE.Color().setHSL(.17+random()*.04,.23,.65+random()*.15));
   }
   reedMesh.instanceMatrix.needsUpdate=true;reedMesh.computeBoundingSphere();terrain.add(reedMesh);
-  setNight(nightIntensity);
+  setNight(nightIntensity);setRain(rainIntensity);
 
   const reflectionTarget=new THREE.WebGLRenderTarget(512,288,{type:THREE.HalfFloatType,depthBuffer:true});
   const reflectionCamera=new THREE.PerspectiveCamera(),reflectionMatrix=new THREE.Matrix4(),reflectionLook=new THREE.Vector3(),reflectionSize=new THREE.Vector2(),savedClear=new THREE.Color();
@@ -278,6 +289,7 @@ normal=normalize(mat3(viewMatrix)*normalize(rockBase+rockDetail*0.6));
     bedTexture,
     waterNormalTexture,
     setNight,
+    setRain,
     update(seconds){time.value=reducedMotion?0:seconds;},
     renderReflection(renderer,camera){
       renderer.getDrawingBufferSize(reflectionSize);
