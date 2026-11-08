@@ -135,6 +135,25 @@ float noise(vec2 p) {
   vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
   return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
 }
+float riverRainRipple(vec2 point) {
+  vec2 drift=vec2(uTime*(0.015+uWeatherWind*0.12),-uTime*(0.01+uWeatherWind*0.05));
+  vec2 grid=(point+drift)*0.72;
+  vec2 base=floor(grid),local=fract(grid);
+  float ripple=0.0;
+  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+    vec2 offset=vec2(float(x),float(y)),cell=base+offset;
+    vec2 random=vec2(hash(cell+vec2(17.7,48.2)),hash(cell+vec2(3.7,19.1)));
+    float seed=fract(random.x+random.y*0.618);
+    float rate=mix(0.25,0.55+uWeatherRain*0.55,random.y);
+    float age=fract(uTime*rate+seed);
+    vec2 center=offset+random;
+    float radius=0.025+age*0.30;
+    float distanceToRing=length(local-center);
+    float ring=exp(-pow((distanceToRing-radius)*36.0,2.0));
+    ripple=max(ripple,ring*(1.0-smoothstep(0.72,1.0,age)));
+  }
+  return ripple;
+}
 float cloudField(vec2 p) {
   // Clear skies are the common fallback state. Skip cloud noise entirely then.
   if(uWeatherCloud<=0.005) return 0.5;
@@ -279,8 +298,11 @@ void main(){
     float fineFacet=(noise(wavePoint*vec2(8.5,23.0)+vec2(-uTime*0.12,uTime*0.05))-0.5)*0.018;
     float fine=(broadFacet+fineFacet)*mix(1.0,0.0,uRiver)*shoreRoughness;
     float windRipple=(noise(wavePoint*vec2(mix(2.2,5.5,uWeatherWind),mix(8.0,16.0,uWeatherWind))+uTime*0.03)-0.5)*0.06*uWeatherWind*mix(1.0,0.48,uRiver);
-    float rainMicro=(noise(wavePoint*vec2(13.0,31.0)+vec2(uTime*0.22,-uTime*0.13))-0.5)*0.026*uWeatherRain*mix(1.0,0.38,uRiver);
+    float rainMicro=(noise(wavePoint*vec2(13.0,31.0)+vec2(uTime*0.22,-uTime*0.13))-0.5)*0.026*uWeatherRain*mix(1.0,0.72,uRiver);
+    float rainRipple=0.0;
+    if(uRiver>0.5&&uWeatherRain>0.005)rainRipple=riverRainRipple(p.xz)*uWeatherRain;
     n=normalize(n+vec3(fine+windRipple+rainMicro,0.0,-fine*0.42+windRipple*0.76+rainMicro*0.5));
+    n=normalize(n+vec3(rainRipple*.14,0.0,rainRipple*.1));
     n=normalize(mix(n,vec3(0.0,1.0,0.0),smoothstep(90.0,450.0,t)));
     if(uRiver>0.5) {
       n=riverSurfaceNormal(n,p,riverLateral,riverDepthRatio,t);
@@ -304,6 +326,7 @@ void main(){
       reflectedColor=mix(reflectedColor,landscapeReflection,reflectionValid);
     }
     color=mix(water,reflectedColor,fresnel*mix(0.72,0.94,uRiver));
+    color+=vec3(0.025,0.038,0.044)*rainRipple;
     vec3 sun=normalize(mix(vec3(-0.42,0.065,-1.0),vec3(-0.45,0.68,-0.4),uRiver));
     float roughness=clamp(max(uWeatherWind,uWeatherRain*0.55),0.0,1.0);
     float glint=pow(max(dot(reflected,sun),0.0),mix(360.0,105.0,roughness));
@@ -407,7 +430,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const presentationTimeline=sharedTimeline??new OceanPresentationTimeline(OCEAN_RENDER_DELAY_MS);
   const ownsPresentationTimeline=!sharedTimeline;
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let riverEnvironment=waterway==='river'?createRiverEnvironment({reducedMotion:reduced,nightIntensity:weather?.nightIntensity??0}):null;
+  let riverEnvironment=waterway==='river'?createRiverEnvironment({reducedMotion:reduced,nightIntensity:weather?.nightIntensity??0,rainIntensity:weather?.rainIntensity??0}):null;
   const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.25));
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
@@ -952,6 +975,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     const nightBlend=1-Math.exp(-dt*.06);
     weatherUniforms.uNight.value=THREE.MathUtils.lerp(weatherUniforms.uNight.value,weatherTarget.nightIntensity,nightBlend);
     riverEnvironment?.setNight(weatherUniforms.uNight.value);
+    riverEnvironment?.setRain(weatherUniforms.uWeatherRain.value);
     snowUniforms.uTime.value=time;
     snowUniforms.uSnow.value=THREE.MathUtils.lerp(snowUniforms.uSnow.value,weatherTarget.snowfallIntensity,weatherBlend);
     snowUniforms.uWind.value=weatherUniforms.uWeatherWind.value;
@@ -1591,7 +1615,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     selectedWaterway=value;uniforms.uRiver.value=value==='river'?1:0;
     if(value==='river'&&!waterBackdrop.depthBuffer){waterBackdrop.depthBuffer=true;waterBackdrop.dispose();}
     if(value==='river'&&!riverEnvironment){
-      riverEnvironment=createRiverEnvironment({reducedMotion:reduced,nightIntensity:weatherUniforms.uNight.value});
+      riverEnvironment=createRiverEnvironment({reducedMotion:reduced,nightIntensity:weatherUniforms.uNight.value,rainIntensity:weatherUniforms.uWeatherRain.value});
       uniforms.uRiverReflection.value=riverEnvironment.reflectionTexture;
       uniforms.uRiverReflectionMatrix.value=riverEnvironment.reflectionMatrix;
       uniforms.uRiverNormal.value=riverEnvironment.waterNormalTexture;
