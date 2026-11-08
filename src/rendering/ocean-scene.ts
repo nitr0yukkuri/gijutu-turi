@@ -27,6 +27,7 @@ import { shootingStarGLSL, updateShootingStarUniform } from './shooting-star.js'
 import { riverChannelGLSL } from './river-channel.js';
 import { RIVER_BANK_VIEW, riverBankViewGLSL } from './river-bank-view.js';
 import { riverOpticsGLSL } from './river-water.js';
+import { RIVER_FIGHT_RAIN_PROFILE, RIVER_FIGHT_RAIN_SHADER, shouldSoftenRiverFightRain } from './river-fight-rain.js';
 import type { FishSurfaceImpactCue } from '../fish-surface-impact.js';
 import type { Waterway } from '../waterway.js';
 import type { WeatherVisualState } from '../weather-contract.js';
@@ -469,7 +470,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const snowUniforms={uTime:{value:0},uSnow:{value:weather?.snowfallIntensity??0},uWind:{value:weather?.windStrength??0},uMotion:{value:reduced?0:1}};
   const snowMaterial=new THREE.ShaderMaterial({
     uniforms:snowUniforms,transparent:true,depthTest:false,depthWrite:false,
-    vertexShader:`attribute float aPhase;attribute float aSpeed;attribute float aSize;uniform float uTime;uniform float uSnow;uniform float uWind;uniform float uMotion;varying float vOpacity;varying float vStreak;void main(){float t=uTime*uMotion;float fall=fract(aPhase+t*aSpeed*.11);float depth=aPhase;float drift=(.012+uWind*.11)*fall;float x=position.x+sin(t*(.34+aSpeed*.16)+aPhase*6.283)*(.012+depth*.02)+drift;float y=1.12-fall*2.24;gl_Position=vec4(x,y,0.,1.);gl_PointSize=aSize*(.62+depth*1.18);vOpacity=uSnow*(.24+.62*depth);vStreak=clamp(uWind*.6+depth*.26,0.,.86);}`,
+    vertexShader:`attribute float aPhase;attribute float aSpeed;attribute float aSize;uniform float uTime;uniform float uSnow;uniform float uWind;uniform float uMotion;${RIVER_FIGHT_RAIN_SHADER.uniform}varying float vOpacity;varying float vStreak;void main(){float t=uTime*uMotion;float fall=fract(aPhase+t*aSpeed*.11);float depth=aPhase;float drift=(.012+uWind*.11)*fall;float x=position.x+sin(t*(.34+aSpeed*.16)+aPhase*6.283)*(.012+depth*.02)+drift;float y=1.12-fall*2.24;gl_Position=vec4(x,y,0.,1.);gl_PointSize=aSize*(.62+depth*1.18);vOpacity=uSnow*(.24+.62*depth);vStreak=clamp(uWind*.6+depth*.26,0.,.86);}`,
     fragmentShader:`varying float vOpacity;varying float vStreak;void main(){vec2 p=(gl_PointCoord-vec2(.5))*2.;p.y+=p.x*vStreak*.5;float d=length(vec2(p.x,p.y*(1.-vStreak*.78)));float glow=exp(-d*d*3.5);float core=exp(-d*d*9.);float alpha=(glow*.3+core*.52)*vOpacity;gl_FragColor=vec4(vec3(.8,.89,.95),alpha);}`,
   });
   const snowflakes=new THREE.Points(snowGeometry,snowMaterial);snowflakes.renderOrder=1;snowflakes.frustumCulled=false;backgroundScene.add(snowflakes);
@@ -498,7 +499,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const rainMaterial=new THREE.ShaderMaterial({
     uniforms:{uTime:uniforms.uTime,uRain:weatherUniforms.uWeatherRain,uWind:weatherUniforms.uWeatherWind,uMotion:{value:reduced?0:1},uRiverFight:{value:0}},
     transparent:true,depthTest:false,depthWrite:false,
-    vertexShader:`attribute float aPhase;attribute float aSpeed;attribute float aSize;attribute float aOpacity;attribute float aDrift;attribute float aStretch;uniform float uTime;uniform float uRain;uniform float uWind;uniform float uMotion;uniform float uRiverFight;varying float vOpacity;varying float vTilt;varying float vStretch;varying float vTint;void main(){float t=uTime*uMotion;float fall=fract(aPhase+t*aSpeed*.46);float tilt=clamp(.12+uWind*.72,.12,.82);float sway=sin(t*(.24+aDrift*.18)+aPhase*12.566)*(.006+aDrift*.004);float gust=sin(t*.17+aPhase*6.283)*aDrift*.01;float x=position.x+tilt*(fall-.5)*.12*aDrift+uWind*(sway+gust);float y=1.12-fall*2.24;gl_Position=vec4(x,y,0.,1.);float riverFightKeep=mix(1.0,1.0-smoothstep(.62,.74,aPhase),uRiverFight);gl_PointSize=aSize*(.72+aSpeed*.28)*mix(1.0,.72,uRiverFight);vOpacity=uRain*(.18+aOpacity*.48)*mix(1.0,.68,uRiverFight)*riverFightKeep;vTilt=tilt;vStretch=aStretch;vTint=fract(aPhase*17.13);}`,
+    vertexShader:`attribute float aPhase;attribute float aSpeed;attribute float aSize;attribute float aOpacity;attribute float aDrift;attribute float aStretch;uniform float uTime;uniform float uRain;uniform float uWind;uniform float uMotion;uniform float uRiverFight;varying float vOpacity;varying float vTilt;varying float vStretch;varying float vTint;void main(){float t=uTime*uMotion;float fall=fract(aPhase+t*aSpeed*.46);float tilt=clamp(.12+uWind*.72,.12,.82);float sway=sin(t*(.24+aDrift*.18)+aPhase*12.566)*(.006+aDrift*.004);float gust=sin(t*.17+aPhase*6.283)*aDrift*.01;float x=position.x+tilt*(fall-.5)*.12*aDrift+uWind*(sway+gust);float y=1.12-fall*2.24;gl_Position=vec4(x,y,0.,1.);float riverFightKeep=${RIVER_FIGHT_RAIN_SHADER.keep};gl_PointSize=aSize*(.72+aSpeed*.28)*${RIVER_FIGHT_RAIN_SHADER.pointSize};vOpacity=uRain*(.18+aOpacity*.48)*${RIVER_FIGHT_RAIN_SHADER.opacity}*riverFightKeep;vTilt=tilt;vStretch=aStretch;vTint=fract(aPhase*17.13);}`,
     fragmentShader:`varying float vOpacity;varying float vTilt;varying float vStretch;varying float vTint;void main(){vec2 p=(gl_PointCoord-vec2(.5))*2.;p.x+=p.y*vTilt*.3;float longitudinal=abs(p.y)/max(vStretch,.1);float body=exp(-p.x*p.x*(24.-vStretch*5.))*(1.-smoothstep(.32,1.,longitudinal));float glow=exp(-p.x*p.x*5.)*(1.-smoothstep(.5,1.,longitudinal))*.14;float alpha=(body*.48+glow)*vOpacity;vec3 color=mix(vec3(.66,.77,.82),vec3(.86,.92,.96),vTint);gl_FragColor=vec4(color,alpha);}`,
   });
   const raindrops=new THREE.Points(rainGeometry,rainMaterial);raindrops.renderOrder=0;raindrops.frustumCulled=false;rainOverlayScene.add(raindrops);
@@ -975,8 +976,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if(overlayOpen&&now-lastRenderedFrame<1000/30)return;
     const dt=Math.min(.05,(now-(lastFrame||now))/1000);lastFrame=now;time+=dt*(reduced?.15:1);
     lastRenderedFrame=now;
-    const riverFightRainTarget=selectedWaterway==='river'&&state.phase==='fighting'?1:0;
-    rainMaterial.uniforms.uRiverFight.value=THREE.MathUtils.damp(rainMaterial.uniforms.uRiverFight.value,riverFightRainTarget,6,dt);
+    const riverFightRainTarget=shouldSoftenRiverFightRain(selectedWaterway,state.phase)?1:0;
+    rainMaterial.uniforms.uRiverFight.value=THREE.MathUtils.damp(rainMaterial.uniforms.uRiverFight.value,riverFightRainTarget,RIVER_FIGHT_RAIN_PROFILE.transitionSpeed,dt);
     javaFightScaleBlend=THREE.MathUtils.damp(javaFightScaleBlend,state.fishId==='java-001'&&state.phase==='fighting'?1:0,5.8,dt);
     uniforms.uTime.value=time;
     updateShootingStarUniform(uniforms.uShootingStar.value,time,shootingStarSeed,reduced);
