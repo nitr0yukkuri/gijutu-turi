@@ -23,6 +23,7 @@ import { copyFishMotion as copyFish, interpolateFishPresentationState } from './
 import { createOceanFishModels } from './ocean-fish-models.js';
 import { createOctopusInkEffect, shouldReleaseJavaOctopusInk } from './octopus-ink.js';
 import { createRiverEnvironment } from './river-environment.js';
+import { shootingStarGLSL, updateShootingStarUniform } from './shooting-star.js';
 import { riverChannelGLSL } from './river-channel.js';
 import { RIVER_BANK_VIEW, riverBankViewGLSL } from './river-bank-view.js';
 import { riverOpticsGLSL } from './river-water.js';
@@ -164,16 +165,19 @@ float starField(vec3 direction,float cloudMask) {
   float radius=mix(0.2,0.48,hash(cell+vec2(13.2,8.9)));
   float distanceToStar=length(local-offset);
   float core=1.0-smoothstep(radius*0.38,radius,distanceToStar);
-  float sparseStars=step(0.9989,seed);
-  float visible=smoothstep(0.04,0.24,elevation)*(1.0-cloudMask*0.96);
+  float sparseStars=step(0.9935,seed);
+  float stormFade=1.0-uWeatherStorm*0.96;
+  float visible=smoothstep(0.04,0.24,elevation)*(1.0-cloudMask*0.96)*stormFade;
   float twinkle=0.84+0.16*sin(uTime*(1.2+seed*1.8)+seed*6.283);
-  return core*sparseStars*visible*twinkle;
+  float magnitude=mix(0.48,1.0,hash(cell+vec2(22.4,9.8)));
+  return core*sparseStars*visible*twinkle*magnitude;
 }
 float segmentDistance(vec2 p,vec2 a,vec2 b) {
   vec2 pa=p-a,ba=b-a;
   float h=clamp(dot(pa,ba)/max(dot(ba,ba),0.000001),0.0,1.0);
   return length(pa-ba*h);
 }
+${shootingStarGLSL}
 vec2 lightningMainPoint(float index,float seed,float originX,float boltLength) {
   float progress=index/10.0;
   float broadBend=(noise(vec2(seed*1.73,progress*2.2))-0.5)*0.042;
@@ -201,6 +205,7 @@ vec3 sky(vec3 d,float cloudWeight) {
     vec3 night=mix(vec3(0.018,0.043,0.078),vec3(0.004,0.012,0.034),pow(clamp(elevation*1.7,0.0,1.0),0.55));
     night=mix(night,vec3(0.055,0.078,0.12),cloudMask*cloudWeight*0.62);
     if(uNight>0.001) night+=vec3(0.34,0.46,0.72)*starField(d,cloudMask)*0.72;
+    night+=vec3(0.52,0.72,1.0)*shootingStar(d,cloudMask);
     day=mix(day,night,uNight);
     return mix(day,vec3(0.12,0.17,0.23),uWeatherStorm*0.72);
   }
@@ -229,6 +234,7 @@ vec3 sky(vec3 d,float cloudWeight) {
   vec3 night=mix(nightHorizon,nightZenith,pow(clamp(elevation*2.6,0.0,1.0),0.58));
   night=mix(night,vec3(0.052,0.076,0.12),cloudMask*cloudWeight*0.58);
   if(uNight>0.001) night+=vec3(0.36,0.48,0.76)*starField(d,cloudMask)*0.76;
+  night+=vec3(0.52,0.72,1.0)*shootingStar(d,cloudMask);
   c=mix(c,night,uNight);
   return mix(c,vec3(0.12,0.17,0.23),uWeatherStorm*0.72);
 }
@@ -419,7 +425,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const screenCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
   const ripples=Array.from({length:6},()=>new THREE.Vector4(0,0,-100,0));
   const emptyRiverReflection=new THREE.DataTexture(new Uint8Array([80,120,95,255]),1,1);emptyRiverReflection.needsUpdate=true;
-  const uniforms={uTime:{value:0},uCamera:{value:camera.matrixWorld},uProjectionInverse:{value:camera.projectionMatrixInverse},uRipples:{value:ripples},uResolution:{value:new THREE.Vector2()},uRiver:{value:waterway==='river'?1:0},uRiverReflection:{value:riverEnvironment?.reflectionTexture??emptyRiverReflection},uRiverReflectionMatrix:{value:riverEnvironment?.reflectionMatrix??new THREE.Matrix4()},uRiverNormal:{value:riverEnvironment?.waterNormalTexture??emptyRiverReflection},uRiverBed:{value:riverEnvironment?.bedTexture??emptyRiverReflection}};
+  const uniforms={uTime:{value:0},uCamera:{value:camera.matrixWorld},uProjectionInverse:{value:camera.projectionMatrixInverse},uRipples:{value:ripples},uResolution:{value:new THREE.Vector2()},uRiver:{value:waterway==='river'?1:0},uRiverReflection:{value:riverEnvironment?.reflectionTexture??emptyRiverReflection},uRiverReflectionMatrix:{value:riverEnvironment?.reflectionMatrix??new THREE.Matrix4()},uRiverNormal:{value:riverEnvironment?.waterNormalTexture??emptyRiverReflection},uRiverBed:{value:riverEnvironment?.bedTexture??emptyRiverReflection},uShootingStar:{value:new THREE.Vector4(0,0,-1,1)}};
   const weatherUniforms={uWeatherCloud:{value:weather?.cloudCover??0},uWeatherRain:{value:weather?.rainIntensity??0},uWeatherWind:{value:weather?.windStrength??0},uWeatherStorm:{value:weather?.thunderstormIntensity??0},uWeatherSnow:{value:weather?.snowfallIntensity??0},uNight:{value:weather?.nightIntensity??0}};
   const weatherTarget={cloudCover:weatherUniforms.uWeatherCloud.value,rainIntensity:weatherUniforms.uWeatherRain.value,windStrength:weatherUniforms.uWeatherWind.value,snowfallIntensity:weather?.snowfallIntensity??0,thunderstormIntensity:weatherUniforms.uWeatherStorm.value,nightIntensity:weatherUniforms.uNight.value};
   const material=new THREE.ShaderMaterial({uniforms:{...uniforms,...weatherUniforms},depthTest:false,depthWrite:false,vertexShader:'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',fragmentShader:waterShader});
@@ -427,6 +433,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const snowflakeCount=280,snowGeometry=new THREE.BufferGeometry();
   const snowPositions=new Float32Array(snowflakeCount*3),snowPhases=new Float32Array(snowflakeCount),snowSpeeds=new Float32Array(snowflakeCount),snowSizes=new Float32Array(snowflakeCount);
   const seededRandom=(seed:number)=>{const value=Math.sin(seed*12.9898+78.233)*43758.5453;return value-Math.floor(value);};
+  const shootingStarSeed=Math.random()*4096;
   for(let i=0;i<snowflakeCount;i++){
     snowPositions[i*3]=seededRandom(i+1)*1.96-.98;
     snowPositions[i*3+1]=0;
@@ -935,6 +942,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     lastRenderedFrame=now;
     javaFightScaleBlend=THREE.MathUtils.damp(javaFightScaleBlend,state.fishId==='java-001'&&state.phase==='fighting'?1:0,5.8,dt);
     uniforms.uTime.value=time;
+    updateShootingStarUniform(uniforms.uShootingStar.value,time,shootingStarSeed,reduced);
     const weatherBlend=1-Math.exp(-dt*.32);
     weatherUniforms.uWeatherCloud.value=THREE.MathUtils.lerp(weatherUniforms.uWeatherCloud.value,weatherTarget.cloudCover,weatherBlend);
     weatherUniforms.uWeatherRain.value=THREE.MathUtils.lerp(weatherUniforms.uWeatherRain.value,weatherTarget.rainIntensity,weatherBlend);
