@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { OCEAN_PHASES } from '../ocean-contract.js';
 import {
   RIVER_FIGHT_RAIN_PROFILE,
   RIVER_FIGHT_RAIN_SHADER,
@@ -7,11 +8,11 @@ import {
   shouldSoftenRiverFightRain,
 } from './river-fight-rain.js';
 
-test('river rain softening is active only during a river fight', () => {
-  assert.equal(shouldSoftenRiverFightRain('river', 'fighting'), true);
-  assert.equal(shouldSoftenRiverFightRain('sea', 'fighting'), false);
-  assert.equal(shouldSoftenRiverFightRain('river', 'waiting'), false);
-  assert.equal(shouldSoftenRiverFightRain('river', 'caught'), false);
+test('river rain softening is active only during the fighting phase', () => {
+  for (const phase of OCEAN_PHASES) {
+    assert.equal(shouldSoftenRiverFightRain('river', phase), phase === 'fighting');
+    assert.equal(shouldSoftenRiverFightRain('sea', phase), false);
+  }
 });
 
 test('the inactive profile leaves every rain particle unchanged', () => {
@@ -38,6 +39,9 @@ test('the active profile smoothly fades only high-phase particles and applies th
   assert.equal(afterFade.keep, 0);
   assert.equal(fadeMidpoint.pointSizeScale, RIVER_FIGHT_RAIN_PROFILE.pointSizeScale);
   assert.equal(fadeMidpoint.opacityScale, RIVER_FIGHT_RAIN_PROFILE.opacityScale);
+  const halfBlend = riverFightRainParticleProfile(0.5, 0.5);
+  assert.ok(Math.abs(halfBlend.pointSizeScale - 0.86) < 1e-12);
+  assert.ok(Math.abs(halfBlend.opacityScale - 0.84) < 1e-12);
   assert.ok(Math.abs(riverFightRainParticleProfile(0.68, 0.5).keep - 0.75) < 1e-12);
 });
 
