@@ -35,7 +35,11 @@ export function createOceanRooms(options:{onCatch?:(playerId:string,eventKey:str
   const rooms=new Map<string,Room>();
   const onCatch=options.onCatch??(()=>{});
   const sockets=new WebSocketServer({noServer:true,maxPayload:1024});
-  const count=(room:Room,role:Client['role'])=>[...room.clients.values()].filter(client=>client.role===role).length;
+  const count=(room:Room,role:Client['role'])=>{
+    let total=0;
+    for(const client of room.clients.values())if(client.role===role)total++;
+    return total;
+  };
   // Keep the desktop fallback usable when no phone is paired. Once a phone
   // controller is present, the phone owns input so two surfaces cannot race
   // the same fishing action.
@@ -116,7 +120,8 @@ export function createOceanRooms(options:{onCatch?:(playerId:string,eventKey:str
           if(!room.clients.has(queued.client))continue;
           if(room.game.action(queued.action,now))for(const other of room.clients.values())other.reelUntil=0;
         }
-        const reeling=[...room.clients.values()].some(client=>client.reelUntil>now);
+        let reeling=false;
+        for(const client of room.clients.values())if(client.reelUntil>now){reeling=true;break;}
         room.game.step(.05,reeling,now);
       }
       const phase=room.game.state.phase;

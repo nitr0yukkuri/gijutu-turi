@@ -427,7 +427,11 @@ export class OceanFishingGame {
     return {...this.state,fish:this.locomotion.snapshot()};
   }
   wireSnapshot():AuthoritativeOceanState{
-    const state=this.snapshot();
+    const state=this.state;
+    const fish=this.locomotion.snapshot();
+    state.fish=fish;
+    state.fishX=fish.position.x;
+    state.fishSpeed=fish.speed;
     return{
       phase:state.phase,
       strength:state.strength,
@@ -448,7 +452,7 @@ export class OceanFishingGame {
       catches:state.catches,
       reason:state.reason,
       resultAt:state.resultAt,
-      fish:state.fish,
+      fish,
       fishId:state.fishId,
       fishX:state.fishX,
       fishSpeed:state.fishSpeed,

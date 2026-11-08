@@ -761,7 +761,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   let marlinSurfaceExposed=false;
   let javaInkBursts=0;
   const javaInkOrigin=new THREE.Vector3(),javaInkDirection=new THREE.Vector3();
-  let serverOffset=0,cameraProgress=0,frame,catchOrigin=null,displayedWave=null,displayedGlow=.65,displayedSwim=null,displayedLoad=0,displayedRodLoad=0,displayedFishVisibility=0,escapeStartVisibility=0,hookImpactAt=-100;
+  let serverOffset=0,cameraProgress=0,frame=null,catchOrigin=null,displayedWave=null,displayedGlow=.65,displayedSwim=null,displayedLoad=0,displayedRodLoad=0,displayedFishVisibility=0,escapeStartVisibility=0,hookImpactAt=-100;
   let dockerRodSurgeAt=-100,wasDockerSurging=false,displayedDockerSurgeLoad=0;
   let fishShaderWarmupTimer:ReturnType<typeof setTimeout>|null=null;
   let scheduleFishShaderWarmup=(fishId)=>{};
@@ -835,17 +835,23 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const launchSplash=(x,z,power=1)=>{
     sprayOrigin.set(x,waveHeight(x,z,time),z);splashAt=time;sprayPower=power;addRipple(x,z,power);
   };
+  let requestedFightModelId=null;
   const setState=(next,serverNow)=>{
     // Start the selected species chunk as soon as its server snapshot arrives.
     // Model creation remains off the animation loop and preserves the quiet
     // approach window for shader warmup.
-    void requestFightModel(next.fishId).then(()=>{
-      if(!sceneDisposed&&state.fishId===next.fishId)scheduleFishShaderWarmup(next.fishId);
-    }).catch(error=>{
-      if(sceneDisposed)return;
-      console.error('Fish model unavailable',error);
-      onRenderError();
-    });
+    if(requestedFightModelId!==next.fishId){
+      requestedFightModelId=next.fishId;
+      const requestedFishId=next.fishId;
+      void requestFightModel(requestedFishId).then(()=>{
+        if(!sceneDisposed&&state.fishId===requestedFishId)scheduleFishShaderWarmup(requestedFishId);
+      }).catch(error=>{
+        if(requestedFightModelId===requestedFishId)requestedFightModelId=null;
+        if(sceneDisposed)return;
+        console.error('Fish model unavailable',error);
+        onRenderError();
+      });
+    }
     if(Number.isFinite(serverNow)) serverOffset=serverNow-Date.now();
     if(ownsPresentationTimeline)presentationTimeline.push(next,Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset);
     tackleStore.update(next,Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset);
@@ -963,8 +969,9 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     },250);
   };
   const render=(now)=>{
+    frame=null;
+    if(sceneDisposed||document.hidden){lastFrame=0;return;}
     frame=requestAnimationFrame(render);
-    if(document.hidden){lastFrame=now;return;}
     if(overlayOpen&&now-lastRenderedFrame<1000/30)return;
     const dt=Math.min(.05,(now-(lastFrame||now))/1000);lastFrame=now;time+=dt*(reduced?.15:1);
     lastRenderedFrame=now;
@@ -1637,6 +1644,18 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     weatherTarget.nightIntensity=THREE.MathUtils.clamp(value.nightIntensity,0,1);
   };
 
-  frame=requestAnimationFrame(render);
-    return {setState,setCharge,setWaterway,setWeather,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){sceneDisposed=true;octopusInk.dispose();riverEnvironment?.dispose();emptyRiverReflection.dispose();cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fishModelStore.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
+  const onVisibilityChange=()=>{
+    if(document.hidden){
+      if(frame!==null)cancelAnimationFrame(frame);
+      frame=null;lastFrame=0;
+      return;
+    }
+    if(sceneDisposed||frame!==null)return;
+    // Restart from a fresh timestamp so returning to the tab does not jump the scene clock.
+    lastFrame=0;
+    frame=requestAnimationFrame(render);
+  };
+  document.addEventListener('visibilitychange',onVisibilityChange);
+  if(!document.hidden)frame=requestAnimationFrame(render);
+    return {setState,setCharge,setWaterway,setWeather,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){sceneDisposed=true;document.removeEventListener('visibilitychange',onVisibilityChange);octopusInk.dispose();riverEnvironment?.dispose();emptyRiverReflection.dispose();if(frame!==null)cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fishModelStore.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
 }

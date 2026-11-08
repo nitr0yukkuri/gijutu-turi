@@ -17,11 +17,11 @@ const PRECACHE_PATHS = [
   "ocean.css",
   "manifest.webmanifest",
   "favicon.svg",
-  "assets/gijutu-turi-logo.png",
   "assets/gijutu-turi-favicon-generated.png",
-  "assets/gijutu-turi-og.png",
 ];
 const PRECACHE_URLS = PRECACHE_PATHS.map((path) => new URL(path, BASE_URL).toString());
+const OBSOLETE_PRECACHED_URLS = ["assets/gijutu-turi-logo.png", "assets/gijutu-turi-og.png"]
+  .map((path) => new URL(path, BASE_URL).toString());
 
 const isSafePrecachePath = (path) => {
   if (typeof path !== "string") return false;
@@ -53,6 +53,8 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) => Promise.all(keys.filter((key) => key.startsWith("gijutu-turi-") && key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then(() => caches.open(CACHE_NAME))
+      .then((cache) => Promise.all(OBSOLETE_PRECACHED_URLS.map((url) => cache.delete(url))))
       .then(() => self.clients.claim()),
   );
 });
@@ -66,14 +68,26 @@ self.addEventListener("fetch", (event) => {
   const cleanUrl = new URL(requestUrl.pathname, self.location.origin).toString();
   const isBuiltAsset = requestUrl.pathname.startsWith("/assets/") || requestUrl.pathname.startsWith("/chunks/");
   if (!PRECACHE_URLS.includes(cleanUrl) && !isBuiltAsset) return;
+  const fileName = requestUrl.pathname.slice(requestUrl.pathname.lastIndexOf("/") + 1);
+  const isImmutableBuiltAsset = requestUrl.pathname.startsWith("/chunks/")
+    || requestUrl.pathname.startsWith("/assets/") && /-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$/.test(fileName);
 
   event.respondWith(
-    fetch(event.request).then((response) => {
-      if (response.status === 200) {
-        const responseClone = response.clone();
-        event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.put(cleanUrl, responseClone)));
+    (async () => {
+      if (isImmutableBuiltAsset) {
+        const cached = await caches.match(cleanUrl);
+        if (cached) return cached;
       }
-      return response;
-    }).catch(async () => (await caches.match(cleanUrl)) ?? Response.error()),
+      try {
+        const response = await fetch(event.request);
+        if (response.status === 200) {
+          const responseClone = response.clone();
+          event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.put(cleanUrl, responseClone)));
+        }
+        return response;
+      } catch {
+        return (await caches.match(cleanUrl)) ?? Response.error();
+      }
+    })(),
   );
 });

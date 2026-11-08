@@ -23,6 +23,16 @@ const json = (value: unknown, status = 200, headers: HeadersInit = {}): Response
   new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json; charset=utf-8", ...headers } });
 
 const noStore = { "Cache-Control": "no-store" };
+const corsOriginCache = new Map<string, ReadonlySet<string>>();
+
+function configuredOrigins(value: string | undefined): ReadonlySet<string> {
+  const key = value ?? "";
+  const cached = corsOriginCache.get(key);
+  if (cached) return cached;
+  const origins = new Set(key.split(",").map(origin => origin.trim()).filter(Boolean));
+  corsOriginCache.set(key, origins);
+  return origins;
+}
 
 function tokenFrom(request: Request): string | undefined {
   const match = request.headers.get("authorization")?.match(/^Bearer ([A-Za-z0-9_-]{43})$/i);
@@ -59,9 +69,8 @@ function applyCors(request: Request, response: Response, environment: Cloudflare
   // ordinary Response would drop the endpoint and make the handshake fail.
   if (response.status === 101) return response;
   const origin = request.headers.get("Origin") ?? undefined;
-  const configured = new Set((environment.FRONTEND_ORIGIN ?? "").split(",").map(value => value.trim()).filter(Boolean));
   const headers = new Headers(response.headers);
-  for (const [name, value] of Object.entries(apiCorsHeaders(origin, configured))) headers.set(name, value);
+  for (const [name, value] of Object.entries(apiCorsHeaders(origin, configuredOrigins(environment.FRONTEND_ORIGIN)))) headers.set(name, value);
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 

@@ -108,7 +108,7 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
 
   let time = 0;
   let last = 0;
-  let frame;
+  let frame = null;
   let disposed = false;
   let dragging = false;
   let previousX = 0;
@@ -163,7 +163,8 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
   mount.addEventListener('keydown', keyDown);
 
   const render = now => {
-    if (disposed) return;
+    frame = null;
+    if (disposed || document.hidden) { last = 0; return; }
     frame = requestAnimationFrame(render);
     const delta = Math.min(.05, (now - (last || now)) / 1000);
     last = now;
@@ -203,13 +204,26 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
     }
     composer.render();
   };
-  frame = requestAnimationFrame(render);
+  const onVisibilityChange = () => {
+    if (document.hidden) {
+      if (frame !== null) cancelAnimationFrame(frame);
+      frame = null;
+      last = 0;
+      return;
+    }
+    if (disposed || frame !== null) return;
+    last = 0;
+    frame = requestAnimationFrame(render);
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  if (!document.hidden) frame = requestAnimationFrame(render);
 
   return {
     dispose() {
       if (disposed) return;
       disposed = true;
-      cancelAnimationFrame(frame);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (frame !== null) cancelAnimationFrame(frame);
       observer.disconnect();
       mount.removeEventListener('pointerdown', pointerDown);
       mount.removeEventListener('pointermove', pointerMove);
