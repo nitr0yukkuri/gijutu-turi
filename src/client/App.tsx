@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
-import { toDataURL } from "qrcode";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { getFishSpecies, getWaterwayForFish, isFishSpeciesId, type FishSilhouetteKey } from "../fish-species.js";
 import { FISH_ESCAPE_HINTS } from "./escape-hints.js";
 import { canContinueAfterCatchSave } from "../ocean-contract.js";
@@ -454,6 +453,10 @@ export function CollectionDialog({
     </dialog>
   );
 }
+
+// The active HUD samples at 30fps; keep the dormant atlas subtree out of those reconciliations.
+const MemoizedCollectionDialog = memo(CollectionDialog);
+
 function CompleteFishBook({ selectedId, onSelect }: { selectedId: string; onSelect: (id: string) => void }) {
   const entries = COMPLETE_SHOWCASE_COLLECTION.entries;
   const selected = entries.find(entry => entry.id === selectedId) ?? entries[0];
@@ -649,23 +652,25 @@ function FishingApp() {
     for (const dialog of [helpDialogRef.current, connectDialogRef.current, collectionDialogRef.current]) if (dialog?.open) dialog.close();
   }, [state.phase]);
 
-  const openDialog = (dialog: RefObject<HTMLDialogElement | null>) => {
+  const openDialog = useCallback((dialog: RefObject<HTMLDialogElement | null>) => {
     cancelCharge();
     if (dialog.current && !dialog.current.open) {
       dialog.current.showModal();
       if (dialog === collectionDialogRef) setCollectionOpen(true);
     }
-  };
-  const closeDialog = (dialog: RefObject<HTMLDialogElement | null>) => { if (dialog.current?.open) dialog.current.close(); };
+  }, [cancelCharge]);
+  const closeDialog = useCallback((dialog: RefObject<HTMLDialogElement | null>) => { if (dialog.current?.open) dialog.current.close(); }, []);
+  const closeCollectionDialog = useCallback(() => closeDialog(collectionDialogRef), [closeDialog]);
+  const handleCollectionClosed = useCallback(() => setCollectionOpen(false), []);
   useEffect(() => {
     let active = true;
     if (!qrControllerUrl) { setQrDataUrl(""); return () => { active = false; }; }
-    void toDataURL(qrControllerUrl, {
+    void import("qrcode").then(({ toDataURL }) => toDataURL(qrControllerUrl, {
       errorCorrectionLevel: "M",
       margin: 2,
       width: 220,
       color: { dark: "#102f3c", light: "#f2fbf8" },
-    }).then(dataUrl => { if (active) setQrDataUrl(dataUrl); }).catch(() => { if (active) setQrDataUrl(""); });
+    })).then(dataUrl => { if (active) setQrDataUrl(dataUrl); }).catch(() => { if (active) setQrDataUrl(""); });
     return () => { active = false; };
   }, [qrControllerUrl]);
 
@@ -749,7 +754,7 @@ function FishingApp() {
         <div className={`pairing-qr${qrDataUrl ? "" : " is-loading"}`} aria-live="polite">{qrDataUrl ? <img id="controller-qr" src={qrDataUrl} alt="スマホ接続用QRコード" /> : controllerUrlError || "QRコードを準備中…"}</div>
         {isLocalDevelopment && <p id="pairing-note" className="fine-print">{controllerHost ? <>接続先: <code>{controllerHost}{window.location.port ? `:${window.location.port}` : ""}</code>。PCとスマホを同じWi-Fiに接続してください。<br /></> : null}ローカルでモーションを使うには、PCでもHTTPS画面を開いてください（<code>npm run dev:https</code> → <code>https://localhost:8790</code>）。ログのSHA-256と一致を確認して開発証明書を信頼し、モーションを許可します。</p>}
       </dialog>
-      <CollectionDialog dialogRef={collectionDialogRef} collection={collection} selectedId={selectedCollectionId} isOpen={collectionOpen} onSelect={runtime.setSelectedCollectionId} onClose={() => closeDialog(collectionDialogRef)} onClosed={() => setCollectionOpen(false)} waterway={waterway} />
+      <MemoizedCollectionDialog dialogRef={collectionDialogRef} collection={collection} selectedId={selectedCollectionId} isOpen={collectionOpen} onSelect={runtime.setSelectedCollectionId} onClose={closeCollectionDialog} onClosed={handleCollectionClosed} waterway={waterway} />
       <div id="toast" className={`toast${toast ? " visible" : ""}`} role="status">{toast}</div>
       <noscript><p className="render-notice">この海を動かすにはJavaScriptを有効にしてください。</p></noscript>
     </>

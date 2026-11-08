@@ -7,12 +7,7 @@ import { createRiverNormalTexture } from './river-water.js';
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 const smooth=(a,b,n)=>{const t=clamp((n-a)/(b-a),0,1);return t*t*(3-2*t);};
 const randomSource=seed=>()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
-const noise2=(x,y)=>{
-  const ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy,u=fx*fx*(3-2*fx),v=fy*fy*(3-2*fy);
-  const hash=(a,b)=>{let n=Math.imul(a,374761393)+Math.imul(b,668265263);n=Math.imul(n^(n>>>13),1274126177);return ((n^(n>>>16))>>>0)/4294967296;};
-  const a=hash(ix,iy),b=hash(ix+1,iy),c=hash(ix,iy+1),d=hash(ix+1,iy+1);
-  return (a+(b-a)*u)*(1-v)+(c+(d-c)*u)*v;
-};
+const noiseHash=(a,b)=>{let n=Math.imul(a,374761393)+Math.imul(b,668265263);n=Math.imul(n^(n>>>13),1274126177);return ((n^(n>>>16))>>>0)/4294967296;};
 const bankHeight=riverBankHeightAt;
 
 function canvasTexture(width,height,paint){
@@ -38,11 +33,25 @@ function groundTexture(){
 
 function rockTexture(){
   return canvasTexture(256,256,(ctx,w,h)=>{
+    // Rock texels repeatedly sample the same lattice corners at several scales.
+    // Cache those exact hash values to avoid millions of duplicate integer hashes.
+    const cacheSize=192,hashValues=new Float64Array(cacheSize*cacheSize),hashReady=new Uint8Array(cacheSize*cacheSize);
+    const hashRockLattice=(x,y)=>{
+      if(x<0||y<0||x>=cacheSize||y>=cacheSize)return noiseHash(x,y);
+      const index=x*cacheSize+y;
+      if(!hashReady[index]){hashValues[index]=noiseHash(x,y);hashReady[index]=1;}
+      return hashValues[index];
+    };
+    const sampleRockNoise=(x,y)=>{
+      const ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy,u=fx*fx*(3-2*fx),v=fy*fy*(3-2*fy);
+      const a=hashRockLattice(ix,iy),b=hashRockLattice(ix+1,iy),c=hashRockLattice(ix,iy+1),d=hashRockLattice(ix+1,iy+1);
+      return (a+(b-a)*u)*(1-v)+(c+(d-c)*u)*v;
+    };
     const image=ctx.createImageData(w,h),pixels=image.data;
     for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-      const coarse=noise2(x*.035+4,y*.028+8),middle=noise2(x*.11+3,y*.1+2),fine=noise2(x*.63+1,y*.63+9);
-      const seam=1-smooth(.018,.07,Math.abs(noise2(x*.028+y*.009,y*.023)-.5));
-      const moss=smooth(.6,.83,noise2(x*.027+22,y*.033+7));
+      const coarse=sampleRockNoise(x*.035+4,y*.028+8),middle=sampleRockNoise(x*.11+3,y*.1+2),fine=sampleRockNoise(x*.63+1,y*.63+9);
+      const seam=1-smooth(.018,.07,Math.abs(sampleRockNoise(x*.028+y*.009,y*.023)-.5));
+      const moss=smooth(.6,.83,sampleRockNoise(x*.027+22,y*.033+7));
       const tone=(105+coarse*56+middle*28+(fine-.5)*28)*(1-seam*.24),i=(y*w+x)*4;
       pixels[i]=tone-moss*20;pixels[i+1]=tone+5+moss*3;pixels[i+2]=tone-1-moss*21;pixels[i+3]=255;
     }

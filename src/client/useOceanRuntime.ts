@@ -257,11 +257,18 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
     const next = message.state;
     const previousCatchSaveStatus = catchSaveStatusRef.current;
     const nextCatchSaveStatus = message.catchSaveStatus ?? (next.phase === "caught" ? "saved" : "none");
+    // Physics values use the interpolated presentation state; React only needs this discrete UI snapshot.
+    const uiStateChanged = previous.phase !== next.phase
+      || previous.fishId !== next.fishId
+      || previous.criticalWindow !== next.criticalWindow
+      || previous.reason !== next.reason
+      || previous.reeling !== next.reeling
+      || next.phase === "caught" && previous.tension !== next.tension;
     presentationTimelineRef.current.push(next, message.serverNow);
     catchSaveStatusRef.current = nextCatchSaveStatus;
     setCatchSaveStatus(nextCatchSaveStatus);
     stateRef.current = next;
-    setState(next);
+    if (uiStateChanged) setState(next);
     setDisplayConnected(message.displays > 0);
     displayConnectedRef.current = message.displays > 0;
     fishingAudioRef.current?.sync(previous, next, !isPhone);
@@ -347,13 +354,27 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
   const presentationActive = ["casting", "waiting", "biting", "fighting"].includes(state.phase);
   useEffect(() => {
     if (!presentationActive) return;
+    let timer: number | null = null;
     const update = () => {
+      if (document.hidden) return;
       const sampled = presentationTimelineRef.current.sample();
       if (sampled) setPresentationState(sampled);
     };
-    update();
-    const timer = window.setInterval(update, 1000 / 30);
-    return () => window.clearInterval(timer);
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        if (timer !== null) window.clearInterval(timer);
+        timer = null;
+        return;
+      }
+      update();
+      if (timer === null) timer = window.setInterval(update, 1000 / 30);
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    onVisibilityChange();
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (timer !== null) window.clearInterval(timer);
+    };
   }, [presentationActive]);
 
   const getRoom = useCallback(async (): Promise<{ id: string; host?: string }> => {
@@ -587,19 +608,76 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
   }, [cancelCharge, connect, setConnected, stopReel]);
 
   useEffect(() => {
+    let disposed = false;
+    let pageLoaded = document.readyState === "complete";
+    let sceneReady = isPhone || !oceanMountRef.current || oceanMountRef.current.dataset.ready === "true";
+    let registrationScheduled = false;
+    let idleHandle: number | null = null;
+    let registrationTimer: number | null = null;
+    let sceneFallbackTimer: number | null = null;
+    let sceneObserver: MutationObserver | null = null;
+    const registerWorker = () => {
+      idleHandle = null;
+      registrationTimer = null;
+      if (disposed || closingRef.current) return;
+      void navigator.serviceWorker.register("./service-worker.js").catch(error => console.warn("Offline cache unavailable", error));
+    };
+    const scheduleRegistration = () => {
+      if (registrationScheduled || disposed || !pageLoaded || !sceneReady) return;
+      registrationScheduled = true;
+      const idleWindow = window as Window & {
+        requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      };
+      if (idleWindow.requestIdleCallback) {
+        idleHandle = idleWindow.requestIdleCallback.call(window, registerWorker, { timeout: 3000 });
+      } else {
+        registrationTimer = window.setTimeout(registerWorker, 1000);
+      }
+    };
+    const maybeScheduleRegistration = () => {
+      if (pageLoaded && sceneReady) scheduleRegistration();
+    };
+    const onLoad = () => { pageLoaded = true; maybeScheduleRegistration(); };
+    const onSceneReady = () => {
+      sceneReady = true;
+      if (sceneFallbackTimer !== null) window.clearTimeout(sceneFallbackTimer);
+      sceneFallbackTimer = null;
+      maybeScheduleRegistration();
+    };
     const pagehide = () => { closingRef.current = true; stopReel(); cancelCharge(); socketRef.current?.close(); sceneRef.current?.dispose(); };
     const pageshow = (event: PageTransitionEvent) => { if (event.persisted) window.location.reload(); };
     window.addEventListener("pagehide", pagehide); window.addEventListener("pageshow", pageshow);
+    if (!pageLoaded) window.addEventListener("load", onLoad, { once: true });
     if ("serviceWorker" in navigator) {
       const viteMeta = import.meta as ImportMeta & { env?: { DEV?: boolean } };
       if (viteMeta.env?.DEV) {
         void navigator.serviceWorker.getRegistrations().then(registrations => Promise.all(registrations.map(registration => registration.unregister())));
       } else {
-        void navigator.serviceWorker.register("./service-worker.js").catch(error => console.warn("Offline cache unavailable", error));
+        const oceanMount = oceanMountRef.current;
+        if (!sceneReady && oceanMount) {
+          sceneObserver = new MutationObserver(() => {
+            if (oceanMount.dataset.ready === "true") onSceneReady();
+          });
+          sceneObserver.observe(oceanMount, { attributes: true, attributeFilter: ["data-ready"] });
+          sceneFallbackTimer = window.setTimeout(onSceneReady, 10_000);
+        }
+        maybeScheduleRegistration();
       }
     }
-    return () => { window.removeEventListener("pagehide", pagehide); window.removeEventListener("pageshow", pageshow); };
-  }, [cancelCharge, stopReel]);
+    return () => {
+      disposed = true;
+      sceneObserver?.disconnect();
+      if (sceneFallbackTimer !== null) window.clearTimeout(sceneFallbackTimer);
+      if (registrationTimer !== null) window.clearTimeout(registrationTimer);
+      if (idleHandle !== null) {
+        const idleWindow = window as Window & { cancelIdleCallback?: (handle: number) => void };
+        idleWindow.cancelIdleCallback?.(idleHandle);
+      }
+      window.removeEventListener("load", onLoad);
+      window.removeEventListener("pagehide", pagehide);
+      window.removeEventListener("pageshow", pageshow);
+    };
+  }, [cancelCharge, isPhone, oceanMountRef, stopReel]);
 
   useEffect(() => {
     const preview = { get state() { return { ...stateRef.current }; }, get diagnostics() { return { online: onlineRef.current, isPhone, scene: sceneRef.current?.diagnostics }; } };

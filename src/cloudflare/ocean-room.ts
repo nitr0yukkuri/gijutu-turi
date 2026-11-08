@@ -45,6 +45,10 @@ function isActive(room: StoredRoom): boolean {
     || room.game.state.phase === "escaped" && room.game.escapeAge < ESCAPE_ANIMATION_SECONDS;
 }
 
+function isGameActive(game: OceanFishingGame): boolean {
+  return ACTIVE_PHASES.has(game.state.phase) || game.isEscapeAnimating();
+}
+
 function canControl(role: ClientAttachment["role"], controllerCount: number): boolean {
   return role === "controller" || role === "display" && controllerCount === 0;
 }
@@ -103,8 +107,10 @@ export class OceanRoom {
     }
   }
 
-  private roleCount(role: ClientAttachment["role"]): number {
-    return this.clients().filter(socket => this.attachment(socket)?.role === role).length;
+  private roleCount(role: ClientAttachment["role"], sockets = this.clients()): number {
+    let count = 0;
+    for (const socket of sockets) if (this.attachment(socket)?.role === role) count++;
+    return count;
   }
 
   private broadcast(): void {
@@ -112,13 +118,20 @@ export class OceanRoom {
     const game = this.game;
     if (!room || !game) return;
     const sockets = this.clients();
+    let controllers = 0;
+    let displays = 0;
+    for (const socket of sockets) {
+      const role = this.attachment(socket)?.role;
+      if (role === "controller") controllers++;
+      else if (role === "display") displays++;
+    }
     const message: OceanMessage = {
       type: "ocean",
       state: game.wireSnapshot(),
       rodStroke: room.rodStroke,
       serverNow: Date.now(),
-      controllers: this.roleCount("controller"),
-      displays: this.roleCount("display"),
+      controllers,
+      displays,
       catchSaveStatus: game.state.phase === "caught" ? room.catchSaveStatus : "none",
     };
     const payload = JSON.stringify(message);
@@ -176,7 +189,8 @@ export class OceanRoom {
   private async tick(): Promise<void> {
     const room = await this.getRoom();
     const game = this.game;
-    if (!room || !game || this.roleCount("display") === 0) return;
+    const sockets = this.clients();
+    if (!room || !game || this.roleCount("display", sockets) === 0) return;
     const now = Date.now();
     const previous = game.state.phase;
     const saveLocked = game.state.phase === "caught" && !canContinueAfterCatchSave(room.catchSaveStatus);
@@ -184,15 +198,15 @@ export class OceanRoom {
     if (!saveLocked) {
       const queued = this.commands.splice(0);
       for (const command of queued) {
-        if (!this.clients().includes(command.socket)) continue;
+        if (!sockets.includes(command.socket)) continue;
         if (game.action(command.action, now)) {
-          for (const socket of this.clients()) {
+          for (const socket of sockets) {
             const attachment = this.attachment(socket);
             if (attachment) socket.serializeAttachment({ ...attachment, reelUntil: 0 });
           }
         }
       }
-      const reeling = this.clients().some(socket => (this.attachment(socket)?.reelUntil ?? 0) > now);
+      const reeling = sockets.some(socket => (this.attachment(socket)?.reelUntil ?? 0) > now);
       game.step(0.05, reeling, now);
     }
 
@@ -209,10 +223,9 @@ export class OceanRoom {
       this.broadcast();
     }
 
-    room.game = game.serialize();
     const forceSave = previous !== phase;
     await this.persist(forceSave);
-    if (this.roleCount("display") > 0 && (isActive(room) || this.commands.length > 0)) this.scheduleTick(50);
+    if (this.roleCount("display") > 0 && (isGameActive(game) || this.commands.length > 0)) this.scheduleTick(50);
   }
 
   async fetch(request: Request): Promise<Response> {

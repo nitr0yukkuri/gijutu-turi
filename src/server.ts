@@ -18,9 +18,9 @@ import { getCurrentWeather, handleCurrentWeatherRequest } from "./current-weathe
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "0.0.0.0";
 const app = new Hono();
+const configuredOrigins = new Set((process.env.FRONTEND_ORIGIN ?? "").split(",").map(origin => origin.trim()).filter(Boolean));
 app.use("/api/*", async (c, next) => {
   const requestOrigin = c.req.header("Origin");
-  const configuredOrigins = new Set((process.env.FRONTEND_ORIGIN ?? "").split(",").map(origin => origin.trim()).filter(Boolean));
   for (const [name, value] of Object.entries(apiCorsHeaders(requestOrigin, configuredOrigins))) c.header(name, value);
   if (c.req.method === "OPTIONS") return c.body(null, 204);
   await next();
@@ -68,6 +68,13 @@ const publicAssets = new Map<string, string[]>([
   ["/assets/gijutu-turi-og.png", ["assets/gijutu-turi-og.png", "image/png"]],
 ]);
 for(const route of LEGACY_FISH_PATH_ALIASES)publicAssets.set(route,["index.html","text/html; charset=utf-8"]);
+const preferredPublicAssets = new Set([
+  "/", "/index.html", COMPLETE_SHOWCASE_PATH, RIVER_FISH_SHOWCASE_PATH, ...CANONICAL_FISH_ROUTE_PATHS, FISHING_ROUTE_PATHS.docker,
+  ...LEGACY_FISH_PATH_ALIASES, "/ocean.css", "/ocean-app.js",
+  "/service-worker.js", "/precache-manifest.json", "/manifest.webmanifest", "/favicon.svg",
+  "/assets/gijutu-turi-favicon-generated.png", "/assets/gijutu-turi-og.png",
+  "/license.txt", "/third-party-notices.txt",
+]);
 const fishAddons = [
   "environments/RoomEnvironment.js",
   "postprocessing/EffectComposer.js", "postprocessing/RenderPass.js",
@@ -82,14 +89,7 @@ for (const route of [COMPLETE_SHOWCASE_PATH, RIVER_FISH_SHOWCASE_PATH, ...CANONI
 for (const [route, asset] of publicAssets) {
   app.get(route, async c => {
     try {
-      const preferred = new Set([
-        "/", "/index.html", COMPLETE_SHOWCASE_PATH, RIVER_FISH_SHOWCASE_PATH, ...CANONICAL_FISH_ROUTE_PATHS, FISHING_ROUTE_PATHS.docker,
-        ...LEGACY_FISH_PATH_ALIASES, "/ocean.css", "/ocean-app.js",
-        "/service-worker.js", "/precache-manifest.json", "/manifest.webmanifest", "/favicon.svg",
-        "/assets/gijutu-turi-favicon-generated.png", "/assets/gijutu-turi-og.png",
-        "/license.txt", "/third-party-notices.txt",
-      ]);
-      const candidates = publicAssetCandidates(route, asset[0]!, preferred.has(route));
+      const candidates = publicAssetCandidates(route, asset[0]!, preferredPublicAssets.has(route));
       let bytes: Buffer | undefined;
       for (const candidate of candidates) {
         try { bytes = await readFile(new URL(`../${candidate}`, import.meta.url)); break; } catch { /* try the source fallback */ }
