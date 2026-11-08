@@ -165,10 +165,11 @@ float starField(vec3 direction,float cloudMask) {
   float radius=mix(0.2,0.48,hash(cell+vec2(13.2,8.9)));
   float distanceToStar=length(local-offset);
   float core=1.0-smoothstep(radius*0.38,radius,distanceToStar);
-  float sparseStars=step(0.9989,seed);
+  float sparseStars=step(0.9935,seed);
   float visible=smoothstep(0.04,0.24,elevation)*(1.0-cloudMask*0.96);
   float twinkle=0.84+0.16*sin(uTime*(1.2+seed*1.8)+seed*6.283);
-  return core*sparseStars*visible*twinkle;
+  float magnitude=mix(0.48,1.0,hash(cell+vec2(22.4,9.8)));
+  return core*sparseStars*visible*twinkle*magnitude;
 }
 float segmentDistance(vec2 p,vec2 a,vec2 b) {
   vec2 pa=p-a,ba=b-a;
