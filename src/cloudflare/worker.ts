@@ -4,6 +4,7 @@ import { RequestRateLimiter } from "../request-rate-limit.js";
 import { apiCorsHeaders } from "../api-cors.js";
 import { deleteOceanRoom, getCollection, getPlayerIdForSession, ping, registerPlayerSession, reserveOceanRoom } from "./d1-store.js";
 import { readSmallJson } from "./read-small-json.js";
+import { createReservedRoom } from "./room-reservation.js";
 import type { CloudflareEnv } from "./types.js";
 import { getCurrentWeather, handleCurrentWeatherRequest, type WeatherFetcher } from "../current-weather.js";
 import type { CurrentWeather } from "../weather-contract.js";
@@ -143,14 +144,27 @@ async function route(request: Request, env: CloudflareEnv): Promise<Response> {
     try { weather = await getCurrentWeather(waterwayValue, weatherFetcher); } catch { /* Weather failure keeps the neutral fishing balance. */ }
     const roomId = `sea_${randomHex(16)}`;
     if (!await reserveOceanRoom(env.DB, roomId, playerId, pinnedFishId)) return json({ error: "rooms_full" }, 503);
-    const durableId = env.OCEAN_ROOMS.idFromName(roomId);
-    const stub = env.OCEAN_ROOMS.get(durableId);
-    const response = await stub.fetch(new Request("https://ocean-room.internal/create", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roomId, playerId, ...(pinnedFishId ? { fishId: pinnedFishId } : {}), waterway: waterwayValue, ...(weather ? { weather } : {}) }),
-    }));
-    if (!response.ok) {
-      await deleteOceanRoom(env.DB, roomId);
+    let response: Response | undefined;
+    try {
+      response = await createReservedRoom(
+        async () => {
+          const durableId = env.OCEAN_ROOMS.idFromName(roomId);
+          const stub = env.OCEAN_ROOMS.get(durableId);
+          return stub.fetch(new Request("https://ocean-room.internal/create", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ roomId, playerId, ...(pinnedFishId ? { fishId: pinnedFishId } : {}), waterway: waterwayValue, ...(weather ? { weather } : {}) }),
+          }));
+        },
+        async () => {
+          try { await deleteOceanRoom(env.DB, roomId); }
+          catch (error) { console.error("Unable to release failed ocean room reservation", error instanceof Error ? error.message : "unknown_error"); }
+        },
+      );
+    } catch (error) {
+      console.error("Unable to create ocean room", error instanceof Error ? error.message : "unknown_error");
+      return json({ error: "room_create_failed" }, 503);
+    }
+    if (!response) {
       return json({ error: "room_create_failed" }, 503);
     }
     return json({ id: roomId, host: url.host }, 201, noStore);
