@@ -527,6 +527,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const rodTangent=new THREE.Vector3(),rodView=new THREE.Vector3(),rodNormal=new THREE.Vector3(),rodBinormal=new THREE.Vector3();
   const rodGuideDown=new THREE.Vector3(),rodGuideSide=new THREE.Vector3(),rodGuideTangent=new THREE.Vector3(),rodGuidePoint=new THREE.Vector3(),rodLineAnchor=new THREE.Vector3(),reelLineExit=new THREE.Vector3(),rodGuideMatrix=new THREE.Matrix4();
   const rodFishTarget=new THREE.Vector3(),rodLineDirection=new THREE.Vector3();
+  const javaTetherWorldDirection=new THREE.Vector3(),javaTetherLocalDirection=new THREE.Vector3();
+  const javaTetherInverseQuaternion=new THREE.Quaternion();
   const lineProjectionCenter=new THREE.Vector3(),lineProjectionEye=new THREE.Vector3(),lineProjectionPoint=new THREE.Vector3();
   const mouthSideDirection=new THREE.Vector3(),mouthSideRotation=new THREE.Quaternion();
   let dockerHookSide=1;
@@ -1267,9 +1269,19 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         // The body material and water optics stay fixed; only the existing
         // visibility reveal and short movement/attack cues change over time.
         const javaJetSurge=state.fishId==='java-001'&&state.phase==='fighting'&&visualMode==='surge';
+        const isJavaOctopusFight=state.fishId==='java-001'&&state.phase==='fighting';
         const renderedPower=THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1);
         const renderedEffort=escapePresentation?1:fish.swim?.effort||.2;
-        activeFightFish.update(time,{power:javaJetSurge?Math.max(renderedPower,.92):renderedPower,glow:state.fishId==='whale-001'||state.fishId==='rust-001'?displayedGlow*.76:state.fishId==='js-001'?displayedGlow*.78:displayedGlow,bodyPhase:fish.bodyWave.phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,amplitude:fish.bodyWave.amplitude,turn:fish.swim?.turn||0,effort:javaJetSurge?Math.max(renderedEffort,.9):renderedEffort,tetherLoad:cues.load,cargoMoment:state.fishId==='whale-001'&&state.phase==='fighting'&&state.mode==='surge',visibility:renderedFishVisibility,styleDelta:dt});
+        let javaTetherDirection=null;
+        if(isJavaOctopusFight){
+          javaTetherWorldDirection.subVectors(rodTip,rodFishTarget);
+          if(javaTetherWorldDirection.lengthSq()>.001){
+            javaTetherInverseQuaternion.copy(activeFightFish.group.quaternion).invert();
+            javaTetherDirection=javaTetherLocalDirection.copy(javaTetherWorldDirection).normalize()
+              .applyQuaternion(javaTetherInverseQuaternion);
+          }
+        }
+        activeFightFish.update(time,{power:renderedPower,glow:state.fishId==='whale-001'||state.fishId==='rust-001'?displayedGlow*.76:state.fishId==='js-001'?displayedGlow*.78:displayedGlow,bodyPhase:fish.bodyWave.phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,amplitude:fish.bodyWave.amplitude,turn:fish.swim?.turn||0,effort:renderedEffort,tetherLoad:cues.load,jetIntent:isJavaOctopusFight&&javaJetSurge?1:isJavaOctopusFight?0:undefined,tetherDirection:javaTetherDirection,cargoMoment:state.fishId==='whale-001'&&state.phase==='fighting'&&state.mode==='surge',visibility:renderedFishVisibility,styleDelta:dt});
         if(state.fishId==='java-001'&&state.phase==='fighting'&&currentJavaOctopus?.group.visible
           &&shouldReleaseJavaOctopusInk(renderedMode,renderedFightTime)&&javaInkBursts<1){
           currentJavaOctopus.getInkEjectionPoint(javaInkOrigin,javaInkDirection);
