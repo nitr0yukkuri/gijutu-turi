@@ -137,22 +137,17 @@ float noise(vec2 p) {
 }
 float riverRainRipple(vec2 point) {
   vec2 drift=vec2(uTime*(0.015+uWeatherWind*0.12),-uTime*(0.01+uWeatherWind*0.05));
-  vec2 grid=(point+drift)*0.72;
-  vec2 base=floor(grid),local=fract(grid);
-  float ripple=0.0;
-  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
-    vec2 offset=vec2(float(x),float(y)),cell=base+offset;
-    vec2 random=vec2(hash(cell+vec2(17.7,48.2)),hash(cell+vec2(3.7,19.1)));
-    float seed=fract(random.x+random.y*0.618);
-    float rate=mix(0.25,0.55+uWeatherRain*0.55,random.y);
-    float age=fract(uTime*rate+seed);
-    vec2 center=offset+random;
-    float radius=0.025+age*0.30;
-    float distanceToRing=length(local-center);
-    float ring=exp(-pow((distanceToRing-radius)*36.0,2.0));
-    ripple=max(ripple,ring*(1.0-smoothstep(0.72,1.0,age)));
-  }
-  return ripple;
+  vec2 grid=(point+drift)*mix(0.42,0.78,uWeatherRain);
+  vec2 cell=floor(grid),local=fract(grid);
+  float seed=hash(cell+vec2(17.7,48.2));
+  vec2 random=fract(seed*vec2(113.13,271.19)+vec2(0.17,0.37));
+  vec2 center=mix(vec2(0.34),vec2(0.66),random);
+  float rate=mix(0.35,0.65+uWeatherRain*0.4,random.x);
+  float age=fract(uTime*rate+random.y);
+  float radius=0.01+age*0.18;
+  float distanceToRing=length(local-center);
+  float ring=exp(-pow((distanceToRing-radius)*50.0,2.0));
+  return ring*(1.0-smoothstep(0.72,1.0,age));
 }
 float cloudField(vec2 p) {
   // Clear skies are the common fallback state. Skip cloud noise entirely then.
