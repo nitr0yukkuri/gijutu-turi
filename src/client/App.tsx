@@ -12,7 +12,7 @@ import { RiverFishShowcasePage } from "./river-fish-showcase-page.js";
 import { TECH_TREE_BRANCHES, TECH_TREE_FISH_LINKS, TECH_TREE_NODE_DETAILS } from "./tech-tree.js";
 import { useOceanRuntime } from "./useOceanRuntime.js";
 import { resolveWaterway, WATERWAY_QUERY_PARAM, type Waterway } from "../waterway.js";
-import { weatherVisualStateFor } from "../weather-contract.js";
+import { resolveWeatherPreview, weatherPreviewVisualStateFor } from "../weather-preview.js";
 import { useCurrentWeather } from "./useCurrentWeather.js";
 import { ReelControl } from "./ReelControl.js";
 import { TensionGauge } from "./TensionGauge.js";
@@ -558,9 +558,13 @@ function FishingApp() {
   const isPhone = Boolean(controllerId);
   const fishingRoute = resolveFishingRoute(window.location.pathname, params.get("fish"));
   const [waterway, setWaterway] = useState<Waterway>(() => resolveWaterway(params.get(WATERWAY_QUERY_PARAM)));
-  const weatherLoad = useCurrentWeather(waterway, !isPhone);
+  const weatherPreview = useMemo(() => resolveWeatherPreview(window.location.search), []);
+  const weatherLoad = useCurrentWeather(waterway, !isPhone && !weatherPreview?.condition);
   const weather = weatherLoad.weather?.waterway === waterway ? weatherLoad.weather : null;
-  const weatherVisuals = useMemo(() => weatherVisualStateFor(weather), [weather]);
+  const weatherVisuals = useMemo(
+    () => weatherPreviewVisualStateFor(weather, weatherPreview),
+    [weather, weatherPreview],
+  );
   const oceanMountRef = useRef<HTMLDivElement>(null);
   const helpDialogRef = useRef<HTMLDialogElement>(null);
   const connectDialogRef = useRef<HTMLDialogElement>(null);
