@@ -113,9 +113,13 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
   useEffect(() => { reelHeldRef.current = reelHeld; }, [reelHeld]);
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
   const showToast = useCallback((text: string) => {
-    setToast(text);
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => setToast(""), 3500);
+    toastTimerRef.current = null;
+    setToast(text);
+    if (text) toastTimerRef.current = window.setTimeout(() => {
+      toastTimerRef.current = null;
+      setToast("");
+    }, 3500);
   }, []);
 
   const showFeedback = useCallback((text: string, detail = "", fade = 0) => {
@@ -278,6 +282,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
     if (next.phase !== "fighting") stopReel();
     if (previous.phase !== next.phase) {
       cancelCharge();
+      if (previous.phase === "caught" && next.phase !== "caught") showToast("");
       if (next.phase === "idle") showFeedback("");
       if (next.phase === "casting") showFeedback("");
       if (next.phase === "waiting") showFeedback("アタリを、待つ。", "ウキが沈んだら合わせる", 2200);
@@ -304,7 +309,9 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
       // server confirms the write, and never submits a duplicate catch.
       const previousCatches = collectionRef.current.entries.find(entry => entry.id === next.fishId)?.catches ?? 0;
       void loadCollection().then(({ result, revision }) => {
-        if (!isCurrentCollectionLoad(revision)) return;
+        if (!isCurrentCollectionLoad(revision)
+          || stateRef.current.phase !== "caught"
+          || stateRef.current.revision !== next.revision) return;
         if (!result.ok) { showToast(COLLECTION_LOAD_ERROR_MESSAGE); return; }
         const loaded = result.value;
         const caughtEntry = loaded.entries.find(entry => entry.id === next.fishId);
