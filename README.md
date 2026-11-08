@@ -40,7 +40,9 @@ PCに広がる海へキャストし、スマートフォンを釣り竿のコン
 
 海は東京湾、川は荒川（熊谷付近）の固定参考地点を使います。気温・降水・雲・風・昼夜はOpen-Meteo経由の気象庁（JMA）モデル、雷雨コードは大気の不安定さを扱うOpen-Meteo GFSモデルから取得します。利用者の位置情報は取得しません。どちらもモデルの現在推定であり、現地観測や雷の実測ではありません。
 
-コードでは、夜のJSアナゴ・Dockerナマズ、雨・雪・雷雨、適度な海風に応じて、アタリまでの待ち時間、魚の抵抗、逃げ足を少し緩和します。合計係数は最大10%で、捕獲率を直接上げる設定や実釣予測ではありません。海の波高・うねりは取得していないため、海風は水面状態の粗い代理指標です。天気を取得できない場合は中立状態で遊べます。公開デモにはこの天候連動の更新はまだ反映されていません。画面内にOpen-MeteoのJMA API・GFS APIとCC BY 4.0を表示します。Open-Meteo無料APIは非商用利用向けで、1日10,000回まで・稼働保証なしです。取得できないときは中立状態に戻ります。
+コードでは、夜のJSアナゴ・Dockerナマズ、雨・雪・雷雨、適度な海風に応じて、アタリまでの待ち時間、魚の抵抗、逃げ足を少し緩和します。合計係数は最大10%で、捕獲率を直接上げる設定や実釣予測ではありません。海の波高・うねりは取得していないため、海風は水面状態の粗い代理指標です。
+描画側では雨粒オーバーレイと川面の雨紋を分け、川の戦闘中だけ雨粒の密度・粒径・不透明度を抑えて魚や糸を見やすくします。切替は滑らかに補間し、川面の雨紋、ゲーム判定、釣果補正は変えません。
+画面にはOpen-MeteoのJMA API・GFS APIとCC BY 4.0を表示します。Open-Meteo無料APIは非商用利用向けで、1日10,000回まで・稼働保証はありません。取得できない場合は中立状態に戻ります。これらの天候連動の更新は公開デモにはまだ反映されていません。
 
 
 ## 魚と技術の対応
@@ -95,6 +97,7 @@ PCブラウザー（React + Three.js） ── WebSocket ──┐
 | --- | --- | --- |
 | PC画面とスマートフォンで同じ釣りを成立させる | サーバーが釣り状態を決定し、共有Zod契約でWebSocket入力を検証して状態を同期します。スマートフォン接続中は入力担当を一台に限定し、画面側は受信状態を補間して描画します。 | [`src/ocean-contract.ts`](src/ocean-contract.ts)、[`src/ocean-room.ts`](src/ocean-room.ts)、[`src/ocean-game.ts`](src/ocean-game.ts)、[`scripts/verify-ocean.ts`](scripts/verify-ocean.ts) |
 | K8s魚の浮上と海面反応をずらさない | 魚の補間済み表示状態から水面接触を判定し、CPU側の接触計算と海面シェーダーで同じ波・波紋の式を使います。波の小さな上下で飛沫が連続発生しないよう、接触判定にはヒステリシスを設けています。 | [`src/rendering/k8s-surface-motion.ts`](src/rendering/k8s-surface-motion.ts)、[`src/rendering/fish-water.ts`](src/rendering/fish-water.ts)、[`src/rendering/k8s-surface-motion.test.ts`](src/rendering/k8s-surface-motion.test.ts)、[`src/rendering/fish-water.test.ts`](src/rendering/fish-water.test.ts) |
+| 川の戦闘中も魚と糸を見やすくする | 描画側で画面手前の雨粒だけを川の戦闘中に弱めます。粒径・不透明度を下げ、雨粒の一部をsmoothstepで間引き、戦闘開始・終了時は時間補間でなじませます。川面の雨紋や釣り判定には触れません。 | [`src/rendering/ocean-scene.ts`](src/rendering/ocean-scene.ts)、[`src/rendering/river-fight-rain.ts`](src/rendering/river-fight-rain.ts)、[`src/rendering/river-fight-rain.test.ts`](src/rendering/river-fight-rain.test.ts) |
 | 再試行で捕獲数を二重加算しない | 捕獲イベントに一意なキーを付け、同じイベントの再送を保存層で重複扱いにします。SQLite・D1・PostgreSQLの保存実装を分けています。 | [`src/catch-save.ts`](src/catch-save.ts)、[`src/catch-save.test.ts`](src/catch-save.test.ts)、[`src/collection-db.test.ts`](src/collection-db.test.ts) |
 
 これらは作品内で技術をどう表現・同期・保存しているかを示す例です。魚の動きは各技術の実装をそのまま再現するものではなく、理解の入口としての比喩です。
