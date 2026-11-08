@@ -1281,7 +1281,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
               .applyQuaternion(javaTetherInverseQuaternion);
           }
         }
-        activeFightFish.update(time,{power:renderedPower,glow:state.fishId==='whale-001'||state.fishId==='rust-001'?displayedGlow*.76:state.fishId==='js-001'?displayedGlow*.78:displayedGlow,bodyPhase:fish.bodyWave.phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,amplitude:fish.bodyWave.amplitude,turn:fish.swim?.turn||0,effort:renderedEffort,tetherLoad:cues.load,jetIntent:isJavaOctopusFight&&javaJetSurge?1:isJavaOctopusFight?0:undefined,tetherDirection:javaTetherDirection,cargoMoment:state.fishId==='whale-001'&&state.phase==='fighting'&&state.mode==='surge',visibility:renderedFishVisibility,styleDelta:dt});
+        activeFightFish.update(time,{power:renderedPower,glow:state.fishId==='whale-001'||state.fishId==='rust-001'?displayedGlow*.76:state.fishId==='js-001'?displayedGlow*.78:displayedGlow,bodyPhase:fish.bodyWave.phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,amplitude:fish.bodyWave.amplitude,turn:fish.swim?.turn||0,effort:renderedEffort,tetherLoad:cues.load,jetIntent:state.fishId==='java-001'?(javaJetSurge?1:0):undefined,tetherDirection:javaTetherDirection,cargoMoment:state.fishId==='whale-001'&&state.phase==='fighting'&&state.mode==='surge',visibility:renderedFishVisibility,styleDelta:dt});
         if(state.fishId==='java-001'&&state.phase==='fighting'&&currentJavaOctopus?.group.visible
           &&shouldReleaseJavaOctopusInk(renderedMode,renderedFightTime)&&javaInkBursts<1){
           currentJavaOctopus.getInkEjectionPoint(javaInkOrigin,javaInkDirection);

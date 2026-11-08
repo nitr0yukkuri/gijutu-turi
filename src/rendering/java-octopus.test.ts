@@ -86,7 +86,9 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     const fixedPhase = .7;
     const frameDelta = 1 / 60;
     const armTips = () => Array.from({ length: 8 }, (_, index) => centerAt(`arm-${index + 1}`, 14));
-    const maximumTipStep = (beforeTips: THREE.Vector3[], afterTips: THREE.Vector3[]) => Math.max(...afterTips.map((tip, index) => tip.distanceTo(beforeTips[index]!)));
+    const maximumTipStep = (beforeTips: THREE.Vector3[], afterTips: THREE.Vector3[]) => Math.max(
+      ...afterTips.map((tip, index) => tip.distanceTo(beforeTips[index]!)),
+    );
     octopus.update(1, { power: .25, effort: .28, bodyPhase: fixedPhase, jetIntent: 0, styleDelta: frameDelta });
     const restingTips = armTips();
 
