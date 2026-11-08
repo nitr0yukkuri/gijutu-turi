@@ -3,6 +3,30 @@ import { expect, test, type Page } from "@playwright/test";
 type OceanState = { fishId?: string; phase?: string };
 type OceanConnection = { roomId: string | null; states: OceanState[] };
 
+async function stubCurrentWeather(page: Page): Promise<void> {
+  await page.route("**/api/weather**", async route => {
+    const waterway = new URL(route.request().url()).searchParams.get("waterway") === "river" ? "river" : "sea";
+    const now = new Date().toISOString();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        waterway,
+        location: waterway === "river" ? "荒川（熊谷付近）" : "東京湾（参考地点）",
+        temperatureC: 18,
+        weatherCode: 0,
+        thunderstormCode: null,
+        isDay: true,
+        precipitationMm: 0,
+        cloudCoverPercent: 15,
+        windSpeedMs: 2,
+        currentAt: now,
+        fetchedAt: now,
+      }),
+    });
+  });
+}
+
 function captureOceanConnections(page: Page): OceanConnection[] {
   const connections: OceanConnection[] = [];
   page.on("websocket", socket => {
@@ -74,6 +98,7 @@ test("/?waterway=river starts a river room and loads the river environment", asy
   page.on("response", response => {
     if (new URL(response.url()).pathname.includes("river-bed-color")) riverBedResponses.push(response.status());
   });
+  await stubCurrentWeather(page);
   await pinEncounterByWaterway(page, requestedWaterways, roomStatuses);
 
   await page.goto("/?waterway=river");
@@ -102,6 +127,7 @@ test("switching from sea to river creates a river room with a river fish", async
   page.on("console", message => {
     if (message.type() === "error") consoleErrors.push(message.text());
   });
+  await stubCurrentWeather(page);
   await pinEncounterByWaterway(page, requestedWaterways, roomStatuses);
 
   await page.goto("/");

@@ -185,6 +185,8 @@ export type FishWaterProfile = Readonly<{
   detail: number;
   /** Cargo is separate from anatomy details so it stays readable in motion. */
   cargo: number;
+  /** Perceptual red-pigment floor for species that must remain identifiable underwater. */
+  redPigmentFloor?: number;
   bodyLightMin: number;
   bodyLightMax: number;
   finLight: number;
@@ -231,6 +233,16 @@ export const K8S_LEVIATHAN_WATER_PROFILE: FishWaterProfile = {
   bodyLightMin: .40, bodyLightMax: .62, finLight: .46, lightPartLight: .64, detailPartLight: .14, cargoPartLight: .30,
 };
 
+// Java octopus pigment needs a stronger local visibility budget: red wavelengths
+// attenuate quickly in seawater, while the animal's warm skin remains legible.
+export const JAVA_OCTOPUS_WATER_PROFILE: FishWaterProfile = {
+  floor: .38, surface: .42, clearDepth: 3.0, falloff: .22, near: 40, far: 92,
+  rangeLoss: .64, fin: .92, light: .38, detail: .36,
+  cargo: .36,
+  redPigmentFloor: .60,
+  bodyLightMin: .82, bodyLightMax: .94, finLight: .74, lightPartLight: .88, detailPartLight: .46, cargoPartLight: .28,
+};
+
 const FIN_VIEW_BLEND_START = -.22;
 const FIN_VIEW_BLEND_END = .22;
 const FAR_FIN_COVERAGE_REDUCTION = .22;
@@ -255,7 +267,7 @@ export function fishWaterCoverage(depth,distance,transmission,part='body',profil
     *(1-d*d*(3-2*d)*profile.rangeLoss)*({body:1,fin:profile.fin,light:profile.light,detail:profile.detail,line:0,cargo:profile.cargo}[part]??1);
 }
 
-const opticsFor = (profile: FishWaterProfile) => {
+const opticsFor = (profile: FishWaterProfile, part: string) => {
 const normal = `float hx,hz;
   waterWaveDifference(p.xz,eps,hx,hz);
   hx+=rippleOnlyHeight(p.xz-vec2(eps,0.0))-rippleOnlyHeight(p.xz+vec2(eps,0.0));
@@ -298,6 +310,7 @@ vec3 throughWater(vec3 fishColor) {
   // Separate direct extinction from the existing water background. These
   // per-world-unit coefficients are a visual water preset, not measured data.
   vec3 extinction=exp(-vec3(.58,.22,.17)*path);
+  ${part !== 'body' || profile.redPigmentFloor === undefined ? '' : 'extinction.r=max(extinction.r,' + profile.redPigmentFloor.toFixed(2) + ');'}
   float haze=1.0-exp(-max(t,0.0)*.006);
   float vignette=1.0-smoothstep(.3,.95,length((screenUv-.5)*vec2(.75,1.0)))*.18;
   // Keep a readable anatomical mass, not just emissive dots. The visibility
@@ -322,7 +335,7 @@ vec3 throughWater(vec3 fishColor) {
 export function applyFishWater(material, waterUniforms, part='detail', profile=DEFAULT_FISH_WATER_PROFILE, finSide=0) {
   const compile=material.onBeforeCompile;
   const cacheKey=material.customProgramCacheKey();
-  const underwaterVersion=profile===DOCKER_WHALE_WATER_PROFILE?'underwater-docker-consistent-v1':'underwater-consistent-v2';
+  const underwaterVersion=profile===DOCKER_WHALE_WATER_PROFILE?'underwater-docker-consistent-v1':profile===JAVA_OCTOPUS_WATER_PROFILE?'underwater-java-octopus-v3':'underwater-consistent-v2';
   const originallyToneMapped=material.toneMapped;
   material.onBeforeCompile=shader=>{
     compile.call(material,shader);
@@ -335,7 +348,7 @@ export function applyFishWater(material, waterUniforms, part='detail', profile=D
     // Fins have a custom shader; other parts use Three's project chunk.
     shader.vertexShader=shader.vertexShader.replace('gl_Position=projectionMatrix*mv;',
       'gl_Position=fishWaterProjection(p);');
-     shader.fragmentShader=surface+waterNormalDifferenceGLSL+opticsFor(profile)+'\n'+shader.fragmentShader;
+     shader.fragmentShader=surface+waterNormalDifferenceGLSL+opticsFor(profile,part)+'\n'+shader.fragmentShader;
     shader.fragmentShader=shader.fragmentShader.replace('#include <tonemapping_fragment>',
       `gl_FragColor.rgb=throughWater(gl_FragColor.rgb);
       ${originallyToneMapped?'':'vec3 fishBeforeTone=gl_FragColor.rgb;'}

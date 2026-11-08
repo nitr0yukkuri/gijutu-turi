@@ -12,6 +12,7 @@ import { dockerWhalePreviewMotionAt } from './docker-whale-motion.js';
 import { K8S_ECHO_COUNT } from './k8s-fight-presentation.js';
 import { applyCollectionSilhouette } from './collection-silhouette.js';
 import { createRiverFish } from './river-fish-model.js';
+import { createJavaOctopus } from './java-octopus.js';
 
 export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = false } = {}) {
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'high-performance' });
@@ -32,15 +33,19 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
   const isClusterFish = modelKey === 'cluster-leviathan';
   const isRustFish = modelKey === 'rust-swordfish';
   const isJsEel = modelKey === 'js-eel';
+  const isJavaOctopus = modelKey === 'java-octopus';
   const isRiverFish = modelKey.startsWith('river-');
   const fish = isRiverFish
     ? createRiverFish(modelKey, { detail: 'high' })
     : isDockerWhale
     ? createDockerWhale({ detail: 'high' })
+    : isJavaOctopus
+    ? createJavaOctopus({ detail: 'high' })
     : createGoFish({ detail: 'high', naturalSwim: true, visualProfile: isClusterFish ? 'cluster' : isCssFish ? 'css' : isRustFish ? 'rust' : isJsEel ? 'eel' : 'catalog' });
   if (isDockerWhale) fish.group.scale.setScalar(.42);
   if (isClusterFish) fish.group.scale.setScalar(.62);
   if (isJsEel) fish.group.scale.setScalar(.76);
+  if (isJavaOctopus) fish.group.rotation.x = -.28;
   rig.add(fish.group);
   const echoes = isClusterFish ? Array.from({ length: K8S_ECHO_COUNT }, (_, index) => {
     const echo = createGoFish({ detail: 'low', naturalSwim: true, visualProfile: 'cluster', phase: index * 1.2 });
@@ -71,14 +76,28 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
   scene.environmentIntensity = .25;
   studio.dispose();
   pmrem.dispose();
-  scene.add(new THREE.HemisphereLight(0xc6e9fb, 0x062441, .9));
-  const key = new THREE.DirectionalLight(0xa3e6ff, 1.65);
+  const octopusPreviewLight = isJavaOctopus;
+  scene.add(new THREE.HemisphereLight(
+    octopusPreviewLight ? 0xffd8c9 : 0xc6e9fb,
+    0x062441,
+    octopusPreviewLight ? 1.25 : .9,
+  ));
+  const key = new THREE.DirectionalLight(
+    octopusPreviewLight ? 0xffad91 : 0xa3e6ff,
+    octopusPreviewLight ? 2.35 : 1.65,
+  );
   key.position.set(-3, 5, 5);
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0x178cbf, 4.2);
+  const rim = new THREE.DirectionalLight(
+    octopusPreviewLight ? 0x6c969e : 0x178cbf,
+    octopusPreviewLight ? 1.25 : 4.2,
+  );
   rim.position.set(2, 3, -5);
   scene.add(rim);
-  const fill = new THREE.DirectionalLight(0x3d74c2, 1.2);
+  const fill = new THREE.DirectionalLight(
+    octopusPreviewLight ? 0xd88370 : 0x3d74c2,
+    octopusPreviewLight ? .9 : 1.2,
+  );
   fill.position.set(-2, -2, 3);
   scene.add(fill);
 
@@ -99,7 +118,7 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
   // beetle-like front view.
   const maxPreviewYaw = THREE.MathUtils.degToRad(54);
   const clampPreviewYaw = value => THREE.MathUtils.clamp(value, -maxPreviewYaw, maxPreviewYaw);
-  let yaw = .22;
+  let yaw = isJavaOctopus ? .36 : .22;
 
   const resize = () => {
     const width = mount.clientWidth;
@@ -109,7 +128,8 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
     composer.setSize(width, height);
     camera.aspect = width / height;
     const halfFov = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    const distance = Math.max(size.y / 2 / halfFov, size.x / 2 / (halfFov * camera.aspect)) * 1.3 + size.z / 2;
+    const frameMargin = isJavaOctopus ? 1.15 : 1.3;
+    const distance = Math.max(size.y / 2 / halfFov, size.x / 2 / (halfFov * camera.aspect)) * frameMargin + size.z / 2;
     camera.position.set(center.x, center.y + .1, Math.max(distance, 4));
     camera.lookAt(center);
     camera.updateProjectionMatrix();
@@ -166,6 +186,10 @@ export function mountCollectionFish(mount, modelKey = 'go-fish', { silhouette = 
         tetherLoad: motion.cargoLoad,
         styleDelta: delta,
       });
+    }
+    else if (isJavaOctopus) {
+      const bodyPhase = time * .68 * Math.PI * 2;
+      fish.update(time, { power: .24, glow: .35, bodyPhase, bodyFrequency: .58, bodyWavelength: .9, effort: .28, turn: .08, styleDelta: delta });
     }
     else {
       const swimPhase = time * .82 * Math.PI * 2;

@@ -1,4 +1,4 @@
-export type FishingRouteKey = "default" | "gofish" | "dockerwhale" | "cssfish" | "k8sfish" | "rustfish" | "jseel";
+export type FishingRouteKey = "default" | "gofish" | "dockerwhale" | "cssfish" | "k8sfish" | "rustfish" | "jseel" | "javatako";
 export type LegacyFishingRouteKey = Exclude<FishingRouteKey, "default">;
 
 /** Read-only, all-species showcase route for demos and review. */
@@ -15,6 +15,7 @@ export const FISHING_ROUTE_PATHS = {
   k8sfish: K8S_FISH_ROUTE_PATH,
   rustfish: "/rustfish",
   jseel: "/jseel",
+  javatako: "/javatako",
 } as const;
 
 export const CANONICAL_FISH_ROUTE_PATHS = [
@@ -24,6 +25,7 @@ export const CANONICAL_FISH_ROUTE_PATHS = [
   FISHING_ROUTE_PATHS.k8sfish,
   FISHING_ROUTE_PATHS.rustfish,
   FISHING_ROUTE_PATHS.jseel,
+  FISHING_ROUTE_PATHS.javatako,
 ] as const;
 
 /** Compatibility names are shared by browser route resolution and HTTP serving. */
@@ -39,6 +41,9 @@ export const LEGACY_FISH_ROUTE_ALIASES = {
   js: "jseel",
   jseel: "jseel",
   jsfish: "jseel",
+  java: "javatako",
+  javatako: "javatako",
+  octopus: "javatako",
 } as const satisfies Record<string, LegacyFishingRouteKey>;
 
 export type LegacyFishAlias = keyof typeof LEGACY_FISH_ROUTE_ALIASES;

@@ -506,6 +506,60 @@ const RIVER_FISH_PROFILES: Readonly<Record<RiverFishId, FishFightProfile>> = {
   "river-ginbuna": riverFishProfile("river-ginbuna"),
 };
 
+export const JAVA_OCTOPUS_FIRST_DEFENSIVE_SURGE_SECONDS = 1.55;
+
+const JAVA_OCTOPUS_MODE_AT = (fightTime: number, finale: number): { mode: FishFightMode; school: number } => {
+  if (finale >= 0) {
+    if (finale < .72) return { mode: "warning", school: 1 };
+    if (finale < 1.55) return { mode: "surge", school: 1 };
+    return { mode: "rest", school: 1 };
+  }
+  if (fightTime < .8) return { mode: "surge", school: 1 };
+  if (fightTime < 1.05) return { mode: "warning", school: 1 };
+  const pulse = fightTime >= JAVA_OCTOPUS_FIRST_DEFENSIVE_SURGE_SECONDS
+    && (fightTime - JAVA_OCTOPUS_FIRST_DEFENSIVE_SURGE_SECONDS) % 5.4 < 1.05;
+  return { mode: pulse ? "surge" : "rest", school: 1 };
+};
+
+const JAVA_OCTOPUS_PROFILE: FishFightProfile = {
+  initialTension: .36,
+  openingSeconds: .8,
+  openingPressure: .2,
+  basePressure: .05,
+  minimumReelingTension: .07,
+  reelingLoad: .09,
+  releaseRecovery: .28,
+  openingRetreatSpeed: 2.0,
+  baseRetreatSpeed: .18,
+  openingReelSpeed: 1.1,
+  baseReelSpeed: 3.1,
+  warningPressure: .14,
+  warningRetreatSpeed: .34,
+  warningReelSpeed: 2.05,
+  warningEffort: .46,
+  surgePressure: .23,
+  surgeRetreatSpeed: 1.05,
+  surgeReelSpeed: .92,
+  surgeEffort: .88,
+  canReelDuringSurge: true,
+  openingLateralAmplitude: 1.4,
+  baseLateralAmplitude: .9,
+  surgeLateralAmplitude: 1.25,
+  lateralLimit: 1.7,
+  lateralAcceleration: 2.3,
+  turnRate: 1.2,
+  lineResponse: 2.8,
+  strokePush: .22,
+  fatigueRate: .18,
+  staminaRecovery: .028,
+  depthResponse: .76,
+  restEffort: .32,
+  reelingEffort: .58,
+  openingEffort: .92,
+  gaitAt: standardFightGait,
+  modeAt: JAVA_OCTOPUS_MODE_AT,
+};
+
 const FISH_FIGHT_PROFILES: Readonly<Partial<Record<FishSpeciesId, FishFightProfile>>> = {
   "fish-001": GO_FISH_PROFILE,
   "whale-001": DOCKER_WHALE_PROFILE,
@@ -514,6 +568,7 @@ const FISH_FIGHT_PROFILES: Readonly<Partial<Record<FishSpeciesId, FishFightProfi
   "rust-001": RUST_BILLFISH_PROFILE,
   "js-001": JS_EEL_PROFILE,
   ...RIVER_FISH_PROFILES,
+  "java-001": JAVA_OCTOPUS_PROFILE,
 };
 
 export const getFishFightProfile = (fishId: FishSpeciesId): FishFightProfile =>

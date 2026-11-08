@@ -3,9 +3,9 @@ import type { Waterway } from "./waterway.js";
 
 // `whale-001` is retained as the stable ID from the earlier preview catalog.
 // Reusing it lets existing SQLite files upgrade without losing references.
-export type OceanFishSpeciesId = "fish-001" | "whale-001" | "css-001" | "k8s-001" | "rust-001" | "js-001";
+export type OceanFishSpeciesId = "fish-001" | "whale-001" | "css-001" | "k8s-001" | "rust-001" | "js-001" | "java-001";
 export type FishSpeciesId = OceanFishSpeciesId | RiverFishModelKey;
-export type FishSilhouetteKey = "go-school" | "docker-whale" | "css-fish" | "cluster-leviathan" | "rust-striped-marlin" | "js-eel" | RiverFishModelKey;
+export type FishSilhouetteKey = "go-school" | "docker-whale" | "css-fish" | "cluster-leviathan" | "rust-striped-marlin" | "js-eel" | "java-octopus" | RiverFishModelKey;
 
 export type FishSpeciesDefinition = {
   id: FishSpeciesId;
@@ -16,7 +16,7 @@ export type FishSpeciesDefinition = {
   description: string;
   habitat: string;
   rarity: string;
-  modelKey: "go-fish" | "docker-whale" | "css-fish" | "cluster-leviathan" | "rust-swordfish" | "js-eel" | RiverFishModelKey;
+  modelKey: "go-fish" | "docker-whale" | "css-fish" | "cluster-leviathan" | "rust-swordfish" | "js-eel" | "java-octopus" | RiverFishModelKey;
   silhouetteKey: FishSilhouetteKey;
   unknownTitle: string;
   unknownHint: string;
@@ -137,6 +137,23 @@ const OCEAN_FISH_SPECIES: readonly FishSpeciesDefinition[] = [
     observation: "側面の白い点と、背中から尾へ続く低いひれが特徴。",
     catalogStatus: "active",
   },
+  {
+    id: "java-001",
+    number: 17,
+    name: "Javaタコ",
+    classification: "SOFT-BODY SPECIES",
+    tagline: "8本の腕が、それぞれ探りながら動く。",
+    description: "マダコ型のタコ。岩や砂底のすき間を吸盤で探り、腕を使って移動する。危険時は漏斗から水を噴き、腕を後ろへたたんで逃げる。Javaの並行処理を、独立して動く腕と逃走時の連携で表す。",
+    habitat: "沿岸の岩場・砂底",
+    rarity: "RARE",
+    modelKey: "java-octopus",
+    silhouetteKey: "java-octopus",
+    unknownTitle: "8本の腕を持つタコ",
+    unknownHint: "腕を広げて周囲を探り、危険を感じると後ろへたたんで逃げる。",
+    traits: ["8本の腕が別々に探る", "吸盤で触れて調べる", "漏斗噴射で短く逃げる"],
+    observation: "腕の動きはそろった反復運動ではなく、腕ごとに異なるタイミングで探索・移動する。",
+    catalogStatus: "active",
+  },
 ];
 
 const RIVER_FISH_SPECIES: readonly FishSpeciesDefinition[] = RIVER_FISH_DESIGNS.map(design => ({
@@ -193,5 +210,5 @@ export const nextFishSpeciesId = (current: FishSpeciesId, catches: number, water
     const index = active.findIndex(species => species.id === current);
     return active[(index + 1) % active.length]!.id;
   }
-  return ({ "fish-001": "whale-001", "whale-001": "rust-001", "rust-001": "js-001", "js-001": "fish-001", "css-001": "fish-001", "k8s-001": "fish-001" } as const)[current as OceanFishSpeciesId] ?? active[0]!.id;
+  return ({ "fish-001": "whale-001", "whale-001": "rust-001", "rust-001": "js-001", "js-001": "java-001", "java-001": "fish-001", "css-001": "fish-001", "k8s-001": "fish-001" } as const)[current as OceanFishSpeciesId] ?? active[0]!.id;
 };

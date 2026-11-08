@@ -21,6 +21,7 @@ import { K8S_SURFACE_BODY_PROBES, k8sSurfaceWakeStrength, updateK8sSurfaceExposu
 import { OceanPresentationTimeline } from '../ocean-presentation-timeline.js';
 import { copyFishMotion as copyFish, interpolateFishPresentationState } from './fish-presentation-state.js';
 import { createOceanFishModels } from './ocean-fish-models.js';
+import { createOctopusInkEffect, shouldReleaseJavaOctopusInk } from './octopus-ink.js';
 import { createRiverEnvironment } from './river-environment.js';
 import { riverChannelGLSL } from './river-channel.js';
 import { RIVER_BANK_VIEW, riverBankViewGLSL } from './river-bank-view.js';
@@ -31,6 +32,10 @@ import type { WeatherVisualState } from '../weather-contract.js';
 
 // Keep the escape result on screen while the camera returns to the normal view.
 const ESCAPE_FADE_MS = 420;
+
+// Keep the broad eight-arm silhouette large and centered while preserving the shared fight camera.
+const JAVA_OCTOPUS_FIGHT_SCALE = 3.0;
+const JAVA_OCTOPUS_FIGHT_FOCUS_BLEND = .93;
 
 // Preserve the dorsal-up axis when heading crosses +X. A shortest-arc
 // rotation from -X alone can roll a pitched fish onto its back at that turn.
@@ -409,6 +414,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   let portraitBlend=0;
   let riverCameraBlend=waterway==='river'?1:0;
   const scene=new THREE.Scene();
+  const octopusInk=createOctopusInkEffect(scene);
   const backgroundScene=new THREE.Scene();
   const screenCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
   const ripples=Array.from({length:6},()=>new THREE.Vector4(0,0,-100,0));
@@ -521,6 +527,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const rodTangent=new THREE.Vector3(),rodView=new THREE.Vector3(),rodNormal=new THREE.Vector3(),rodBinormal=new THREE.Vector3();
   const rodGuideDown=new THREE.Vector3(),rodGuideSide=new THREE.Vector3(),rodGuideTangent=new THREE.Vector3(),rodGuidePoint=new THREE.Vector3(),rodLineAnchor=new THREE.Vector3(),reelLineExit=new THREE.Vector3(),rodGuideMatrix=new THREE.Matrix4();
   const rodFishTarget=new THREE.Vector3(),rodLineDirection=new THREE.Vector3();
+  const javaTetherWorldDirection=new THREE.Vector3(),javaTetherLocalDirection=new THREE.Vector3();
+  const javaTetherInverseQuaternion=new THREE.Quaternion();
   const lineProjectionCenter=new THREE.Vector3(),lineProjectionEye=new THREE.Vector3(),lineProjectionPoint=new THREE.Vector3();
   const mouthSideDirection=new THREE.Vector3(),mouthSideRotation=new THREE.Quaternion();
   let dockerHookSide=1;
@@ -531,6 +539,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       ? point.set(-2.82,-.018,0)
     : fishId==='js-001'
       ? point.set(-1.84,-.012,0)
+    : fishId==='java-001'
+      ? point.set(-.52,-.12,0)
     : point.set(-1.86,-.012,0);
   const projectSubmergedLinePoint=(point,submergedProgress)=>{
     fishApparentPoint(point,lineProjectionCenter,lineProjectionEye,lineProjectionPoint);
@@ -642,9 +652,20 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const spray=new THREE.Points(dropletGeo,new THREE.PointsMaterial({color:0xd9efed,size:.045,transparent:true,opacity:.85,depthWrite:false}));spray.visible=false;spray.frustumCulled=false;scene.add(spray);
   const dropSpeeds=Array.from({length:36},(_,i)=>{const a=i*2.399;return new THREE.Vector3(Math.cos(a)*(.5+(i%5)*.16),.75+(i%7)*.21,Math.sin(a)*(.5+(i%5)*.16));});
   const fishModelStore=createOceanFishModels(scene,waterUniforms,createFishOrientationScratch);
-  const {fightFish,dockerWhale,cssFish,rustFish,jsEel,fightModelFor,requestFightModel}=fishModelStore;
+  const {fightFish,dockerWhale,cssFish,rustFish,jsEel,javaOctopus,fightModelFor,requestFightModel}=fishModelStore;
   const cssFishProfile=getFishFightProfile('css-001');
-  const liveFishScale=(fishId,phase)=>fishScaleForResponsiveCamera(fishId==='whale-001'?.42:fishId==='k8s-001'?(phase==='fighting'?1.02:.76):fishId==='css-001'?(phase==='fighting'?.74:.55):fishId==='rust-001'?(phase==='fighting'?.80:.63):fishId==='js-001'?(phase==='fighting'?.78:.61):(phase==='fighting'?.84:.66),camera.fov,portraitBlend);
+  let javaFightScaleBlend=0;
+  const liveFishScale=(fishId,phase)=>{
+    const fighting=phase==='fighting';
+    let baseScale=fighting ? .84 : .66;
+    if(fishId==='whale-001')baseScale=.42;
+    else if(fishId==='k8s-001')baseScale=fighting ? 1.02 : .76;
+    else if(fishId==='css-001')baseScale=fighting ? .74 : .55;
+    else if(fishId==='rust-001')baseScale=fighting ? .80 : .63;
+    else if(fishId==='js-001')baseScale=fighting ? .78 : .61;
+    else if(fishId==='java-001')baseScale=THREE.MathUtils.lerp(.78,JAVA_OCTOPUS_FIGHT_SCALE,javaFightScaleBlend);
+    return fishScaleForResponsiveCamera(baseScale,camera.fov,portraitBlend);
+  };
   const catchFishScale=(fishId)=>fishScaleForResponsiveCamera(catchFraming(fishId,camera.aspect,camera.fov).baseScale,camera.fov,portraitBlend);
   // The submerged line ends at the same undeformed nose anchor as the model.
   const mouth=new THREE.Vector3(),lineEntry=new THREE.Vector3(),curvePoint=new THREE.Vector3();
@@ -703,6 +724,8 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const tackleStore=new TackleStateStore();
   let time=0,lastFrame=0,lastRenderedFrame=0,overlayOpen=false,fightTackleForeground=false,landedRevision=-1,splashAt=-100,rodStrokeAt=-100,sprayPower=1,rippleIndex=0,charge=0,chargeAim=0,lastWake=0,lastStroke=0,reelPhase=0;
   let marlinSurfaceExposed=false;
+  let javaInkBursts=0;
+  const javaInkOrigin=new THREE.Vector3(),javaInkDirection=new THREE.Vector3();
   let serverOffset=0,cameraProgress=0,frame,catchOrigin=null,displayedWave=null,displayedGlow=.65,displayedSwim=null,displayedLoad=0,displayedRodLoad=0,displayedFishVisibility=0,escapeStartVisibility=0,hookImpactAt=-100;
   let dockerRodSurgeAt=-100,wasDockerSurging=false,displayedDockerSurgeLoad=0;
   let fishShaderWarmupTimer:ReturnType<typeof setTimeout>|null=null;
@@ -792,7 +815,10 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if(ownsPresentationTimeline)presentationTimeline.push(next,Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset);
     tackleStore.update(next,Number.isFinite(serverNow)?serverNow:Date.now()+serverOffset);
     const previousPhase=state.phase,changed=next.revision!==state.revision;
-    if(next.phase==='fighting'&&previousPhase!=='fighting')k8sFirstBreachPlayed=false;
+    if(next.phase==='fighting'&&previousPhase!=='fighting'){
+      k8sFirstBreachPlayed=false;
+      javaInkBursts=0;octopusInk.reset();
+    }
     if(next.phase==='escaped'&&previousPhase!=='escaped'){
       // A newly connected display may receive the escaped snapshot without
       // having rendered the bite/fight first. Keep its silhouette readable.
@@ -907,6 +933,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     if(overlayOpen&&now-lastRenderedFrame<1000/30)return;
     const dt=Math.min(.05,(now-(lastFrame||now))/1000);lastFrame=now;time+=dt*(reduced?.15:1);
     lastRenderedFrame=now;
+    javaFightScaleBlend=THREE.MathUtils.damp(javaFightScaleBlend,state.fishId==='java-001'&&state.phase==='fighting'?1:0,5.8,dt);
     uniforms.uTime.value=time;
     const weatherBlend=1-Math.exp(-dt*.32);
     weatherUniforms.uWeatherCloud.value=THREE.MathUtils.lerp(weatherUniforms.uWeatherCloud.value,weatherTarget.cloudCover,weatherBlend);
@@ -973,7 +1000,12 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       THREE.MathUtils.lerp(normalCameraZ,breachCameraZ,breachCameraBlend),
     );
     camera.position.addScaledVector(whaleCameraOffset,seaCameraBlend);
-    const normalFocusBlend=state.phase==='fighting'&&(state.fishId==='whale-001'||state.fishId==='k8s-001'||state.fishId==='rust-001'||state.fishId==='js-001')?.62:state.phase==='fighting'?.48:.28;
+    let normalFocusBlend=.28;
+    if(state.phase==='fighting'){
+      normalFocusBlend=.48;
+      if(state.fishId==='java-001')normalFocusBlend=JAVA_OCTOPUS_FIGHT_FOCUS_BLEND;
+      else if(state.fishId==='whale-001'||state.fishId==='k8s-001'||state.fishId==='rust-001'||state.fishId==='js-001')normalFocusBlend=.62;
+    }
     const focusBlend=THREE.MathUtils.lerp(normalFocusBlend,1,surfaceLunge);
     const fishFocusX=followsFish?THREE.MathUtils.lerp(state.aim*.18,visibleFish.position.x,focusBlend):state.aim*.18;
     const fishFocusZ=followsFish?THREE.MathUtils.lerp(-35,visibleFish.position.z,focusBlend):-35;
@@ -1176,12 +1208,13 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       ? escapeFishVisibility(escapeStartVisibility,escapeFade)
       : displayedFishVisibility;
     const activeFightFish=fightModelFor(state.fishId);
-    const currentFightFish=fightFish(),currentDockerWhale=dockerWhale(),currentCssFish=cssFish(),currentRustFish=rustFish(),currentJsEel=jsEel();
+    const currentFightFish=fightFish(),currentDockerWhale=dockerWhale(),currentCssFish=cssFish(),currentRustFish=rustFish(),currentJsEel=jsEel(),currentJavaOctopus=javaOctopus();
     if(currentFightFish)currentFightFish.group.visible=activeFightFish===currentFightFish&&fishShowing&&Boolean(visibleFish);
     if(currentDockerWhale)currentDockerWhale.group.visible=activeFightFish===currentDockerWhale&&fishShowing&&Boolean(visibleFish);
     if(currentCssFish)currentCssFish.group.visible=activeFightFish===currentCssFish&&fishShowing&&Boolean(visibleFish);
     if(currentRustFish)currentRustFish.group.visible=activeFightFish===currentRustFish&&fishShowing&&Boolean(visibleFish);
     if(currentJsEel)currentJsEel.group.visible=activeFightFish===currentJsEel&&fishShowing&&Boolean(visibleFish);
+    if(currentJavaOctopus)currentJavaOctopus.group.visible=activeFightFish===currentJavaOctopus&&fishShowing&&Boolean(visibleFish);
     if(fishModelStore.clusterFish)fishModelStore.clusterFish.group.visible=activeFightFish===fishModelStore.clusterFish&&fishShowing&&Boolean(visibleFish);
     if(state.fishId?.startsWith('river-')&&activeFightFish)activeFightFish.group.visible=fishShowing&&Boolean(visibleFish);
     const cssFishVisualState=CSS_FISH_LIVE_STATE;
@@ -1220,7 +1253,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         activeFightFish.update(time,{power:THREE.MathUtils.lerp(wave.amplitude/.3,rustCatch?.22:.15,ease),glow:THREE.MathUtils.lerp(catchOrigin?.glow??.65,1,ease),bodyPhase:wave.phase+elapsed*wave.frequency*Math.PI*2,bodyFrequency:wave.frequency,bodyWavelength:wave.wavelength,amplitude:THREE.MathUtils.lerp(wave.amplitude,rustCatch?.055:.03,ease),turn:(catchOrigin?.swim?.turn||0)*(1-ease),effort:THREE.MathUtils.lerp(catchOrigin?.swim?.effort||.2,rustCatch?.24:.15,ease),tetherLoad:(catchOrigin?.load||0)*(1-ease),visibility:renderedFishVisibility,styleDelta:dt});
       }else{
         // Keep Go and K8s warning cues tied to their active fight modes.
-        const visualMode=state.fishId==='k8s-001'||state.fishId==='rust-001'?renderedMode:state.mode;
+        const visualMode=state.fishId==='k8s-001'||state.fishId==='rust-001'||state.fishId==='java-001'?renderedMode:state.mode;
         const urgent=visualMode==='surge'||visualMode==='split'||(visualMode==='warning'&&(state.fishId==='fish-001'||state.fishId==='k8s-001'));
         activeFightFish.group.position.set(fish.position.x,fish.position.y,fish.position.z);
         if(surfaceLunge>0){
@@ -1235,7 +1268,25 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
         displayedWave={...fish.bodyWave};displayedGlow=approaching?THREE.MathUtils.lerp(.04,.65,state.phase==='waiting'?0:biteReveal):escapePresentation?.8:urgent?.8:.65;displayedSwim=fish.swim?{...fish.swim}:null;displayedLoad=cues.load;
         // The body material and water optics stay fixed; only the existing
         // visibility reveal and short movement/attack cues change over time.
-        activeFightFish.update(time,{power:THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1),glow:state.fishId==='whale-001'||state.fishId==='rust-001'?displayedGlow*.76:state.fishId==='js-001'?displayedGlow*.78:displayedGlow,bodyPhase:fish.bodyWave.phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,amplitude:fish.bodyWave.amplitude,turn:fish.swim?.turn||0,effort:escapePresentation?1:fish.swim?.effort||.2,tetherLoad:cues.load,cargoMoment:state.fishId==='whale-001'&&state.phase==='fighting'&&state.mode==='surge',visibility:renderedFishVisibility,styleDelta:dt});
+        const javaJetSurge=state.fishId==='java-001'&&state.phase==='fighting'&&visualMode==='surge';
+        const isJavaOctopusFight=state.fishId==='java-001'&&state.phase==='fighting';
+        const renderedPower=THREE.MathUtils.clamp(fish.bodyWave.amplitude/.3,0,1);
+        const renderedEffort=escapePresentation?1:fish.swim?.effort||.2;
+        let javaTetherDirection=null;
+        if(isJavaOctopusFight){
+          javaTetherWorldDirection.subVectors(rodTip,rodFishTarget);
+          if(javaTetherWorldDirection.lengthSq()>.001){
+            javaTetherInverseQuaternion.copy(activeFightFish.group.quaternion).invert();
+            javaTetherDirection=javaTetherLocalDirection.copy(javaTetherWorldDirection).normalize()
+              .applyQuaternion(javaTetherInverseQuaternion);
+          }
+        }
+        activeFightFish.update(time,{power:renderedPower,glow:state.fishId==='whale-001'||state.fishId==='rust-001'?displayedGlow*.76:state.fishId==='js-001'?displayedGlow*.78:displayedGlow,bodyPhase:fish.bodyWave.phase,bodyFrequency:fish.bodyWave.frequency,bodyWavelength:fish.bodyWave.wavelength,amplitude:fish.bodyWave.amplitude,turn:fish.swim?.turn||0,effort:renderedEffort,tetherLoad:cues.load,jetIntent:state.fishId==='java-001'?(javaJetSurge?1:0):undefined,tetherDirection:javaTetherDirection,cargoMoment:state.fishId==='whale-001'&&state.phase==='fighting'&&state.mode==='surge',visibility:renderedFishVisibility,styleDelta:dt});
+        if(state.fishId==='java-001'&&state.phase==='fighting'&&currentJavaOctopus?.group.visible
+          &&shouldReleaseJavaOctopusInk(renderedMode,renderedFightTime)&&javaInkBursts<1){
+          currentJavaOctopus.getInkEjectionPoint(javaInkOrigin,javaInkDirection);
+          if(octopusInk.trigger(javaInkOrigin,javaInkDirection))javaInkBursts++;
+        }
         if(cssFishTrailActive)rememberCssFishPose(now,fish);
       }
     }
@@ -1510,6 +1561,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
       for(let i=0;i<36;i++){const v=dropSpeeds[i];drops[i*3]=sprayOrigin.x+v.x*age*sprayImpulse;drops[i*3+1]=sprayOrigin.y+Math.max(0,v.y*sprayImpulse*age-2.9*age*age);drops[i*3+2]=sprayOrigin.z+v.z*age*sprayImpulse;}
       dropletGeo.attributes.position.needsUpdate=true;spray.material.size=.045+Math.max(0,sprayPower-1)*.012;spray.material.opacity=Math.max(0,1-age/sprayLife);
     }
+    octopusInk.update(dt*(reduced?.15:1),renderer.domElement.height,camera.fov);
     const riverVisible=selectedWaterway==='river'&&riverEnvironment;
     if(riverVisible){riverEnvironment.update(time);riverEnvironment.renderReflection(renderer,camera);}
     if(fishShowing){
@@ -1524,7 +1576,7 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
     // renderer.clear() above already cleared the default framebuffer depth;
     // the background water quad has depthTest/depthWrite disabled, so no 3D
     // object can dirty it before the scene pass.
-    if(active||fishShowing||charge>0)renderer.render(scene,camera);
+    if(active||fishShowing||charge>0||octopusInk.active)renderer.render(scene,camera);
     if(!mount.dataset.ready)mount.dataset.ready='true';
   };
   const setWaterway=(value:Waterway)=>{
@@ -1548,5 +1600,5 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   };
 
   frame=requestAnimationFrame(render);
-    return {setState,setCharge,setWaterway,setWeather,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){sceneDisposed=true;riverEnvironment?.dispose();emptyRiverReflection.dispose();cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fishModelStore.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
+    return {setState,setCharge,setWaterway,setWeather,rodStroke(){rodStrokeAt=time;},aimScreen,setOverlayOpen(open){overlayOpen=open;},get diagnostics(){return {phase:state.phase,revision:state.revision,landedRevision,rendered:mount.dataset.ready==='true',drawCalls:renderer.info.render.calls,cameraY:camera.position.y};},dispose(){sceneDisposed=true;octopusInk.dispose();riverEnvironment?.dispose();emptyRiverReflection.dispose();cancelAnimationFrame(frame);if(fishShaderWarmupTimer!==null)clearTimeout(fishShaderWarmupTimer);observer.disconnect();fishModelStore.dispose();waterBackdrop.dispose();waterCopy.dispose();for(const root of [scene,backgroundScene])root.traverse(obj=>{obj.geometry?.dispose();if(obj.material)for(const mat of Array.isArray(obj.material)?mat:[obj.material])mat.dispose();});renderer.dispose();renderer.domElement.remove();}};
 }

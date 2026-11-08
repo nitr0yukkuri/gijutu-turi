@@ -142,7 +142,12 @@ function DistanceReadout({ id, className, label, value, phase }: { id: string; c
 }
 
 function FishTechIcon({ speciesId }: { speciesId: string }) {
-  const fish = speciesId === "whale-001" ? <>
+  const fish = speciesId === "java-001" ? <>
+    <path className="tech-tree-fish-fill" d="M31 19c-5-8-1-13 5-16 1 7 0 12-2 17Z" />
+    <ellipse className="tech-tree-fish-fill" cx="30" cy="26" rx="7.5" ry="5.5" />
+    <path className="tech-tree-fish-detail" strokeWidth="2.6" d="M25 26C18 17 10 16 5 20m20 9C15 30 9 36 6 42m20-10C20 39 18 43 18 47m10-14C27 41 29 44 31 47m2-14C36 39 39 43 43 46m-9-16c7 4 13 5 21 2m-18-8c8-8 15-9 22-6m-25-2c4-7 11-10 18-10" />
+    <circle className="tech-tree-fish-eye" cx="28" cy="25" r="1.3" />
+  </> : speciesId === "whale-001" ? <>
     <path className="tech-tree-fish-fill" d="M6 24c7-10 21-14 38-9 5 2 9 5 11 9-3 8-13 14-28 14C16 38 9 33 6 24Z" />
     <path className="tech-tree-fish-fill" d="M48 24 61 14l-3 11 3 10Z" />
     <path className="tech-tree-fish-detail" d="M18 16c2-5 7-8 13-8m-9 24c5 2 12 2 18-1" />
@@ -489,8 +494,15 @@ function CompleteFishBook({ selectedId, onSelect }: { selectedId: string; onSele
   </section>;
 }
 
+function initialShowcaseFishId(): string {
+  const requestedId = new URLSearchParams(window.location.search).get("species");
+  return COMPLETE_SHOWCASE_COLLECTION.entries.find(entry => entry.id === requestedId)?.id
+    ?? COMPLETE_SHOWCASE_COLLECTION.entries[0]?.id
+    ?? "fish-001";
+}
+
 function CompleteShowcasePage() {
-  const [selectedId, setSelectedId] = useState(COMPLETE_SHOWCASE_COLLECTION.entries[0]?.id ?? "fish-001");
+  const [selectedId, setSelectedId] = useState(initialShowcaseFishId);
   const [activeView, setActiveView] = useState<"fish" | "tech">("fish");
 
   useEffect(() => {
