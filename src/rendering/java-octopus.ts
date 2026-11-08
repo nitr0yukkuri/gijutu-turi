@@ -304,6 +304,8 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
       flowDrag: .48 + index % 3 * .11,
       length: armLengths[index],
       animatedDirection: new THREE.Vector3(),
+      jetRotation: new THREE.Quaternion(),
+      jetTargetRotation: new THREE.Quaternion(),
       geometry,
       centers: Array.from({ length: segmentCount + 1 }, () => new THREE.Vector3()),
       tangent: new THREE.Vector3(),
@@ -357,6 +359,8 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   const ventral = new THREE.Vector3(0, -1, 0);
   const suckerAxis = new THREE.Vector3(0, 1, 0);
   const flowDirection = new THREE.Vector3(1, .08, 0);
+  const jetFlowDirection = flowDirection.clone().normalize();
+  for (const arm of arms) arm.jetTargetRotation.setFromUnitVectors(arm.direction, jetFlowDirection);
   const armReference = new THREE.Vector3(0, 0, 1);
   const noTetherDirection = new THREE.Vector3();
   let disposed = false;
@@ -378,9 +382,10 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   const updateArm = (arm, armIndex, bodyPhase, effort, jet, turn, tetherLoad, tetherDirection) => {
     const phaseAtArm = bodyPhase * (.25 + arm.waveRate * .035) + arm.phaseOffset;
     const softLag = .92 + .08 * Math.sin(phaseAtArm * .5 + armIndex * .12);
+    // Rotate along the shortest arc: linear direction blending passes near zero
+    // for backward-facing arms and causes a sudden flip during jet transitions.
     const direction = arm.animatedDirection.copy(arm.direction)
-      .lerp(flowDirection, .08 + jet * .58)
-      .normalize();
+      .applyQuaternion(arm.jetRotation.identity().slerp(arm.jetTargetRotation, .08 + jet * .72));
     const length = arm.length * (1 - jet * .1) * (1 + .018 * Math.sin(phaseAtArm));
     const hasTetherDirection = Boolean(tetherDirection && tetherDirection.lengthSq() > .001);
     const lineAlignment = hasTetherDirection ? clamp(arm.direction.dot(tetherDirection), -1, 1) : 0;
@@ -513,7 +518,7 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
       jetTransitionElapsed = 0;
     }
     jetTransitionElapsed += smoothingDelta;
-    const transitionDuration = jetTransitionTarget > jetTransitionFrom ? .55 : .72;
+    const transitionDuration = jetTransitionTarget > jetTransitionFrom ? .95 : 1.7;
     const transitionProgress = smoothUnit(jetTransitionElapsed / transitionDuration);
     jetBlend = jetTransitionFrom + (jetTransitionTarget - jetTransitionFrom) * transitionProgress;
     const jet = jetBlend;
