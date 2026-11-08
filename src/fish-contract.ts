@@ -7,6 +7,7 @@ export const FISH_GAITS = [
   "go_reel_resist",
   "billfish_burst",
   "coast",
+  "river_cruise",
   "hooked_burst",
   "heavy_start",
   "heavy_surge",
