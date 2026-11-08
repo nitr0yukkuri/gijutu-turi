@@ -139,9 +139,10 @@ float riverRainRipple(vec2 point) {
   vec2 drift=vec2(uTime*(0.015+uWeatherWind*0.12),-uTime*(0.01+uWeatherWind*0.05));
   vec2 grid=(point+drift)*mix(0.42,0.78,uWeatherRain);
   vec2 cell=floor(grid),local=fract(grid);
-  float seed=hash(cell+vec2(17.7,48.2));
-  vec2 random=fract(seed*vec2(113.13,271.19)+vec2(0.17,0.37));
-  vec2 center=mix(vec2(0.34),vec2(0.66),random);
+  float occurrence=hash(cell+vec2(83.1,19.2));
+  if(occurrence>0.22+uWeatherRain*0.72)return 0.0;
+  vec2 random=vec2(hash(cell+vec2(17.7,48.2)),hash(cell+vec2(113.13,271.19)));
+  vec2 center=mix(vec2(0.25),vec2(0.75),random);
   float rate=mix(0.35,0.65+uWeatherRain*0.4,random.x);
   float age=fract(uTime*rate+random.y);
   float radius=0.01+age*0.18;
@@ -473,23 +474,31 @@ export function createOcean(mount, { onLand=()=>{}, onRenderError=()=>{}, onSurf
   const snowflakes=new THREE.Points(snowGeometry,snowMaterial);snowflakes.renderOrder=1;snowflakes.frustumCulled=false;backgroundScene.add(snowflakes);
   const rainCount=560,rainGeometry=new THREE.BufferGeometry();
   const rainPositions=new Float32Array(rainCount*3),rainPhases=new Float32Array(rainCount),rainSpeeds=new Float32Array(rainCount),rainSizes=new Float32Array(rainCount);
+  const rainOpacities=new Float32Array(rainCount),rainDrifts=new Float32Array(rainCount),rainStretches=new Float32Array(rainCount);
   for(let i=0;i<rainCount;i++){
+    const depth=seededRandom(i+901);
     rainPositions[i*3]=seededRandom(i+501)*1.96-.98;
     rainPositions[i*3+1]=0;
     rainPositions[i*3+2]=0;
     rainPhases[i]=seededRandom(i+601);
-    rainSpeeds[i]=.72+seededRandom(i+701)*.72;
-    rainSizes[i]=2.6+seededRandom(i+801)*2.0;
+    rainSpeeds[i]=.58+depth*1.08;
+    rainSizes[i]=1.6+depth*4.4;
+    rainOpacities[i]=.08+Math.pow(seededRandom(i+1001),1.6)*.92;
+    rainDrifts[i]=.35+seededRandom(i+1101)*1.65;
+    rainStretches[i]=.62+seededRandom(i+1201)*1.28;
   }
   rainGeometry.setAttribute('position',new THREE.BufferAttribute(rainPositions,3));
   rainGeometry.setAttribute('aPhase',new THREE.BufferAttribute(rainPhases,1));
   rainGeometry.setAttribute('aSpeed',new THREE.BufferAttribute(rainSpeeds,1));
   rainGeometry.setAttribute('aSize',new THREE.BufferAttribute(rainSizes,1));
+  rainGeometry.setAttribute('aOpacity',new THREE.BufferAttribute(rainOpacities,1));
+  rainGeometry.setAttribute('aDrift',new THREE.BufferAttribute(rainDrifts,1));
+  rainGeometry.setAttribute('aStretch',new THREE.BufferAttribute(rainStretches,1));
   const rainMaterial=new THREE.ShaderMaterial({
     uniforms:{uTime:uniforms.uTime,uRain:weatherUniforms.uWeatherRain,uWind:weatherUniforms.uWeatherWind,uMotion:{value:reduced?0:1}},
     transparent:true,depthTest:false,depthWrite:false,
-    vertexShader:`attribute float aPhase;attribute float aSpeed;attribute float aSize;uniform float uTime;uniform float uRain;uniform float uWind;uniform float uMotion;varying float vOpacity;varying float vTilt;void main(){float t=uTime*uMotion;float fall=fract(aPhase+t*aSpeed*.46);float tilt=clamp(.12+uWind*.72,.12,.82);float x=position.x+tilt*fall*.08+sin(t*1.3+aPhase*6.283)*.003;float y=1.12-fall*2.24;gl_Position=vec4(x,y,0.,1.);gl_PointSize=aSize*(.75+aSpeed*.32);vOpacity=uRain*.42;vTilt=tilt;}`,
-    fragmentShader:`varying float vOpacity;varying float vTilt;void main(){vec2 p=(gl_PointCoord-vec2(.5))*2.;p.x+=p.y*vTilt*.28;float body=exp(-p.x*p.x*20.)*(1.-smoothstep(.46,1.,abs(p.y)));float glow=exp(-p.x*p.x*6.)*(1.-smoothstep(.55,1.,abs(p.y)))*.2;float alpha=(body*.5+glow)*vOpacity;gl_FragColor=vec4(vec3(.74,.84,.89),alpha);}`,
+    vertexShader:`attribute float aPhase;attribute float aSpeed;attribute float aSize;attribute float aOpacity;attribute float aDrift;attribute float aStretch;uniform float uTime;uniform float uRain;uniform float uWind;uniform float uMotion;varying float vOpacity;varying float vTilt;varying float vStretch;varying float vTint;void main(){float t=uTime*uMotion;float fall=fract(aPhase+t*aSpeed*.46);float tilt=clamp(.12+uWind*.72,.12,.82);float sway=sin(t*(.24+aDrift*.18)+aPhase*12.566)*(.006+aDrift*.004);float gust=sin(t*.17+aPhase*6.283)*aDrift*.01;float x=position.x+tilt*(fall-.5)*.12*aDrift+uWind*(sway+gust);float y=1.12-fall*2.24;gl_Position=vec4(x,y,0.,1.);gl_PointSize=aSize*(.72+aSpeed*.28);vOpacity=uRain*(.18+aOpacity*.48);vTilt=tilt;vStretch=aStretch;vTint=fract(aPhase*17.13);}`,
+    fragmentShader:`varying float vOpacity;varying float vTilt;varying float vStretch;varying float vTint;void main(){vec2 p=(gl_PointCoord-vec2(.5))*2.;p.x+=p.y*vTilt*.3;float longitudinal=abs(p.y)/max(vStretch,.1);float body=exp(-p.x*p.x*(24.-vStretch*5.))*(1.-smoothstep(.32,1.,longitudinal));float glow=exp(-p.x*p.x*5.)*(1.-smoothstep(.5,1.,longitudinal))*.14;float alpha=(body*.48+glow)*vOpacity;vec3 color=mix(vec3(.66,.77,.82),vec3(.86,.92,.96),vTint);gl_FragColor=vec4(color,alpha);}`,
   });
   const raindrops=new THREE.Points(rainGeometry,rainMaterial);raindrops.renderOrder=2;raindrops.frustumCulled=false;backgroundScene.add(raindrops);
   const waterBackdrop=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,depthBuffer:waterway==='river'});
