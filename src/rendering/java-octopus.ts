@@ -361,6 +361,7 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   const noTetherDirection = new THREE.Vector3();
   let disposed = false;
   let visibleAmount = 1;
+  let exertionBlend = .3;
   let jetBlend = 0;
   let jetTransitionFrom = 0;
   let jetTransitionTarget = 0;
@@ -497,17 +498,21 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   } = {}) => {
     if (disposed) return;
     const phaseNow = Number.isFinite(bodyPhase) ? bodyPhase : time * bodyFrequency * Math.PI * 2 + phase;
-    const exertion = clamp(effort, 0, 1);
+    const effortTarget = clamp(effort, 0, 1);
+    const smoothingDelta = clamp(styleDelta, 0, .1);
+    const effortRate = effortTarget > exertionBlend ? 3.5 : 2.8;
+    exertionBlend += (effortTarget - exertionBlend) * (1 - Math.exp(-smoothingDelta * effortRate));
+    const exertion = exertionBlend;
     const propulsion = clamp(power, 0, 1);
     const jetTarget = Number.isFinite(jetIntent)
       ? clamp(jetIntent, 0, 1)
-      : smoothstep(.50, .88, exertion) * smoothstep(.14, .66, propulsion);
+      : smoothstep(.50, .88, effortTarget) * smoothstep(.14, .66, propulsion);
     if (Math.abs(jetTarget - jetTransitionTarget) > .001) {
       jetTransitionFrom = jetBlend;
       jetTransitionTarget = jetTarget;
       jetTransitionElapsed = 0;
     }
-    jetTransitionElapsed += clamp(styleDelta, 0, .1);
+    jetTransitionElapsed += smoothingDelta;
     const transitionDuration = jetTransitionTarget > jetTransitionFrom ? .55 : .72;
     const transitionProgress = smoothUnit(jetTransitionElapsed / transitionDuration);
     jetBlend = jetTransitionFrom + (jetTransitionTarget - jetTransitionFrom) * transitionProgress;
