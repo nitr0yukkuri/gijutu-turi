@@ -610,7 +610,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
   useEffect(() => {
     let disposed = false;
     let pageLoaded = document.readyState === "complete";
-    let sceneReady = isPhone || !oceanMountRef.current || oceanMountRef.current.dataset.ready === "true";
+    let sceneReady = false;
     let registrationScheduled = false;
     let idleHandle: number | null = null;
     let registrationTimer: number | null = null;
@@ -654,6 +654,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
         void navigator.serviceWorker.getRegistrations().then(registrations => Promise.all(registrations.map(registration => registration.unregister())));
       } else {
         const oceanMount = oceanMountRef.current;
+        sceneReady = isPhone || !oceanMount || oceanMount.dataset.ready === "true";
         if (!sceneReady && oceanMount) {
           sceneObserver = new MutationObserver(() => {
             if (oceanMount.dataset.ready === "true") onSceneReady();
@@ -726,3 +727,4 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
     },
   };
 }
+
