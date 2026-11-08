@@ -358,6 +358,7 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   const suckerAxis = new THREE.Vector3(0, 1, 0);
   const flowDirection = new THREE.Vector3(1, .08, 0);
   const armReference = new THREE.Vector3(0, 0, 1);
+  const noTetherDirection = new THREE.Vector3();
   let disposed = false;
   let visibleAmount = 1;
   let jetBlend = 0;
@@ -492,7 +493,7 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
 
   const update = (time, {
     power = .3, glow = .35, bodyPhase = Number.NaN, bodyFrequency = .58, effort = .3, turn = 0, tetherLoad = 0,
-    jetIntent, tetherDirection = /** @type {THREE.Vector3 | null} */ (null), styleDelta = 1 / 60, visibility = 1,
+    jetIntent = Number.NaN, tetherDirection = noTetherDirection, styleDelta = 1 / 60, visibility = 1,
   } = {}) => {
     if (disposed) return;
     const phaseNow = Number.isFinite(bodyPhase) ? bodyPhase : time * bodyFrequency * Math.PI * 2 + phase;
