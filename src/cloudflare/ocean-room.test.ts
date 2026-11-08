@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { OceanFishingGame } from "../ocean-game.js";
 import { OceanRoom } from "./ocean-room.js";
 import type { CloudflareEnv, DurableObjectState, DurableObjectStorage, DurableSocket } from "./types.js";
 
@@ -72,5 +73,55 @@ test("an active room stops ticking after its display disconnects while a control
   while (pending.length) await Promise.all(pending.splice(0));
   assert.equal(internals.tickTimer, undefined, "the last scheduled tick should stop when only a controller remains");
   assert.equal(storageWrites, writesAfterDisconnect, "controller-only idle time should not keep writing room state");
+});
+
+test("a transient room-storage error marks catch persistence retryable", async () => {
+  const values = new Map<string, unknown>();
+  let storageWrites = 0;
+  const storage = {
+    get: async <T>(key: string) => values.get(key) as T | undefined,
+    put: async <T>(key: string, value: T) => {
+      storageWrites++;
+      if (storageWrites === 1) throw new Error("transient storage failure");
+      values.set(key, structuredClone(value));
+    },
+    delete: async (key: string) => values.delete(key),
+    deleteAlarm: async () => {},
+    setAlarm: async (_time: number | Date) => {},
+  } as DurableObjectStorage;
+  const state = {
+    storage,
+    getWebSockets: () => [],
+    waitUntil: (_promise: Promise<unknown>) => {},
+  } as unknown as DurableObjectState;
+  const room = new OceanRoom(state, { DB: {} } as CloudflareEnv);
+  const game = new OceanFishingGame(() => 0.5, "fish-001", "fixed");
+  const internals = room as unknown as {
+    room?: {
+      id: string;
+      playerId: string;
+      game: ReturnType<OceanFishingGame["serialize"]>;
+      rodStroke: number;
+      catchSaveStatus: "none" | "pending" | "saved" | "failed";
+      catchEvent?: { eventKey: string; fishId: "fish-001" };
+    };
+    game?: OceanFishingGame;
+    writeCatch: () => Promise<void>;
+  };
+  internals.game = game;
+  internals.room = {
+    id: `sea_${"a".repeat(32)}`,
+    playerId: "player_smoke-test-1234",
+    game: game.serialize(),
+    rodStroke: 0,
+    catchSaveStatus: "pending",
+    catchEvent: { eventKey: `sea_${"a".repeat(32)}:1`, fishId: "fish-001" },
+  };
+
+  await internals.writeCatch();
+
+  assert.equal(internals.room.catchSaveStatus, "failed");
+  assert.equal(storageWrites, 2, "the failed pending write is followed by a persisted retryable status");
+  assert.equal((values.get("room") as { catchSaveStatus: string }).catchSaveStatus, "failed");
 });
 

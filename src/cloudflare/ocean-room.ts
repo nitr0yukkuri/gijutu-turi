@@ -150,15 +150,19 @@ export class OceanRoom {
     this.catchWritePromise = (async () => {
       room.catchSaveStatus = "pending";
       this.broadcast();
-      await this.persist(true);
       try {
+        await this.persist(true);
         await recordCatch(this.env.DB, room.playerId, event.fishId, event.eventKey);
         room.catchSaveStatus = "saved";
       } catch (error) {
-        console.error("Unable to record fish catch", error instanceof Error ? error.message : "unknown_error");
+        console.error("Unable to save fish catch", error instanceof Error ? error.message : "unknown_error");
         room.catchSaveStatus = "failed";
       }
-      await this.persist(true);
+      try {
+        await this.persist(true);
+      } catch (error) {
+        console.error("Unable to persist fish catch status", error instanceof Error ? error.message : "unknown_error");
+      }
       this.broadcast();
       if (room.catchSaveStatus === "saved") this.scheduleTick(0);
     })();
