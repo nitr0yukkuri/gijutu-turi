@@ -491,8 +491,8 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   };
 
   const update = (time, {
-    power = .3, glow = .35, bodyPhase, bodyFrequency = .58, effort = .3, turn = 0, tetherLoad = 0,
-    jetIntent, tetherDirection = null, styleDelta = 1 / 60, visibility = 1,
+    power = .3, glow = .35, bodyPhase = Number.NaN, bodyFrequency = .58, effort = .3, turn = 0, tetherLoad = 0,
+    jetIntent, tetherDirection = /** @type {THREE.Vector3 | null} */ (null), styleDelta = 1 / 60, visibility = 1,
   } = {}) => {
     if (disposed) return;
     const phaseNow = Number.isFinite(bodyPhase) ? bodyPhase : time * bodyFrequency * Math.PI * 2 + phase;
