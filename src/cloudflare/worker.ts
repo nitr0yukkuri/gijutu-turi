@@ -3,6 +3,7 @@ import { isPlayerId } from "../collection-contract.js";
 import { RequestRateLimiter } from "../request-rate-limit.js";
 import { apiCorsHeaders } from "../api-cors.js";
 import { deleteOceanRoom, getCollection, getPlayerIdForSession, ping, registerPlayerSession, reserveOceanRoom } from "./d1-store.js";
+import { readSmallJson } from "./read-small-json.js";
 import type { CloudflareEnv } from "./types.js";
 import { getCurrentWeather, handleCurrentWeatherRequest, type WeatherFetcher } from "../current-weather.js";
 import type { CurrentWeather } from "../weather-contract.js";
@@ -63,17 +64,6 @@ function applyCors(request: Request, response: Response, environment: Cloudflare
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
-async function readSmallJson(request: Request): Promise<{ ok: true; value: unknown } | { ok: false; response: Response }> {
-  const contentType = (request.headers.get("content-type") ?? "").split(";", 1)[0]?.trim().toLowerCase();
-  if (contentType !== "application/json") return { ok: false, response: json({ error: "unsupported_media_type" }, 415) };
-  const declaredLength = Number(request.headers.get("content-length") ?? "0");
-  if (declaredLength > 1024) return { ok: false, response: json({ error: "payload_too_large" }, 413) };
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > 1024) return { ok: false, response: json({ error: "payload_too_large" }, 413) };
-  try { return { ok: true, value: JSON.parse(text) as unknown }; }
-  catch { return { ok: false, response: json({ error: "invalid_json" }, 400) }; }
-}
-
 async function route(request: Request, env: CloudflareEnv): Promise<Response> {
   const url = new URL(request.url);
   if (request.method === "OPTIONS" && url.pathname.startsWith("/api/")) return new Response(null, { status: 204 });
@@ -92,7 +82,7 @@ async function route(request: Request, env: CloudflareEnv): Promise<Response> {
 
   if (url.pathname === "/api/player-sessions" && request.method === "POST") {
     const body = await readSmallJson(request);
-    if (!body.ok) return body.response;
+    if (!body.ok) return json({ error: body.error }, body.status);
     const source = sourceFor(request);
     const retryAfter = playerSessionLimiter.consume([
       { key: "global", limit: 600, windowMs: limitWindowMs },
@@ -123,7 +113,7 @@ async function route(request: Request, env: CloudflareEnv): Promise<Response> {
 
   if (url.pathname === "/api/ocean-sessions" && request.method === "POST") {
     const body = await readSmallJson(request);
-    if (!body.ok) return body.response;
+    if (!body.ok) return json({ error: body.error }, body.status);
     const token = tokenFrom(request);
     if (!token) return json({ error: "unauthorized" }, 401);
     const playerId = await getPlayerIdForSession(env.DB, await hashToken(token));
