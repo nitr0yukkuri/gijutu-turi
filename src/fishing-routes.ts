@@ -4,6 +4,9 @@ export type LegacyFishingRouteKey = Exclude<FishingRouteKey, "default">;
 /** Read-only, all-species showcase route for demos and review. */
 export const COMPLETE_SHOWCASE_PATH = "/complete";
 
+/** Read-only, detailed showcase for river species. */
+export const RIVER_FISH_SHOWCASE_PATH = "/riverfish";
+
 /** Canonical public path for the K8s species route. */
 export const K8S_FISH_ROUTE_PATH = "/k8sfish";
 

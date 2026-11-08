@@ -10,7 +10,7 @@ import { createOceanRooms } from "./ocean-room.js";
 import type { CollectionRepository } from "./collection-contract.js";
 import { registerOceanSessionRoutes } from "./ocean-session-route.js";
 import { createCollectionRepository, resolveCollectionBackend } from "./collection-repository.js";
-import { CANONICAL_FISH_ROUTE_PATHS, COMPLETE_SHOWCASE_PATH, FISHING_ROUTE_PATHS, LEGACY_FISH_PATH_ALIASES } from "./fishing-routes.js";
+import { CANONICAL_FISH_ROUTE_PATHS, COMPLETE_SHOWCASE_PATH, FISHING_ROUTE_PATHS, LEGACY_FISH_PATH_ALIASES, RIVER_FISH_SHOWCASE_PATH } from "./fishing-routes.js";
 import { publicAssetCandidates, resolveContainedAssetPath } from "./public-asset-path.js";
 import { apiCorsHeaders } from "./api-cors.js";
 import { getCurrentWeather, handleCurrentWeatherRequest } from "./current-weather.js";
@@ -48,6 +48,7 @@ const publicAssets = new Map<string, string[]>([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/index.html", ["index.html", "text/html; charset=utf-8"]],
   [COMPLETE_SHOWCASE_PATH, ["index.html", "text/html; charset=utf-8"]],
+  [RIVER_FISH_SHOWCASE_PATH, ["index.html", "text/html; charset=utf-8"]],
   ...CANONICAL_FISH_ROUTE_PATHS.map(route => [route, ["index.html", "text/html; charset=utf-8"]] as [string, string[]]),
   [FISHING_ROUTE_PATHS.docker, ["index.html", "text/html; charset=utf-8"]],
   ["/ocean.css", ["ocean.css", "text/css"]],
@@ -75,14 +76,14 @@ const fishAddons = [
   "shaders/CopyShader.js", "shaders/LuminosityHighPassShader.js", "shaders/OutputShader.js",
 ];
 for (const addon of fishAddons) publicAssets.set(`/vendor/addons/${addon}`, [`vendor/addons/${addon}`, "text/javascript"]);
-for (const route of [COMPLETE_SHOWCASE_PATH, ...CANONICAL_FISH_ROUTE_PATHS, FISHING_ROUTE_PATHS.docker, ...LEGACY_FISH_PATH_ALIASES]) {
+for (const route of [COMPLETE_SHOWCASE_PATH, RIVER_FISH_SHOWCASE_PATH, ...CANONICAL_FISH_ROUTE_PATHS, FISHING_ROUTE_PATHS.docker, ...LEGACY_FISH_PATH_ALIASES]) {
   app.get(`${route}/`, c => c.redirect(`${route}${new URL(c.req.url).search}`, 308));
 }
 for (const [route, asset] of publicAssets) {
   app.get(route, async c => {
     try {
       const preferred = new Set([
-        "/", "/index.html", COMPLETE_SHOWCASE_PATH, ...CANONICAL_FISH_ROUTE_PATHS, FISHING_ROUTE_PATHS.docker,
+        "/", "/index.html", COMPLETE_SHOWCASE_PATH, RIVER_FISH_SHOWCASE_PATH, ...CANONICAL_FISH_ROUTE_PATHS, FISHING_ROUTE_PATHS.docker,
         ...LEGACY_FISH_PATH_ALIASES, "/ocean.css", "/ocean-app.js",
         "/service-worker.js", "/precache-manifest.json", "/manifest.webmanifest", "/favicon.svg",
         "/assets/gijutu-turi-favicon-generated.png", "/assets/gijutu-turi-og.png",

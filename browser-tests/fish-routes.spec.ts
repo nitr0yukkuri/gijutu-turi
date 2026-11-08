@@ -140,6 +140,7 @@ test("/complete shows every fish as a read-only showcase without opening game AP
   await page.goto("/complete");
   await expect(page.getByRole("heading", { name: "魚図鑑コンプリート" })).toBeVisible();
   await expect(page.getByText(/展示用サンプル/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "川魚の生態と動き" })).toHaveAttribute("href", "/riverfish");
   const progress = page.getByLabel(/発見済み \d+ \/ \d+ 種/);
   await expect(progress).toBeVisible();
   const progressLabel = await progress.getAttribute("aria-label");
@@ -171,6 +172,33 @@ test("/complete shows every fish as a read-only showcase without opening game AP
   expect(desktopWidth.document).toBeLessThanOrEqual(desktopWidth.viewport);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("heading", { name: "魚図鑑コンプリート" })).toBeVisible();
+  const width = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth }));
+  expect(width.document).toBeLessThanOrEqual(width.viewport);
+  expect(apiRequests).toEqual([]);
+  expect(sockets).toEqual([]);
+});
+
+test("/riverfish shows detailed river species without opening game APIs", async ({ page }) => {
+  const apiRequests: string[] = [];
+  const sockets: string[] = [];
+  page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/")) apiRequests.push(`${request.method()} ${url.pathname}`);
+  });
+  page.on("websocket", socket => sockets.push(socket.url()));
+
+  await page.goto("/riverfish");
+  await expect(page.getByRole("heading", { name: "川の技術魚" })).toBeVisible();
+  const picker = page.getByRole("navigation", { name: "川魚を選ぶ" });
+  await expect(picker.getByRole("button")).toHaveCount(10);
+  await expect(page.getByRole("heading", { name: "Goアユ", exact: true })).toBeVisible();
+  await expect(page.locator(".river-fish-facts")).toContainText("実際の生態");
+  await expect(page.locator(".river-fish-model canvas")).toBeVisible();
+
+  await picker.getByRole("button", { name: /Rustヤマメ/ }).click();
+  await expect(page.getByRole("heading", { name: "Rustヤマメ", exact: true })).toBeVisible();
+  await expect(page.locator(".river-fish-facts")).toContainText("冷たく澄んだ上流域");
+  await page.setViewportSize({ width: 390, height: 844 });
   const width = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth }));
   expect(width.document).toBeLessThanOrEqual(width.viewport);
   expect(apiRequests).toEqual([]);
