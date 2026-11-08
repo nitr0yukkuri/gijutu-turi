@@ -8,7 +8,7 @@
 
 PCに広がる海へキャストし、スマートフォンを釣り竿のコントローラーとしてつないで遊べます。Go、Docker、CSS、Kubernetes、Rust、JavaScriptの考え方を、それぞれ異なる魚の動きや見た目に置き換えています。
 
-[公開デモ](https://gijutu-turi.nitr0yukkuri.workers.dev/) · [まずはデモ](#まずはデモ) · [魚と技術の対応を見る](#魚と技術の対応) · [仕組みを見る](#アーキテクチャ) · [ローカルで遊ぶ](#はじめる)
+[公開デモ](https://gijutu-turi.nitr0yukkuri.workers.dev/) · [川魚の生態と動き](https://gijutu-turi.nitr0yukkuri.workers.dev/riverfish) · [まずはデモ](#まずはデモ) · [魚と技術の対応を見る](#魚と技術の対応) · [仕組みを見る](#アーキテクチャ) · [ローカルで遊ぶ](#はじめる)
 
 ## まずはデモ
 

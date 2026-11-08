@@ -7,6 +7,8 @@ import { k8sLungeForSnapshot } from "../rendering/k8s-fight-presentation.js";
 import { distanceReadoutFor } from "./distance-readout.js";
 import { resolveFishingRoute } from "./fishing-route.js";
 import { COMPLETE_SHOWCASE_COLLECTION, isCompleteShowcasePath } from "./complete-showcase.js";
+import { isRiverFishShowcasePath, RIVER_FISH_SHOWCASE_PATH } from "./river-fish-showcase.js";
+import { RiverFishShowcasePage } from "./river-fish-showcase-page.js";
 import { TECH_TREE_BRANCHES, TECH_TREE_FISH_LINKS, TECH_TREE_NODE_DETAILS } from "./tech-tree.js";
 import { useOceanRuntime } from "./useOceanRuntime.js";
 import { resolveWaterway, WATERWAY_QUERY_PARAM, type Waterway } from "../waterway.js";
@@ -536,6 +538,7 @@ function CompleteShowcasePage() {
         />}
         <footer className="complete-showcase-footer">
           <a href="/">海へ戻る</a>
+          <a href={RIVER_FISH_SHOWCASE_PATH}>川魚の生態と動き</a>
         </footer>
       </div>
     </main>
@@ -544,6 +547,7 @@ function CompleteShowcasePage() {
 
 export function App() {
   const controllerId = new URLSearchParams(window.location.search).get("controller");
+  if (isRiverFishShowcasePath(window.location.pathname) && !controllerId) return <RiverFishShowcasePage />;
   if (isCompleteShowcasePath(window.location.pathname) && !controllerId) return <CompleteShowcasePage />;
   return <FishingApp />;
 }

@@ -1,0 +1,40 @@
+.river-showcase-shell { max-width: 1160px; }
+.river-fish-book { padding-top: 22px; }
+.river-fish-picker { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; }
+.river-fish-picker button { display: grid; gap: 5px; min-width: 0; min-height: 78px; padding: 10px 12px; border: 1px solid #b4d8d128; border-radius: 4px; background: #06192366; color: #dce9e7; text-align: left; transition: border-color .18s, background .18s, transform .18s; }
+.river-fish-picker button:hover { transform: translateY(-2px); border-color: #bde4dc75; background: #bde4dc10; }
+.river-fish-picker button.is-selected, .river-fish-picker button[aria-pressed="true"] { border-color: #bde4dc99; background: #bde4dc17; box-shadow: inset 0 0 0 1px #bde4dc24; }
+.river-fish-number, .river-fish-eyebrow { color: #91b3bb; font: 10px ui-monospace, Consolas, monospace; letter-spacing: .1em; }
+.river-fish-picker strong { overflow: hidden; color: #e5f0ed; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.river-fish-picker small { overflow: hidden; color: #a9c2c9; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.river-fish-detail { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(300px, .92fr); align-items: stretch; gap: clamp(20px, 3.5vw, 42px); margin-top: 14px; padding: clamp(14px, 2.5vw, 24px); border: 1px solid #b4d8d128; border-radius: 4px; background: linear-gradient(120deg, #a8d9db0b, #06192345); }
+.river-fish-visual { position: relative; min-width: 0; min-height: 390px; overflow: hidden; border-radius: 3px; background: radial-gradient(ellipse at 48% 38%, #43859470 0%, #20556866 42%, #09283a 100%); }
+.river-fish-model { position: absolute; inset: 0; cursor: grab; touch-action: pan-y; outline: none; }
+.river-fish-model:active { cursor: grabbing; }
+.river-fish-model canvas { display: block; width: 100%; height: 100%; }
+.river-fish-model:focus-visible { box-shadow: inset 0 0 0 2px #9dd8cb; }
+.river-fish-waterline { position: absolute; right: 7%; bottom: 23%; left: 7%; height: 1px; background: linear-gradient(90deg, transparent, #c6e5e54d, transparent); pointer-events: none; }
+.river-fish-model-error { position: absolute; inset: 45% 12% auto; color: #d3e6e2; font-size: 12px; text-align: center; }
+.river-fish-copy { min-width: 0; align-self: center; }
+.river-fish-eyebrow { margin: 0 0 9px; }
+.river-fish-copy h2 { margin: 0; color: #eff7f4; font-size: clamp(26px, 3vw, 36px); font-weight: 400; line-height: 1.3; }
+.river-fish-tagline { margin: 13px 0 0; color: #d3e6e2; font-size: 15px; line-height: 1.7; }
+.river-fish-concept { margin: 7px 0 0; color: #9fd5cb; font-size: 12px; line-height: 1.8; }
+.river-fish-facts { display: grid; gap: 0; margin: 19px 0 0; border-top: 1px solid #c0d9df24; }
+.river-fish-facts div { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid #c0d9df1c; }
+.river-fish-facts dt { color: #8eafb8; font-size: 10px; }
+.river-fish-facts dd { margin: 0; color: #bed2d5; font-size: 11px; line-height: 1.7; }
+.river-fish-footer { margin-top: 20px; }
+@media (max-width: 760px) {
+  .river-fish-book { padding-top: 17px; }
+  .river-fish-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .river-fish-picker button { min-height: 68px; padding: 8px; }
+  .river-fish-picker strong { font-size: 12px; }
+  .river-fish-picker small { font-size: 9px; }
+  .river-fish-detail { grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 12px; padding: 12px; }
+  .river-fish-visual { min-height: clamp(220px, 34dvh, 300px); }
+  .river-fish-copy { padding: 0 4px 4px; }
+  .river-fish-facts { margin-top: 13px; }
+  .river-fish-facts div { grid-template-columns: 76px minmax(0, 1fr); gap: 8px; padding: 8px 0; }
+  .river-fish-footer { margin-top: 16px; }
+}
