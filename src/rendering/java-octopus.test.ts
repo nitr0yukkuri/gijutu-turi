@@ -111,7 +111,7 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
       previousJetTips = currentTips;
     }
     assert.ok(maximumReleaseStep < .15, `jet posture releases smoothly without a snap (max step ${maximumReleaseStep.toFixed(3)})`);
-    for (let frame = 0; frame < 6; frame++) {
+    for (let frame = 0; frame < 10; frame++) {
       octopus.update(3 + frame * .1, { power: 1, effort: 1, bodyPhase: fixedPhase, jetIntent: 1, styleDelta: .1 });
     }
     const settledJetTips = armTips();
