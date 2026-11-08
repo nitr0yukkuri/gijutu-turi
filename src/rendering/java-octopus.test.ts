@@ -83,11 +83,39 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
     };
     const rootCenter = (armName: string) => centerAt(armName, 0);
     const flowAxis = new THREE.Vector3(1, .08, 0).normalize();
-    octopus.update(1, { power: .25, effort: .28 });
-    const restingTips = Array.from({ length: 8 }, (_, index) => centerAt(`arm-${index + 1}`, 14));
-    octopus.update(1, { power: 1, effort: 1 });
-    const jetTips = Array.from({ length: 8 }, (_, index) => centerAt(`arm-${index + 1}`, 14));
-    const downstreamShifts = jetTips.map(
+    const fixedPhase = .7;
+    const frameDelta = 1 / 60;
+    const armTips = () => Array.from({ length: 8 }, (_, index) => centerAt(`arm-${index + 1}`, 14));
+    const maximumTipStep = (beforeTips: THREE.Vector3[], afterTips: THREE.Vector3[]) => Math.max(
+      ...afterTips.map((tip, index) => tip.distanceTo(beforeTips[index]!)),
+    );
+    octopus.update(1, { power: .25, effort: .28, bodyPhase: fixedPhase, jetIntent: 0, styleDelta: frameDelta });
+    const restingTips = armTips();
+
+    const firstSurgeTips = (() => {
+      octopus.update(1, { power: 1, effort: 1, bodyPhase: fixedPhase, jetIntent: 1, styleDelta: frameDelta });
+      return armTips();
+    })();
+    assert.ok(maximumTipStep(restingTips, firstSurgeTips) < .02,
+      'jet posture eases in without an instant tentacle snap');
+    for (let frame = 1; frame < 60; frame++) {
+      octopus.update(1 + frame * frameDelta, { power: 1, effort: 1, bodyPhase: fixedPhase, jetIntent: 1, styleDelta: frameDelta });
+    }
+    const jetTips = armTips();
+    let previousJetTips = jetTips;
+    let maximumReleaseStep = 0;
+    for (let frame = 0; frame < 60; frame++) {
+      octopus.update(2 + frame * frameDelta, { power: .25, effort: .28, bodyPhase: fixedPhase, jetIntent: 0, styleDelta: frameDelta });
+      const currentTips = armTips();
+      maximumReleaseStep = Math.max(maximumReleaseStep, maximumTipStep(previousJetTips, currentTips));
+      previousJetTips = currentTips;
+    }
+    assert.ok(maximumReleaseStep < .15, `jet posture releases smoothly without a snap (max step ${maximumReleaseStep.toFixed(3)})`);
+    for (let frame = 0; frame < 10; frame++) {
+      octopus.update(3 + frame * .1, { power: 1, effort: 1, bodyPhase: fixedPhase, jetIntent: 1, styleDelta: .1 });
+    }
+    const settledJetTips = armTips();
+    const downstreamShifts = settledJetTips.map(
       (tip, index) => tip.clone().sub(restingTips[index]!).dot(flowAxis),
     );
     assert.ok(downstreamShifts.every(shift => shift > .2), 'each arm streams toward the siphon wake under jet propulsion');
@@ -95,7 +123,7 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
       const axial = flowAxis.clone().multiplyScalar(tip.dot(flowAxis));
       return sum + tip.clone().sub(axial).length();
     }, 0) / tips.length;
-    assert.ok(crownSpread(jetTips) < crownSpread(restingTips) * .72,
+    assert.ok(crownSpread(settledJetTips) < crownSpread(restingTips) * .72,
       'the jet folds the crown into a streamlined bundle instead of preserving a radial star');
     const rootCenters = Array.from({ length: 8 }, (_, index) => rootCenter(`arm-${index + 1}`));
     for (let first = 0; first < rootCenters.length; first++) {
@@ -114,7 +142,15 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
       assert.ok(firstPoint.distanceTo(lastPoint) < .00001, 'the UV seam closes without an open split');
     }
     const resting = Array.from(positions);
-    octopus.update(1, { power: 1, effort: 1, tetherLoad: 0.8 });
+    octopus.update(4, { power: .25, effort: .28, bodyPhase: 1.2, jetIntent: 0, tetherLoad: 0 });
+    const slackTips = armTips();
+    const tetherDirection = new THREE.Vector3(0, 0, 1);
+    octopus.update(4, { power: .25, effort: .28, bodyPhase: 1.2, jetIntent: 0, tetherLoad: .8, tetherDirection });
+    const tautTips = armTips();
+    const towardLine = tautTips[0]!.clone().sub(slackTips[0]!).dot(tetherDirection);
+    const awayFromLine = tautTips[4]!.clone().sub(slackTips[4]!).dot(tetherDirection);
+    assert.ok(towardLine > awayFromLine + .03,
+      'the line-facing arm responds toward the tether more than the opposite arm');
     assert.notDeepEqual(Array.from(positions), resting, 'arms react to the jet and tension instead of freezing');
     const armStart = centerAt('arm-1', 0);
     const armEnd = centerAt('arm-1', 14);
@@ -124,7 +160,7 @@ test('Java octopus has a backward-facing siphon ejection point and jet-responsiv
       const straightPoint = armStart.clone().lerp(armEnd, ring / 14);
       maximumChordDeviation = Math.max(maximumChordDeviation, center.distanceTo(straightPoint));
     }
-    assert.ok(maximumChordDeviation > .16, 'the arm develops a visible localized bend instead of staying needle-straight');
+    assert.ok(maximumChordDeviation > .09, 'the arm develops a visible localized bend instead of staying needle-straight');
     const tipCenter = (data: Float32Array) => {
       const result = new THREE.Vector3();
       const start = 14 * radialStride;

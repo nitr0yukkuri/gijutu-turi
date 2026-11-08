@@ -9,14 +9,17 @@ const smoothstep = (edge0, edge1, value) => {
   return t * t * (3 - 2 * t);
 };
 const TAU = Math.PI * 2;
+const smoothUnit = value => {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
+};
 
-// Octopus arm swimming uses a fast power stroke and slower, lower-force recovery.
+// A fast power stroke and slower recovery share zero velocity at each join.
 const scullingStroke = (phase) => {
   const cycle = ((phase % TAU) + TAU) % TAU;
   const powerStroke = TAU * 0.31;
-  if (cycle < powerStroke) return Math.sin(cycle / powerStroke * Math.PI);
-  const recovery = (cycle - powerStroke) / (TAU - powerStroke);
-  return -0.42 * Math.sin(recovery * Math.PI);
+  if (cycle < powerStroke) return -.18 + smoothUnit(cycle / powerStroke) * 1.18;
+  return 1 - smoothUnit((cycle - powerStroke) / (TAU - powerStroke)) * 1.18;
 };
 
 function createSkinMottle() {
@@ -291,19 +294,18 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
       base,
       curveAxis,
       secondaryAxis: new THREE.Vector3().crossVectors(direction, curveAxis).normalize(),
-      // Paired arms share a broad stroke rhythm, with a small phase offset
-      // between the pair to keep the crown from moving like one rigid fan.
-      phaseOffset: Math.floor(index / 2) * Math.PI / 2 + (index % 2) * .14,
-      bendPhase: index * 1.73 + .41,
-      bendLocation: .31 + index % 4 * .11,
-      waveRate: .78 + index % 4 * .11,
-      tipCurl: (index % 2 === 0 ? 1 : -1) * (.34 + index % 4 * .04),
+      // Adjacent arms move as four loose pairs; a slight lag avoids a rigid fan.
+      phaseOffset: Math.floor(index / 2) * .3 + (index % 2) * .08,
+      bendPhase: Math.floor(index / 2) * .36 + (index % 2) * .1,
+      bendLocation: .32 + index % 4 * .09,
+      waveRate: .82 + index % 4 * .025,
+      tipCurl: .12 + index % 4 * .018,
       turnResponse: index % 2 === 0 ? 1 : .62,
-      tetherSensitivity: .72 + index % 4 * .16,
-      gripBias: index % 2 === 0 ? .46 : -.22,
       flowDrag: .48 + index % 3 * .11,
       length: armLengths[index],
       animatedDirection: new THREE.Vector3(),
+      jetRotation: new THREE.Quaternion(),
+      jetTargetRotation: new THREE.Quaternion(),
       geometry,
       centers: Array.from({ length: segmentCount + 1 }, () => new THREE.Vector3()),
       tangent: new THREE.Vector3(),
@@ -357,9 +359,17 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   const ventral = new THREE.Vector3(0, -1, 0);
   const suckerAxis = new THREE.Vector3(0, 1, 0);
   const flowDirection = new THREE.Vector3(1, .08, 0);
+  const jetFlowDirection = flowDirection.clone().normalize();
+  for (const arm of arms) arm.jetTargetRotation.setFromUnitVectors(arm.direction, jetFlowDirection);
   const armReference = new THREE.Vector3(0, 0, 1);
+  const noTetherDirection = new THREE.Vector3();
   let disposed = false;
   let visibleAmount = 1;
+  let exertionBlend = .3;
+  let jetBlend = 0;
+  let jetTransitionFrom = 0;
+  let jetTransitionTarget = 0;
+  let jetTransitionElapsed = 1;
 
   const waterMaterials = [
     [skin, 'body'], [webSkin, 'body'], [paleSkin, 'detail'], [eyeWhite, 'detail'], [irisMaterial, 'detail'], [pupilMaterial, 'detail'],
@@ -369,51 +379,51 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
     for (const [material, part] of waterMaterials) applyFishWater(material, habitatUniforms, part, JAVA_OCTOPUS_WATER_PROFILE);
   }
 
-  const updateArm = (arm, armIndex, bodyPhase, effort, jet, turn, tetherLoad) => {
-    const phaseAtArm = bodyPhase * (.27 + arm.waveRate * .06) + arm.phaseOffset;
-    const exploration = .5 + .5 * Math.sin(phaseAtArm * .71 + armIndex * 1.3);
-    // During an escape jet the crown streams toward the siphon wake instead of
-    // holding a permanently radial, star-shaped silhouette.
-    // Keep the relaxed crown softly gathered; during a jet escape the eight
-    // arms stream together toward the siphon wake instead of forming a star.
-    const crownFold = .18 + jet * .62;
+  const updateArm = (arm, armIndex, bodyPhase, effort, jet, turn, tetherLoad, tetherDirection) => {
+    const phaseAtArm = bodyPhase * (.25 + arm.waveRate * .035) + arm.phaseOffset;
+    const softLag = .92 + .08 * Math.sin(phaseAtArm * .5 + armIndex * .12);
+    // Rotate along the shortest arc: linear direction blending passes near zero
+    // for backward-facing arms and causes a sudden flip during jet transitions.
     const direction = arm.animatedDirection.copy(arm.direction)
-      .lerp(flowDirection, crownFold)
-      .normalize();
-    const length = arm.length * (1 - jet * .15) * (1 + .035 * Math.sin(phaseAtArm));
+      .applyQuaternion(arm.jetRotation.identity().slerp(arm.jetTargetRotation, .08 + jet * .72));
+    const length = arm.length * (1 - jet * .1) * (1 + .018 * Math.sin(phaseAtArm));
+    const hasTetherDirection = Boolean(tetherDirection && tetherDirection.lengthSq() > .001);
+    const lineAlignment = hasTetherDirection ? clamp(arm.direction.dot(tetherDirection), -1, 1) : 0;
     const positions = arm.geometry.attributes.position.array;
     const centerline = arm.centers;
     for (let segment = 0; segment <= segmentCount; segment++) {
       const along = segment / segmentCount;
       const bend = Math.sin(along * Math.PI);
-      const travelingPhase = along * 5.0 - bodyPhase * (.45 + arm.waveRate * .08) + arm.phaseOffset;
-      const localPhase = phaseAtArm + along * (2.5 + exploration * 1.3);
+      const travelingPhase = along * 4.2 - bodyPhase * (.37 + arm.waveRate * .035) + arm.phaseOffset;
+      const localPhase = phaseAtArm + along * 2.25;
       const tipWeight = smoothstep(.58, 1, along);
-      const bendWindow = Math.exp(-(((along - arm.bendLocation) / .17) ** 2));
-      const bendPulse = Math.sin(phaseAtArm * .71 + arm.bendPhase);
+      const bendWindow = Math.exp(-(((along - arm.bendLocation) / .18) ** 2));
+      const bendPulse = Math.sin(phaseAtArm * .72 + arm.bendPhase);
       const pathWave = (scullingStroke(travelingPhase + arm.bendPhase * .3)
         - scullingStroke(arm.phaseOffset + arm.bendPhase * .3)) * along;
-      const secondaryWave = Math.sin(localPhase - along * 1.8) * along;
-      const localizedBend = bendWindow * bendPulse * (.22 + effort * .16 + clamp(tetherLoad, 0, 1) * .12);
-      // One arm in each pair curls more firmly around the line while its mate
-      // braces outward, keeping the hooked crown asymmetric and alive.
-      const lineCurl = tipWeight * clamp(tetherLoad, 0, 1) * arm.tetherSensitivity
-        * (arm.gripBias * .48 + .08 * Math.sin(bodyPhase * .42 + arm.phaseOffset));
-      const tipCurl = tipWeight * (arm.tipCurl + Math.sin(phaseAtArm * .53 + arm.bendPhase) * .11) * exploration;
-      const curl = pathWave * (.25 + effort * .1) + secondaryWave * .14 + localizedBend + tipCurl + lineCurl;
-      const sweep = (Math.sin(localPhase * .61 + along * 2.8) * .19 + turn * arm.turnResponse * .1) * along * (1 - jet * .72);
-      const crossWave = ((Math.sin(travelingPhase * .72 + arm.bendPhase) * .16
-        + Math.cos(localPhase * .55 + arm.bendPhase) * .06) * along + bendWindow * Math.cos(bendPulse) * .09)
-        * (1 - jet * .68);
-      const jetTrail = jet * (.72 + arm.flowDrag * .42) * Math.pow(along, 1.65);
+      const secondaryWave = Math.sin(localPhase - along * 1.65) * along;
+      const localizedBend = bendWindow * bendPulse
+        * (.075 + effort * .075 + clamp(tetherLoad, 0, 1) * .06);
+      const tipCurl = tipWeight * (arm.tipCurl + Math.sin(phaseAtArm * .4 + arm.bendPhase) * .03) * softLag;
+      const curl = pathWave * (.13 + effort * .06) + secondaryWave * .045 + localizedBend + tipCurl;
+      const sweep = (Math.sin(localPhase * .5 + along * 1.8) * .09 + turn * arm.turnResponse * .055)
+        * along * (1 - jet * .7);
+      const crossWave = ((Math.sin(travelingPhase * .72 + arm.bendPhase) * .07
+        + Math.cos(localPhase * .5 + arm.bendPhase) * .025) * along + bendWindow * Math.cos(bendPulse) * .035)
+        * (1 - jet * .65);
+      const jetTrail = jet * (.3 + arm.flowDrag * .16) * Math.pow(along, 1.65);
       const point = centerline[segment];
       point.copy(arm.base)
         .addScaledVector(direction, length * along)
         .addScaledVector(arm.curveAxis, curl + sweep)
         .addScaledVector(arm.secondaryAxis, crossWave)
         .addScaledVector(flowDirection, jetTrail)
-        .addScaledVector(arm.tangent.set(0, 1, 0), bend * (.055 + Math.sin(localPhase) * .035) * (1 - jet * .15));
-      point.z += Math.sin(localPhase * .83 + armIndex) * .07 * along;
+        .addScaledVector(arm.tangent.set(0, 1, 0), bend * (.035 + Math.sin(localPhase) * .018) * (1 - jet * .15));
+      if (hasTetherDirection) {
+        const tetherResponse = Math.max(0, lineAlignment) * .16 + Math.min(0, lineAlignment) * .06;
+        point.addScaledVector(tetherDirection, tetherResponse * clamp(tetherLoad, 0, 1) * tipWeight * along);
+      }
+      point.z += Math.sin(localPhase * .83 + armIndex) * .03 * along;
     }
 
     for (let segment = 0; segment <= segmentCount; segment++) {
@@ -425,10 +435,10 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
       arm.normal.normalize();
       arm.side.crossVectors(tangent, arm.normal).normalize();
       const along = segment / segmentCount;
-      const musclePulse = Math.sin(bodyPhase * 1.1 - along * 5.5 + arm.phaseOffset) * Math.sin(Math.PI * along) * .055;
+      const musclePulse = Math.sin(bodyPhase * .55 - along * 4.5 + arm.phaseOffset) * Math.sin(Math.PI * along) * .025;
       // A muscular hydrostat shortens and thickens under contraction rather
       // than shrinking uniformly like an inflatable tube losing volume.
-      const radius = (.135 * (1 - along) ** 1.42 + .007) * (1 + musclePulse + jet * .055);
+      const radius = (.135 * (1 - along) ** 1.42 + .007) * (1 + musclePulse + jet * .035);
       const center = centerline[segment];
       for (let radialIndex = 0; radialIndex <= radialCount; radialIndex++) {
         const theta = radialIndex / radialCount * Math.PI * 2;
@@ -488,18 +498,35 @@ export function createJavaOctopus({ detail = 'high', phase = 0, waterUniforms = 
   };
 
   const update = (time, {
-    power = .3, glow = .35, bodyPhase, bodyFrequency = .58, effort = .3, turn = 0, tetherLoad = 0, visibility = 1,
+    power = .3, glow = .35, bodyPhase = Number.NaN, bodyFrequency = .58, effort = .3, turn = 0, tetherLoad = 0,
+    jetIntent = Number.NaN, tetherDirection = noTetherDirection, styleDelta = 1 / 60, visibility = 1,
   } = {}) => {
     if (disposed) return;
     const phaseNow = Number.isFinite(bodyPhase) ? bodyPhase : time * bodyFrequency * Math.PI * 2 + phase;
-    const exertion = clamp(effort, 0, 1);
+    const effortTarget = clamp(effort, 0, 1);
+    const smoothingDelta = clamp(styleDelta, 0, .1);
+    const effortRate = effortTarget > exertionBlend ? 3.5 : 2.8;
+    exertionBlend += (effortTarget - exertionBlend) * (1 - Math.exp(-smoothingDelta * effortRate));
+    const exertion = exertionBlend;
     const propulsion = clamp(power, 0, 1);
-    const jet = smoothstep(.50, .88, exertion) * smoothstep(.14, .66, propulsion);
+    const jetTarget = Number.isFinite(jetIntent)
+      ? clamp(jetIntent, 0, 1)
+      : smoothstep(.50, .88, effortTarget) * smoothstep(.14, .66, propulsion);
+    if (Math.abs(jetTarget - jetTransitionTarget) > .001) {
+      jetTransitionFrom = jetBlend;
+      jetTransitionTarget = jetTarget;
+      jetTransitionElapsed = 0;
+    }
+    jetTransitionElapsed += smoothingDelta;
+    const transitionDuration = jetTransitionTarget > jetTransitionFrom ? .95 : 1.7;
+    const transitionProgress = smoothUnit(jetTransitionElapsed / transitionDuration);
+    jetBlend = jetTransitionFrom + (jetTransitionTarget - jetTransitionFrom) * transitionProgress;
+    const jet = jetBlend;
     const steering = clamp(turn, -1, 1);
     const chromatophore = clamp(Math.max(jet * .78, clamp(tetherLoad, 0, 1) * .62), 0, 1);
     skin.color.copy(normalSkinColor).lerp(stressSkinColor, chromatophore * .72);
     skin.roughness = .68 - chromatophore * .055;
-    for (let index = 0; index < arms.length; index++) updateArm(arms[index], index, phaseNow, exertion, jet, steering, tetherLoad);
+    for (let index = 0; index < arms.length; index++) updateArm(arms[index], index, phaseNow, exertion, jet, steering, tetherLoad, tetherDirection);
     updateWeb();
     updateSuckers(phaseNow, exertion, jet);
 
