@@ -27,6 +27,7 @@ import { shootingStarGLSL, updateShootingStarUniform } from './shooting-star.js'
 import { riverChannelGLSL } from './river-channel.js';
 import { RIVER_BANK_VIEW, riverBankViewGLSL } from './river-bank-view.js';
 import { riverOpticsGLSL } from './river-water.js';
+import { RIVER_RAIN_RIPPLE_SHADER } from './river-rain-ripple.js';
 import { RIVER_FIGHT_RAIN_PROFILE, RIVER_FIGHT_RAIN_SHADER, shouldSoftenRiverFightRain } from './river-fight-rain.js';
 import type { FishSurfaceImpactCue } from '../fish-surface-impact.js';
 import type { Waterway } from '../waterway.js';
@@ -136,21 +137,7 @@ float noise(vec2 p) {
   vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
   return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
 }
-float riverRainRipple(vec2 point) {
-  vec2 drift=vec2(uTime*(0.015+uWeatherWind*0.12),-uTime*(0.01+uWeatherWind*0.05));
-  vec2 grid=(point+drift)*mix(0.42,0.78,uWeatherRain);
-  vec2 cell=floor(grid),local=fract(grid);
-  float occurrence=hash(cell+vec2(83.1,19.2));
-  if(occurrence>0.22+uWeatherRain*0.72)return 0.0;
-  vec2 random=vec2(hash(cell+vec2(17.7,48.2)),hash(cell+vec2(113.13,271.19)));
-  vec2 center=mix(vec2(0.25),vec2(0.75),random);
-  float rate=mix(0.35,0.65+uWeatherRain*0.4,random.x);
-  float age=fract(uTime*rate+random.y);
-  float radius=0.01+age*0.18;
-  float distanceToRing=length(local-center);
-  float ring=exp(-pow((distanceToRing-radius)*50.0,2.0));
-  return ring*(1.0-smoothstep(0.72,1.0,age));
-}
+${RIVER_RAIN_RIPPLE_SHADER.function}
 float cloudField(vec2 p) {
   // Clear skies are the common fallback state. Skip cloud noise entirely then.
   if(uWeatherCloud<=0.005) return 0.5;
@@ -299,7 +286,7 @@ void main(){
     float rainRipple=0.0;
     if(uRiver>0.5&&uWeatherRain>0.005)rainRipple=riverRainRipple(p.xz)*uWeatherRain;
     n=normalize(n+vec3(fine+windRipple+rainMicro,0.0,-fine*0.42+windRipple*0.76+rainMicro*0.5));
-    n=normalize(n+vec3(rainRipple*.14,0.0,rainRipple*.1));
+    ${RIVER_RAIN_RIPPLE_SHADER.normalAdjustment}
     n=normalize(mix(n,vec3(0.0,1.0,0.0),smoothstep(90.0,450.0,t)));
     if(uRiver>0.5) {
       n=riverSurfaceNormal(n,p,riverLateral,riverDepthRatio,t);
@@ -323,7 +310,7 @@ void main(){
       reflectedColor=mix(reflectedColor,landscapeReflection,reflectionValid);
     }
     color=mix(water,reflectedColor,fresnel*mix(0.72,0.94,uRiver));
-    color+=vec3(0.025,0.038,0.044)*rainRipple;
+    ${RIVER_RAIN_RIPPLE_SHADER.colorAdjustment}
     vec3 sun=normalize(mix(vec3(-0.42,0.065,-1.0),vec3(-0.45,0.68,-0.4),uRiver));
     float roughness=clamp(max(uWeatherWind,uWeatherRain*0.55),0.0,1.0);
     float glint=pow(max(dot(reflected,sun),0.0),mix(360.0,105.0,roughness));
