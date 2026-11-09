@@ -161,3 +161,30 @@ test("switching from sea to river creates a river room with a river fish", async
   expect(consoleErrors).toEqual([]);
 });
 
+
+test("/?waterway=river&weather=rain&time=night renders the rainy river scene", async ({ page }) => {
+  test.setTimeout(60_000);
+  const requestedWaterways: string[] = [];
+  const roomStatuses: number[] = [];
+  const connections = captureOceanConnections(page);
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+
+  page.on("pageerror", error => pageErrors.push(error.message));
+  page.on("console", message => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  await stubCurrentWeather(page);
+  await pinEncounterByWaterway(page, requestedWaterways, roomStatuses);
+
+  await page.goto("/?waterway=river&weather=rain&time=night");
+  await waitForScene(page, "river");
+  await expect.poll(() => connections.some(connection => connection.states.some(state => state.fishId === "river-yamame" && state.phase === "idle")), {
+    timeout: 20_000,
+  }).toBe(true);
+
+  expect(requestedWaterways).toEqual(["river"]);
+  expect(roomStatuses).toEqual([201]);
+  expect(pageErrors).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+});
