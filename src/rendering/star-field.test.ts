@@ -21,6 +21,7 @@ test('only a small share of stars receives a thin four-point flare', () => {
 test('star count and night, cloud, storm and twinkle behavior remain intact', () => {
   assert.ok(starFieldGLSL.includes('vec2 grid=skyCoordinates(direction)*vec2(120.0,75.0);'));
   assert.ok(starFieldGLSL.includes('float sparseStars=step(0.9935,seed);'));
+  assert.ok(starFieldGLSL.includes('if(sparseStars<0.5) return 0.0;'));
   assert.ok(starFieldGLSL.includes('if(direction.y<=0.04 || cloudMask>=0.98) return 0.0;'));
   assert.ok(starFieldGLSL.includes('float stormFade=1.0-uWeatherStorm*0.96;'));
   assert.ok(starFieldGLSL.includes('float twinkle=0.84+0.16*sin('));
