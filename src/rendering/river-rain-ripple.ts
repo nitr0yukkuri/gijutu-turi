@@ -19,6 +19,7 @@ export const RIVER_RAIN_RIPPLE_PROFILE = Object.freeze({
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 const mix = (from: number, to: number, amount: number): number => from + (to - from) * amount;
+const glslFloat = (value: number): string => Number.isInteger(value) ? value.toFixed(1) : String(value);
 
 /** Rain-impact density in world-space cells, capped so the surface never becomes a field of rings. */
 export function riverRainRippleProfile(rainIntensity: number) {
@@ -54,7 +55,7 @@ export const RIVER_RAIN_RIPPLE_SHADER = Object.freeze({
   vec2 ellipse=rotation*(local-center);
   float aspect=mix(0.78,1.25,randomB.z);
   float distanceToRing=length(vec2(ellipse.x/aspect,ellipse.y));
-  float ringWidth=mix(${RIVER_RAIN_RIPPLE_PROFILE.minimumRingWidth},${RIVER_RAIN_RIPPLE_PROFILE.maximumRingWidth},randomB.w);
+  float ringWidth=mix(${glslFloat(RIVER_RAIN_RIPPLE_PROFILE.minimumRingWidth)},${glslFloat(RIVER_RAIN_RIPPLE_PROFILE.maximumRingWidth)},randomB.w);
   float ring=exp(-pow((distanceToRing-radius)*ringWidth,2.0));
   float fade=smoothstep(0.0,${RIVER_RAIN_RIPPLE_PROFILE.fadeInEnd},age)*(1.0-smoothstep(${RIVER_RAIN_RIPPLE_PROFILE.fadeOutStart},${RIVER_RAIN_RIPPLE_PROFILE.fadeOutEnd},age));
   return ring*fade;
