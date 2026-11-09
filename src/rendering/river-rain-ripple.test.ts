@@ -32,7 +32,7 @@ test('surface rings vary in placement, radius, orientation and width, then fade 
   assert.match(rippleFunction, /mix\(vec2\(0\.08\),vec2\(0\.92\),randomA\.xy\)/);
   assert.match(rippleFunction, /mix\(0\.008,0\.105,age\)/);
   assert.match(rippleFunction, /float angle=randomB\.y\*6\.2831853/);
-  assert.match(rippleFunction, /float ringWidth=mix\(24,43,randomB\.w\)/);
+  assert.match(rippleFunction, /float ringWidth=mix\(24\.0,43\.0,randomB\.w\)/);
   assert.match(rippleFunction, /smoothstep\(0\.0,0\.11,age\)/);
   assert.match(rippleFunction, /smoothstep\(0\.6,0\.92,age\)/);
 });
