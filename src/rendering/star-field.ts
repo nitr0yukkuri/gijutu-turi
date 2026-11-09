@@ -24,6 +24,8 @@ export const starFieldGLSL = `float starField(vec3 direction,float cloudMask) {
   vec2 cell=floor(grid);
   vec2 local=fract(grid)-0.5;
   float seed=hash(cell+vec2(17.1,31.7));
+  float sparseStars=step(${STAR_FIELD_PROFILE.sparseThreshold},seed);
+  if(sparseStars<0.5) return 0.0;
   vec2 offset=vec2(hash(cell+vec2(4.3,7.1)),hash(cell+vec2(9.2,2.7)))-0.5;
   vec2 starDelta=local-offset;
   float pointRadius=mix(${STAR_FIELD_PROFILE.minimumCoreRadius},${STAR_FIELD_PROFILE.maximumCoreRadius},hash(cell+vec2(13.2,8.9)));
@@ -35,7 +37,6 @@ export const starFieldGLSL = `float starField(vec3 direction,float cloudMask) {
   float verticalFlare=exp(-pow(starDelta.x*${glslFloat(STAR_FIELD_PROFILE.flareArmNarrowness)},2.0))*exp(-abs(starDelta.y)*${glslFloat(STAR_FIELD_PROFILE.verticalFlareFalloff)});
   float flare=(horizontalFlare+verticalFlare)*flareSelected*${STAR_FIELD_PROFILE.flareStrength};
   float starShape=clamp(pointCore+halo+flare,0.0,1.0);
-  float sparseStars=step(${STAR_FIELD_PROFILE.sparseThreshold},seed);
   float stormFade=1.0-uWeatherStorm*0.96;
   float visible=smoothstep(0.04,0.24,elevation)*(1.0-cloudMask*0.96)*stormFade;
   float twinkle=0.84+0.16*sin(uTime*(1.2+seed*1.8)+seed*6.283);
