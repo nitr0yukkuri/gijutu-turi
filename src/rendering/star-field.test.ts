@@ -11,8 +11,10 @@ test('stars are point-like instead of large blurred disks', () => {
 });
 
 test('only a small share of stars receives a thin four-point flare', () => {
-  assert.equal(STAR_FIELD_PROFILE.flareSelectionThreshold, 0.9);
-  assert.ok(starFieldGLSL.includes('float flareSelected=step(0.9,hash('));
+  assert.equal(STAR_FIELD_PROFILE.flareMagnitudeStart, 0.72);
+  assert.equal(STAR_FIELD_PROFILE.flareMagnitudeEnd, 0.94);
+  assert.equal(STAR_FIELD_PROFILE.flareSelectionThreshold, 0.85);
+  assert.ok(starFieldGLSL.includes('float flareSelected=smoothstep(0.72,0.94,magnitude)*step(0.85,hash('));
   assert.ok(starFieldGLSL.includes('float horizontalFlare='));
   assert.ok(starFieldGLSL.includes('float verticalFlare='));
   assert.ok(starFieldGLSL.includes('float flare=(horizontalFlare+verticalFlare)*flareSelected*0.3;'));
