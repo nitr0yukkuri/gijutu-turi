@@ -24,6 +24,7 @@ import { createOceanFishModels } from './ocean-fish-models.js';
 import { createOctopusInkEffect, shouldReleaseJavaOctopusInk } from './octopus-ink.js';
 import { createRiverEnvironment } from './river-environment.js';
 import { shootingStarGLSL, updateShootingStarUniform } from './shooting-star.js';
+import { starFieldGLSL } from './star-field.js';
 import { riverChannelGLSL } from './river-channel.js';
 import { RIVER_BANK_VIEW, riverBankViewGLSL } from './river-bank-view.js';
 import { riverOpticsGLSL } from './river-water.js';
@@ -157,24 +158,7 @@ float cloudCoverageMask(float field,float elevation) {
 vec2 skyCoordinates(vec3 d) {
   return vec2(atan(d.x,-d.z),asin(clamp(d.y,-1.0,1.0)));
 }
-float starField(vec3 direction,float cloudMask) {
-  if(direction.y<=0.04 || cloudMask>=0.98) return 0.0;
-  float elevation=max(direction.y,0.0);
-  vec2 grid=skyCoordinates(direction)*vec2(120.0,75.0);
-  vec2 cell=floor(grid);
-  vec2 local=fract(grid)-0.5;
-  float seed=hash(cell+vec2(17.1,31.7));
-  vec2 offset=vec2(hash(cell+vec2(4.3,7.1)),hash(cell+vec2(9.2,2.7)))-0.5;
-  float radius=mix(0.2,0.48,hash(cell+vec2(13.2,8.9)));
-  float distanceToStar=length(local-offset);
-  float core=1.0-smoothstep(radius*0.38,radius,distanceToStar);
-  float sparseStars=step(0.9935,seed);
-  float stormFade=1.0-uWeatherStorm*0.96;
-  float visible=smoothstep(0.04,0.24,elevation)*(1.0-cloudMask*0.96)*stormFade;
-  float twinkle=0.84+0.16*sin(uTime*(1.2+seed*1.8)+seed*6.283);
-  float magnitude=mix(0.48,1.0,hash(cell+vec2(22.4,9.8)));
-  return core*sparseStars*visible*twinkle*magnitude;
-}
+${starFieldGLSL}
 float segmentDistance(vec2 p,vec2 a,vec2 b) {
   vec2 pa=p-a,ba=b-a;
   float h=clamp(dot(pa,ba)/max(dot(ba,ba),0.000001),0.0,1.0);
