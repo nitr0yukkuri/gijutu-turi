@@ -17,5 +17,5 @@
     "noImplicitOverride": true,
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts", "browser-tests/**/*.ts", "playwright.config.ts", "vite.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts", "browser-tests/**/*.ts", "cloudflare-tests/**/*.ts", "playwright.config.ts", "vite.config.ts"]
 }

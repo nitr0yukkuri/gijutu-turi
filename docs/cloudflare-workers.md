@@ -14,6 +14,15 @@ npm ci
 npm run dev:cloudflare
 ```
 
+本番ビルド後、Cloudflareの実行エンジンを使った分離テストも実行できます。
+
+```powershell
+npm run build
+npm run test:cloudflare
+```
+
+この検証はローカルMiniflare/workerdと専用の一時D1・DOを使い、本番DBへ接続しません。SPAルート、認証境界、全active魚種のD1保存と重複防止、実WebSocket接続、操作端末の制限、DO再起動後の状態復元、部屋予約128件の境界を確認します。捕獲保存はテスト専用entryからサーバー側保存関数を呼び出すため、実時間のファイト全体やスマートフォンの実機操作の検査は別に必要です。テスト専用entryはWranglerのmainに含めません。
+
 Wranglerは既定でローカルD1を使います。本番D1へ接続する設定は入れていません。画面/APIの確認後、PC表示とスマートフォン用コントローラーを同じ部屋へ接続して動きを確認してください。
 
 ## デプロイ

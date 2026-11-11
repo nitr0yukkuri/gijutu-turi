@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - 'codex/cloudflare-*-20261111'
   push:
     branches:
       - main
@@ -37,6 +38,9 @@ jobs:
 
       - name: 本番ビルド
         run: npm run build
+
+      - name: Cloudflare実行環境のAPI・WebSocket・D1検証
+        run: npm run test:cloudflare
 
       - name: Cloudflare Worker dry run
         run: npx wrangler deploy --dry-run
