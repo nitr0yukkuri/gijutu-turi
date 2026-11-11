@@ -181,3 +181,47 @@ test("a transient D1 cleanup error keeps the room snapshot available for retry",
   assert.equal(deleteAttempts, 2);
 });
 
+test("an expiring room rejects reconnects while D1 cleanup is pending", async () => {
+  const values = new Map<string, unknown>();
+  let signalDeleteStarted!: () => void;
+  let finishDelete!: () => void;
+  const deleteStarted = new Promise<void>(resolve => { signalDeleteStarted = resolve; });
+  const deleteGate = new Promise<void>(resolve => { finishDelete = resolve; });
+  const storage = {
+    get: async <T>(key: string) => values.get(key) as T | undefined,
+    put: async <T>(key: string, value: T) => { values.set(key, structuredClone(value)); },
+    delete: async (key: string) => values.delete(key),
+    deleteAlarm: async () => {},
+    setAlarm: async (_time: number | Date) => {},
+  } as DurableObjectStorage;
+  const state = {
+    storage,
+    getWebSockets: () => [],
+    waitUntil: (_promise: Promise<unknown>) => {},
+  } as unknown as DurableObjectState;
+  const env = {
+    DB: {
+      prepare: () => ({ bind: () => ({ run: async () => {
+        signalDeleteStarted();
+        await deleteGate;
+      } }) }),
+    },
+  } as unknown as CloudflareEnv;
+  const room = new OceanRoom(state, env);
+  const created = await room.fetch(new Request("https://room.internal/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ roomId: `sea_${"c".repeat(32)}`, playerId: "player_smoke-test-1234" }),
+  }));
+  assert.equal(created.status, 201);
+
+  const cleanup = room.alarm();
+  await deleteStarted;
+  const reconnect = await room.fetch(new Request("https://room.internal/ocean-ws?role=display"));
+  assert.equal(reconnect.status, 410, "an expired room must not accept a display during D1 cleanup");
+
+  finishDelete();
+  await cleanup;
+  assert.equal(values.has("room"), false);
+});
+
