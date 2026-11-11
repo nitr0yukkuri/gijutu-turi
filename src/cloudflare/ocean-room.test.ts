@@ -21,13 +21,15 @@ test("an active room stops ticking after its display disconnects while a control
   const values = new Map<string, unknown>();
   const pending: Promise<unknown>[] = [];
   const sockets: DurableSocket[] = [];
+  const deletedRooms: string[] = [];
+  let roomExpiry: number | Date | undefined;
   let storageWrites = 0;
   const storage = {
     get: async <T>(key: string) => values.get(key) as T | undefined,
     put: async <T>(key: string, value: T) => { values.set(key, structuredClone(value)); storageWrites++; },
     delete: async (key: string) => values.delete(key),
-    deleteAlarm: async () => {},
-    setAlarm: async (_time: number | Date) => {},
+    deleteAlarm: async () => { roomExpiry = undefined; },
+    setAlarm: async (time: number | Date) => { roomExpiry = time; },
   } as DurableObjectStorage;
   const state = {
     storage,
@@ -38,7 +40,11 @@ test("an active room stops ticking after its display disconnects while a control
     waitUntil: (promise: Promise<unknown>) => { pending.push(promise); },
     blockConcurrencyWhile: async <T>(callback: () => Promise<T>) => callback(),
   } as unknown as DurableObjectState;
-  const env = { DB: {} } as CloudflareEnv;
+  const env = {
+    DB: {
+      prepare: () => ({ bind: (roomId: string) => ({ run: async () => { deletedRooms.push(roomId); } }) }),
+    },
+  } as unknown as CloudflareEnv;
   const room = new OceanRoom(state, env);
   const internals = room as unknown as {
     room?: { game: { state: { phase: string } } };
@@ -73,6 +79,13 @@ test("an active room stops ticking after its display disconnects while a control
   while (pending.length) await Promise.all(pending.splice(0));
   assert.equal(internals.tickTimer, undefined, "the last scheduled tick should stop when only a controller remains");
   assert.equal(storageWrites, writesAfterDisconnect, "controller-only idle time should not keep writing room state");
+  assert.notEqual(roomExpiry, undefined, "a controller-only room should retain its cleanup alarm");
+
+  await room.alarm();
+
+  assert.deepEqual(deletedRooms, [`sea_${"a".repeat(32)}`], "the expired room should release its D1 slot");
+  assert.equal(internals.room, undefined, "the expired room snapshot should be removed");
+  assert.equal(controller.readyState, 3, "the controller should be closed when its room expires");
 });
 
 test("a transient room-storage error marks catch persistence retryable", async () => {
@@ -123,5 +136,48 @@ test("a transient room-storage error marks catch persistence retryable", async (
   assert.equal(internals.room.catchSaveStatus, "failed");
   assert.equal(storageWrites, 2, "the failed pending write is followed by a persisted retryable status");
   assert.equal((values.get("room") as { catchSaveStatus: string }).catchSaveStatus, "failed");
+});
+
+test("a transient D1 cleanup error keeps the room snapshot available for retry", async () => {
+  const values = new Map<string, unknown>();
+  let deleteAttempts = 0;
+  let alarmAt: number | Date | undefined;
+  const storage = {
+    get: async <T>(key: string) => values.get(key) as T | undefined,
+    put: async <T>(key: string, value: T) => { values.set(key, structuredClone(value)); },
+    delete: async (key: string) => values.delete(key),
+    deleteAlarm: async () => { alarmAt = undefined; },
+    setAlarm: async (time: number | Date) => { alarmAt = time; },
+  } as DurableObjectStorage;
+  const state = {
+    storage,
+    getWebSockets: () => [],
+    waitUntil: (_promise: Promise<unknown>) => {},
+  } as unknown as DurableObjectState;
+  const env = {
+    DB: {
+      prepare: () => ({ bind: () => ({ run: async () => {
+        deleteAttempts++;
+        if (deleteAttempts === 1) throw new Error("temporary D1 failure");
+      } }) }),
+    },
+  } as unknown as CloudflareEnv;
+  const room = new OceanRoom(state, env);
+
+  const created = await room.fetch(new Request("https://room.internal/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ roomId: `sea_${"b".repeat(32)}`, playerId: "player_smoke-test-1234" }),
+  }));
+  assert.equal(created.status, 201);
+
+  await assert.rejects(room.alarm(), /temporary D1 failure/);
+  assert.equal(values.has("room"), true, "the room snapshot must survive until D1 cleanup succeeds");
+  assert.notEqual(alarmAt, undefined, "a failed D1 cleanup should schedule another attempt");
+
+  await room.alarm();
+
+  assert.equal(values.has("room"), false);
+  assert.equal(deleteAttempts, 2);
 });
 

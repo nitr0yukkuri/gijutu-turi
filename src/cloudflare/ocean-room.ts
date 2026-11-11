@@ -272,6 +272,9 @@ export class OceanRoom {
     this.state.acceptWebSocket(server, [role]);
     server.serializeAttachment({ role, reelUntil: 0, lastRodPumpAt: 0, windowAt: Date.now(), messages: 0 } satisfies ClientAttachment);
     this.broadcast();
+    if (this.roleCount("display") === 0) {
+      await this.state.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
+    }
     if (isActive(room)) this.scheduleTick(50);
     await this.persist(true);
     return new Response(null, { status: 101, webSocket: client } as ResponseInit & { webSocket: WebSocket });
@@ -337,20 +340,20 @@ export class OceanRoom {
     }
     this.state.waitUntil((async () => {
       const room = await this.getRoom();
+      if (room && this.roleCount("display") === 0) {
+        await this.state.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
+      }
       await this.persist(true);
       this.broadcast();
-      if (this.clients().length === 0 && room) {
-        await this.state.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
-      } else if (room && this.roleCount("display") > 0 && isActive(room)) {
+      if (room && this.roleCount("display") > 0 && isActive(room)) {
         this.scheduleTick(50);
       }
     })());
   }
 
   async alarm(): Promise<void> {
-    if (this.clients().length > 0) return;
     const room = await this.getRoom();
-    if (!room) return;
+    if (!room || this.roleCount("display") > 0) return;
     if (room.catchEvent && room.catchSaveStatus !== "saved") {
       try { await this.writeCatch(); } catch { /* retry on the next alarm */ }
       if (!canContinueAfterCatchSave(room.catchSaveStatus)) {
@@ -358,9 +361,19 @@ export class OceanRoom {
         return;
       }
     }
-    await this.state.storage.delete(ROOM_STORAGE_KEY);
     const { deleteOceanRoom } = await import("./d1-store.js");
-    await deleteOceanRoom(this.env.DB, room.id);
+    try {
+      // Release the D1 slot first. If this fails, keep the room snapshot so a
+      // later alarm can retry; deleting the snapshot first would orphan the slot.
+      await deleteOceanRoom(this.env.DB, room.id);
+      await this.state.storage.delete(ROOM_STORAGE_KEY);
+    } catch (error) {
+      await this.state.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
+      throw error;
+    }
+    for (const socket of this.clients()) {
+      try { socket.close(1001, "room_expired"); } catch { /* already closed */ }
+    }
     this.room = undefined;
     this.game = undefined;
   }
