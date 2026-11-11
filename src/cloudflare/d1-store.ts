@@ -103,3 +103,17 @@ export async function deleteOceanRoom(db: D1Database, roomId: string): Promise<v
   await bind(db, "DELETE FROM ocean_rooms WHERE room_id = ?", [roomId]).run();
 }
 
+export type RoomReservation = { room_id: string; created_at: string };
+
+export async function listRoomReservations(db: D1Database, cursor: string, limit: number): Promise<RoomReservation[]> {
+  const result = await bind(db, "SELECT room_id, created_at FROM ocean_rooms WHERE room_id > ? ORDER BY room_id LIMIT ?", [cursor, limit])
+    .all<RoomReservation>();
+  return result.results;
+}
+
+/** A missing DO is releasable only if this exact, old reservation still exists. */
+export async function releaseMissingRoomReservation(db: D1Database, roomId: string, createdAt: string, cutoff: string): Promise<boolean> {
+  const result = await bind(db, "DELETE FROM ocean_rooms WHERE room_id = ? AND created_at = ? AND created_at < ?", [roomId, createdAt, cutoff]).run();
+  return (result.meta?.changes ?? 0) > 0;
+}
+

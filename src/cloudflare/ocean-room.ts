@@ -1,7 +1,7 @@
 import { OceanFishingGame, type OceanAction, type OceanPhase, type OceanFishingGameSnapshot } from "../ocean-game.js";
 import { getWaterwayForFish, isFishSpeciesId, randomActiveFishSpeciesId, type FishSpeciesId } from "../fish-species.js";
 import { canContinueAfterCatchSave, oceanCommandSchema, type OceanMessage, type CatchSaveStatus } from "../ocean-contract.js";
-import { recordCatch } from "./d1-store.js";
+import { recordCatch, releaseMissingRoomReservation } from "./d1-store.js";
 import type { CloudflareEnv, DurableObjectState, DurableSocket } from "./types.js";
 import { ESCAPE_ANIMATION_MS } from "../ocean-timing.js";
 import { isCurrentWeather } from "../weather-contract.js";
@@ -23,6 +23,7 @@ type StoredRoom = {
   catchSaveStatus: CatchSaveStatus;
   catchEvent?: { eventKey: string; fishId: FishSpeciesId };
   expiring?: boolean;
+  schemaVersion?: number;
 };
 
 const ROOM_STORAGE_KEY = "room";
@@ -74,6 +75,7 @@ export class OceanRoom {
     if (!this.loading) {
       this.loading = this.state.storage.get<StoredRoom>(ROOM_STORAGE_KEY).then(stored => {
         if (stored) {
+          if (stored.schemaVersion !== undefined && stored.schemaVersion !== 1) throw new Error("unsupported_room_schema");
           this.room = { ...stored, game: stored.game };
           this.game = OceanFishingGame.restore(stored.game);
           this.lastStoredAt = Date.now();
@@ -91,6 +93,7 @@ export class OceanRoom {
     if (!room || !this.game) return;
     if (!force && Date.now() - this.lastStoredAt < 2_000) return;
     room.game = this.game.serialize();
+    room.schemaVersion = 1;
     await this.state.storage.put(ROOM_STORAGE_KEY, room);
     this.lastStoredAt = Date.now();
   }
@@ -229,8 +232,45 @@ export class OceanRoom {
     if (this.roleCount("display") > 0 && (isGameActive(game) || this.commands.length > 0)) this.scheduleTick(50);
   }
 
+  private async administerRoom(request: Request, url: URL): Promise<Response> {
+    if (url.hostname !== "ocean-room.internal" || request.method !== "POST"
+      || !["/_admin/inspect", "/_admin/reconcile"].includes(url.pathname)) return new Response("Not Found", { status: 404 });
+    const input = await request.json().catch(() => null) as { roomId?: unknown; createdAt?: unknown } | null;
+    if (!input || typeof input.roomId !== "string" || !/^sea_[a-f0-9]{32}$/.test(input.roomId)
+      || typeof input.createdAt !== "string" || !Number.isFinite(Date.parse(input.createdAt))) return new Response("Bad Request", { status: 400 });
+    const room = await this.getRoom();
+    if (room && room.id !== input.roomId) return new Response("Conflict", { status: 409 });
+    const displays = this.roleCount("display");
+    const controllers = this.roleCount("controller");
+    let alarmAt = await this.state.storage.getAlarm();
+    let action = "inspected";
+    if (url.pathname === "/_admin/reconcile") {
+      if (this.clients().length > 0 && (!room || displays > 0)) action = "kept_connected";
+      else if (!room) {
+        const cutoff = new Date(Date.now() - ROOM_IDLE_TTL_MS).toISOString();
+        if (Date.parse(input.createdAt) >= Date.parse(cutoff)) action = "kept_recent_reservation";
+        else action = await releaseMissingRoomReservation(this.env.DB, input.roomId, input.createdAt, cutoff)
+          ? "released_missing_snapshot" : "already_released";
+      } else if (displays > 0) action = "kept_connected";
+      else if (alarmAt !== null) action = "kept_alarm";
+      else {
+        // Legacy snapshots may predate the TTL fix. Give them a full grace
+        // period; pending catches are saved by the normal expiration handler.
+        alarmAt = Date.now() + ROOM_IDLE_TTL_MS;
+        await this.state.storage.setAlarm(alarmAt);
+        action = "scheduled_expiry";
+      }
+    }
+    return Response.json({
+      exists: Boolean(room), displays, controllers, alarmAt, action,
+      catchSaveStatus: room?.catchSaveStatus ?? null,
+      expiring: room?.expiring ?? false, schemaVersion: room ? room.schemaVersion ?? 1 : null,
+    }, { headers: { "Cache-Control": "no-store" } });
+  }
+
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/_admin/")) return this.administerRoom(request, url);
     if (url.pathname === "/create" && request.method === "POST") {
       const input = await request.json().catch(() => null) as Partial<{ roomId: string; playerId: string; fishId: string; waterway: "sea" | "river"; weather: unknown }> | null;
       if (!input || typeof input.roomId !== "string" || !/^sea_[a-f0-9]{32}$/.test(input.roomId)
