@@ -29,6 +29,7 @@ export interface DurableObjectStorage {
   put<T>(key: string, value: T): Promise<void>;
   delete(key: string): Promise<boolean>;
   deleteAlarm(): Promise<void>;
+  getAlarm(): Promise<number | null>;
   setAlarm(time: number | Date): Promise<void>;
 }
 
@@ -58,6 +59,7 @@ export interface CloudflareEnv {
   ASSETS: StaticAssets;
   OCEAN_ROOMS: DurableObjectNamespace;
   FRONTEND_ORIGIN?: string;
+  MIGRATION_ADMIN_TOKEN?: string;
 }
 
 export type OceanRoomCreatePayload = { roomId: string; playerId: string; fishId?: FishSpeciesId; waterway?: "sea" | "river"; weather?: CurrentWeather };

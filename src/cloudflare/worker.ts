@@ -8,6 +8,7 @@ import { createReservedRoom } from "./room-reservation.js";
 import type { CloudflareEnv } from "./types.js";
 import { getCachedCurrentWeather, handleCurrentWeatherRequest, type WeatherFetcher } from "../current-weather.js";
 import type { CurrentWeather } from "../weather-contract.js";
+import { handleRoomAdministration } from "./room-administration.js";
 
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
 const limitWindowMs = 10 * 60_000;
@@ -77,6 +78,10 @@ function applyCors(request: Request, response: Response, environment: Cloudflare
 async function route(request: Request, env: CloudflareEnv): Promise<Response> {
   const url = new URL(request.url);
   if (request.method === "OPTIONS" && url.pathname.startsWith("/api/")) return new Response(null, { status: 204 });
+
+  if (url.pathname === "/api/admin/rooms" || url.pathname === "/api/admin/rooms/reconcile") {
+    return handleRoomAdministration(request, env);
+  }
 
   if (url.pathname === "/health" && request.method === "GET") {
     return json({ ok: true, service: "gijutu-turi-cloudflare" });

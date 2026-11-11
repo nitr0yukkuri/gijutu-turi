@@ -16,6 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test src/**/*.test.ts",
     "test:cloudflare": "node --import tsx --test cloudflare-tests/*.test.ts",
+    "rooms:inspect": "node --import tsx scripts/reconcile-cloudflare-rooms.ts",
+    "rooms:reconcile": "node --import tsx scripts/reconcile-cloudflare-rooms.ts --apply",
     "test:browser": "playwright test",
     "test:ocean": "node --import tsx scripts/verify-ocean.ts",
     "test:fish": "node --import tsx scripts/verify-go-fish.ts",
