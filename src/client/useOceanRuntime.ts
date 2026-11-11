@@ -106,6 +106,7 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
   const fishingAudioRef = useRef<FishingAudioController | null>(null);
   const motionReelRef = useRef(false);
   const receivedRodStrokeRef = useRef<number | null>(null);
+  const roomSessionRef = useRef<{ key: string; id: string; host?: string } | null>(null);
 
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { onlineRef.current = online; }, [online]);
@@ -379,22 +380,43 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
 
   const getRoom = useCallback(async (): Promise<{ id: string; host?: string }> => {
     if (isPhone) return { id: controllerId ?? "" };
-    const stored = sessionStorage.getItem("gijutu.ocean-room");
-    const storedHost = sessionStorage.getItem("gijutu.ocean-host-v2") ?? undefined;
-    const storedFish = sessionStorage.getItem(roomFishStorageKey);
-    if (stored && storedHost && !isLoopbackHost(storedHost) && storedFish === roomFishKey) return { id: stored, host: storedHost };
-    if (stored) sessionStorage.removeItem("gijutu.ocean-room");
-    if (storedHost) sessionStorage.removeItem("gijutu.ocean-host-v2");
-    if (storedFish) sessionStorage.removeItem(roomFishStorageKey);
+    const memoryRoom = roomSessionRef.current;
+    if (memoryRoom?.key === roomFishKey) return { id: memoryRoom.id, host: memoryRoom.host };
+    let stored: string | null = null;
+    let storedHost: string | undefined;
+    let storedFish: string | null = null;
+    try {
+      stored = sessionStorage.getItem("gijutu.ocean-room");
+      storedHost = sessionStorage.getItem("gijutu.ocean-host-v2") ?? undefined;
+      storedFish = sessionStorage.getItem(roomFishStorageKey);
+    } catch {
+      // The in-memory room below keeps this tab usable when browser storage is blocked.
+    }
+    if (stored && storedHost && !isLoopbackHost(storedHost) && storedFish === roomFishKey) {
+      roomSessionRef.current = { key: roomFishKey, id: stored, host: storedHost };
+      return { id: stored, host: storedHost };
+    }
+    try {
+      if (stored) sessionStorage.removeItem("gijutu.ocean-room");
+      if (storedHost) sessionStorage.removeItem("gijutu.ocean-host-v2");
+      if (storedFish) sessionStorage.removeItem(roomFishStorageKey);
+    } catch {
+      // Storage cleanup is optional; the current tab tracks its room in memory.
+    }
     const result = await createPlayerOceanRoom(
       backendUrl("/api/player-sessions"),
       backendUrl("/api/ocean-sessions"),
       roomStartingFishId,
       waterway,
     );
-    sessionStorage.setItem("gijutu.ocean-room", result.id);
-    sessionStorage.setItem(roomFishStorageKey, roomFishKey);
-    if (result.host) sessionStorage.setItem("gijutu.ocean-host-v2", result.host);
+    roomSessionRef.current = { key: roomFishKey, id: result.id, host: result.host };
+    try {
+      sessionStorage.setItem("gijutu.ocean-room", result.id);
+      sessionStorage.setItem(roomFishStorageKey, roomFishKey);
+      if (result.host) sessionStorage.setItem("gijutu.ocean-host-v2", result.host);
+    } catch {
+      // Keep the room for reconnects in this tab even when sessionStorage is unavailable.
+    }
     return result;
   }, [controllerId, roomStartingFishId, isPhone, roomFishKey, waterway]);
 
@@ -462,9 +484,14 @@ export function useOceanRuntime({ isPhone, controllerId, initialFishId, waterway
         if (!opened && !isPhone && retriesRef.current >= 2) {
           // If a room vanished during a backend restart, retry the same room
           // briefly, then create a fresh room instead of reconnecting forever.
-          sessionStorage.removeItem("gijutu.ocean-room");
-          sessionStorage.removeItem("gijutu.ocean-host-v2");
-          sessionStorage.removeItem(roomFishStorageKey);
+          roomSessionRef.current = null;
+          try {
+            sessionStorage.removeItem("gijutu.ocean-room");
+            sessionStorage.removeItem("gijutu.ocean-host-v2");
+            sessionStorage.removeItem(roomFishStorageKey);
+          } catch {
+            // The tab's memory cache was cleared above; storage cleanup is optional.
+          }
         }
         scheduleRetry(isPhone ? "接続を再試行しています。接続できない場合は海の画面から新しいURLを開いてください。" : "接続が切れました。再接続しています。");
       });

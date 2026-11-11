@@ -31,9 +31,12 @@ test("collection store records each catch event once", () => {
   try {
     assert.doesNotThrow(() => store.ping());
     const initial = store.getCollection(playerId);
+    const activeSpecies = FISH_SPECIES
+      .filter(species => species.catalogStatus === "active")
+      .sort((left, right) => left.number - right.number);
     assert.equal(initial.registered, 0);
-    assert.deepEqual(initial.entries.map(entry => entry.id), FISH_SPECIES.filter(species => species.catalogStatus === "active").map(species => species.id));
-    assert.equal(initial.activeTotal, FISH_SPECIES.filter(species => species.catalogStatus === "active").length);
+    assert.deepEqual(initial.entries.map(entry => entry.id), activeSpecies.map(species => species.id));
+    assert.equal(initial.activeTotal, activeSpecies.length);
     assert.equal(initial.catalogTotal, FISH_SPECIES.length);
 
     const first = store.recordCatch(playerId, "fish-001", "sea_test:1", "2026-09-21T00:00:00.000Z");

@@ -22,6 +22,7 @@ type StoredRoom = {
   rodStroke: number;
   catchSaveStatus: CatchSaveStatus;
   catchEvent?: { eventKey: string; fishId: FishSpeciesId };
+  expiring?: boolean;
 };
 
 const ROOM_STORAGE_KEY = "room";
@@ -190,7 +191,7 @@ export class OceanRoom {
     const room = await this.getRoom();
     const game = this.game;
     const sockets = this.clients();
-    if (!room || !game || this.roleCount("display", sockets) === 0) return;
+    if (!room || room.expiring || !game || this.roleCount("display", sockets) === 0) return;
     const now = Date.now();
     const previous = game.state.phase;
     const saveLocked = game.state.phase === "caught" && !canContinueAfterCatchSave(room.catchSaveStatus);
@@ -257,6 +258,7 @@ export class OceanRoom {
     const upgrade = request.headers.get("Upgrade")?.toLowerCase() === "websocket";
     const room = await this.getRoom();
     if (!room || !this.game) return new Response("Not Found", { status: 404 });
+    if (room.expiring) return new Response("Gone", { status: 410 });
     if (!upgrade || url.pathname !== "/ocean-ws") return new Response("Upgrade Required", { status: 426 });
     const role = url.searchParams.get("role");
     const originAllowed = allowedOrigin(request.headers.get("Origin"), request.headers.get("Host") ?? url.host, this.env.FRONTEND_ORIGIN);
@@ -272,6 +274,9 @@ export class OceanRoom {
     this.state.acceptWebSocket(server, [role]);
     server.serializeAttachment({ role, reelUntil: 0, lastRodPumpAt: 0, windowAt: Date.now(), messages: 0 } satisfies ClientAttachment);
     this.broadcast();
+    if (this.roleCount("display") === 0) {
+      await this.state.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
+    }
     if (isActive(room)) this.scheduleTick(50);
     await this.persist(true);
     return new Response(null, { status: 101, webSocket: client } as ResponseInit & { webSocket: WebSocket });
@@ -280,7 +285,7 @@ export class OceanRoom {
   async webSocketMessage(socket: DurableSocket, message: string | ArrayBuffer): Promise<void> {
     const room = await this.getRoom();
     const game = this.game;
-    if (!room || !game || typeof message !== "string") return;
+    if (!room || room.expiring || !game || typeof message !== "string") return;
     const now = Date.now();
     const attachment = this.attachment(socket);
     if (!attachment) return;
@@ -337,20 +342,26 @@ export class OceanRoom {
     }
     this.state.waitUntil((async () => {
       const room = await this.getRoom();
+      if (!room || room.expiring) return;
+      if (this.roleCount("display") === 0) await this.state.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
       await this.persist(true);
       this.broadcast();
-      if (this.clients().length === 0 && room) {
-        await this.state.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
-      } else if (room && this.roleCount("display") > 0 && isActive(room)) {
+      if (room && this.roleCount("display") > 0 && isActive(room)) {
         this.scheduleTick(50);
       }
     })());
   }
 
   async alarm(): Promise<void> {
-    if (this.clients().length > 0) return;
     const room = await this.getRoom();
-    if (!room) return;
+    if (!room || this.roleCount("display") > 0) return;
+    // Persist the expiration decision before external I/O. Alarms can interleave
+    // with requests, so reject reconnects while the D1 cleanup is in flight.
+    room.expiring = true;
+    await this.persist(true);
+    for (const socket of this.clients()) {
+      try { socket.close(1001, "room_expired"); } catch { /* already closed */ }
+    }
     if (room.catchEvent && room.catchSaveStatus !== "saved") {
       try { await this.writeCatch(); } catch { /* retry on the next alarm */ }
       if (!canContinueAfterCatchSave(room.catchSaveStatus)) {
@@ -358,9 +369,16 @@ export class OceanRoom {
         return;
       }
     }
-    await this.state.storage.delete(ROOM_STORAGE_KEY);
     const { deleteOceanRoom } = await import("./d1-store.js");
-    await deleteOceanRoom(this.env.DB, room.id);
+    try {
+      // Release the D1 slot first. If this fails, keep the room snapshot so a
+      // later alarm can retry; deleting the snapshot first would orphan the slot.
+      await deleteOceanRoom(this.env.DB, room.id);
+      await this.state.storage.delete(ROOM_STORAGE_KEY);
+    } catch (error) {
+      await this.state.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
+      throw error;
+    }
     this.room = undefined;
     this.game = undefined;
   }

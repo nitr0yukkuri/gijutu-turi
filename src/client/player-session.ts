@@ -39,12 +39,17 @@ export function ensurePlayerSession(endpoint: string): Promise<PlayerSession> {
 
   pendingSession = (async () => {
     const legacyPlayerId = readLegacyPlayerId();
-    const response = await fetch(endpoint, {
+    const createSession = (playerId?: string) => fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(legacyPlayerId ? { playerId: legacyPlayerId } : {}),
+      body: JSON.stringify(playerId ? { playerId } : {}),
       cache: "no-store",
     });
+    let response = await createSession(legacyPlayerId);
+    // A legacy ID can already belong to a session whose token was removed.
+    // Create a fresh anonymous identity so that lost browser storage does not
+    // leave the game stuck in an endless 409 retry loop.
+    if (response.status === 409 && legacyPlayerId) response = await createSession();
     if (!response.ok) throw new Error(response.status === 409 ? "player_session_exists" : "player_session_unavailable");
 
     const value: unknown = await response.json();
