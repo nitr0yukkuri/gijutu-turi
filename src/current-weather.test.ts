@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getCurrentWeather, type WeatherFetcher } from "./current-weather.js";
+import { getCachedCurrentWeather, getCurrentWeather, type WeatherFetcher } from "./current-weather.js";
+import { CURRENT_WEATHER_STALE_LIMIT_MS } from "./weather-contract.js";
 
 function currentWeatherResponse(weatherCode: number) {
   return new Response(JSON.stringify({
@@ -30,6 +31,8 @@ test("weather fetch combines JMA conditions with a separate GFS thunderstorm cod
   assert.equal(result.thunderstormCode, 95);
   assert.equal(requests.some(url => url.includes("/v1/jma?")), true);
   assert.equal(requests.some(url => url.includes("/v1/gfs?")), true);
+  assert.deepEqual(getCachedCurrentWeather("river"), result);
+  assert.equal(getCachedCurrentWeather("river", Date.parse(result.fetchedAt) + CURRENT_WEATHER_STALE_LIMIT_MS), null);
 });
 
 test("weather fetch keeps JMA data when the optional GFS forecast is unavailable", async () => {

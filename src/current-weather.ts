@@ -132,6 +132,14 @@ export async function getCurrentWeather(waterway: Waterway, fetcher: WeatherFetc
   }
 }
 
+/** Returns a recently fetched snapshot without waiting on the weather provider. */
+export function getCachedCurrentWeather(waterway: Waterway, now = Date.now()): CurrentWeather | null {
+  const cached = weatherCache.get(waterway);
+  if (!cached) return null;
+  const age = now - Date.parse(cached.value.fetchedAt);
+  return age < CURRENT_WEATHER_STALE_LIMIT_MS ? cached.value : null;
+}
+
 export async function handleCurrentWeatherRequest(
   request: Request,
   fetcher: WeatherFetcher = fetch,

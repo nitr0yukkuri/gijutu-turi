@@ -6,7 +6,7 @@ import { deleteOceanRoom, getCollection, getPlayerIdForSession, ping, registerPl
 import { readSmallJson } from "./read-small-json.js";
 import { createReservedRoom } from "./room-reservation.js";
 import type { CloudflareEnv } from "./types.js";
-import { getCurrentWeather, handleCurrentWeatherRequest, type WeatherFetcher } from "../current-weather.js";
+import { getCachedCurrentWeather, handleCurrentWeatherRequest, type WeatherFetcher } from "../current-weather.js";
 import type { CurrentWeather } from "../weather-contract.js";
 
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
@@ -149,8 +149,10 @@ async function route(request: Request, env: CloudflareEnv): Promise<Response> {
     ]);
     if (retryAfter) return rateLimited(retryAfter);
 
-    let weather: CurrentWeather | null = null;
-    try { weather = await getCurrentWeather(waterwayValue, weatherFetcher); } catch { /* Weather failure keeps the neutral fishing balance. */ }
+    // Use the latest in-memory snapshot when available. The browser also loads
+    // /api/weather; room creation must not wait several seconds for an optional
+    // upstream response when a neutral fishing balance is already supported.
+    const weather: CurrentWeather | null = getCachedCurrentWeather(waterwayValue);
     const roomId = `sea_${randomHex(16)}`;
     if (!await reserveOceanRoom(env.DB, roomId, playerId, pinnedFishId)) return json({ error: "rooms_full" }, 503);
     let response: Response | undefined;
