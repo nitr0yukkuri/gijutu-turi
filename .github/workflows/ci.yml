@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - 'codex/cloudflare-*-20261111'
   push:
     branches:
       - main
