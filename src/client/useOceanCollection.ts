@@ -7,13 +7,15 @@ import { FISH_SPECIES } from "../fish-species.js";
 
 export const COLLECTION_LOAD_ERROR_MESSAGE = "図鑑を読み込めません。DBとの接続を確認してください。";
 
-const fallbackCatalog: CollectionEntry[] = FISH_SPECIES.map(species => ({
-  ...species,
-  status: "unknown" as const,
-  catches: 0,
-  firstCaughtAt: null,
-  lastCaughtAt: null,
-}));
+const fallbackCatalog: CollectionEntry[] = [...FISH_SPECIES]
+  .sort((left, right) => left.number - right.number)
+  .map(species => ({
+    ...species,
+    status: "unknown" as const,
+    catches: 0,
+    firstCaughtAt: null,
+    lastCaughtAt: null,
+  }));
 
 const initialCollection = (): Collection => ({
   entries: fallbackCatalog.map(entry => ({ ...entry })),
